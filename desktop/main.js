@@ -37,7 +37,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 app.setName('ProdMesh');
 
 const PORT = Number(process.env.PORT) || 8080;
-const RELEASES_URL = 'https://github.com/jbeale/prodmesh/releases/latest';
+const RELEASES_URL = 'https://github.com/prodmesh/prodmesh/releases/latest';
 
 let tray = null;
 let win = null;

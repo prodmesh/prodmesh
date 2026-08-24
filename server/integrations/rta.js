@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  INTEGRATION: ProdMesh Remote RTA  —  room loudness (SPL).
 //
-//  The free companion analyzer (github.com/jbeale/prodmesh-rta). Enable its
+//  The free companion analyzer (github.com/prodmesh/prodmesh-rta). Enable its
 //  API under Settings → API & Streaming (default port 8517) and it pushes a
 //  JSON snapshot over a plain WebSocket:
 //
