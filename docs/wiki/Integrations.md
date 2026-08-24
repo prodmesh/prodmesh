@@ -99,7 +99,7 @@ Configure under **Admin → Campuses → *(a room)* → Analysis source**:
 
 | | Smaart | ProdMesh Remote RTA |
 |---|---|---|
-| What it is | Rational Acoustics Smaart (v9-era Suite/RT/LE/SPL; v8 also works) | The free companion app, [prodmesh-rta](https://github.com/jbeale/prodmesh-rta) |
+| What it is | Rational Acoustics Smaart (v9-era Suite/RT/LE/SPL; v8 also works) | The free companion app, [prodmesh-rta](https://github.com/prodmesh/prodmesh-rta) |
 | Enable its API | Smaart: **Options → API** | The app: **Settings → API & Streaming** |
 | Default port | 26000 | 8517 |
 | Needs a password? | Optional, if Smaart requires authentication | No |

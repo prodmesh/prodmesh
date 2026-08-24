@@ -296,7 +296,7 @@ Notes:
 - **Analysis source per room** (2026-07-18): the SPL provider is now a room
   connectivity setting (`analysis`, second `room_connectivity` migration) with
   interchangeable sources: **Smaart** (existing transport) or **ProdMesh
-  Remote RTA** (`github.com/jbeale/prodmesh-rta`, the free companion analyzer
+  Remote RTA** (`github.com/prodmesh/prodmesh-rta`, the free companion analyzer
   — plain WebSocket at `ws://host:8517/api/stream`, `server/integrations/rta.js`).
   `server/integrations/analysis.js` dispatches by `source`; both emit the same
   `{ ts, spl }` samples so reports/meters/analytics are source-agnostic. Edited

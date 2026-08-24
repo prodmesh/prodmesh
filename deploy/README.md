@@ -16,7 +16,7 @@ and reachable from the production network.
 ## Docker
 
 ```bash
-curl -O https://raw.githubusercontent.com/jbeale/prodmesh/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/prodmesh/prodmesh/main/docker-compose.yml
 docker compose up -d
 ```
 
@@ -84,6 +84,27 @@ It aborts if the box has uncommitted local edits (so it never clobbers a
 hand-edited `rooms.config.js`), only runs `npm ci` when dependencies actually
 changed, and shows you exactly which commits landed. Room Macs pick up frontend
 changes on their next browser refresh.
+
+### If you installed before August 2026 — update your image name
+
+The repository moved to the [prodmesh organisation](https://github.com/prodmesh),
+and the Docker image moved with it:
+
+```diff
+-    image: ghcr.io/jbeale/prodmesh:latest
++    image: ghcr.io/prodmesh/prodmesh:latest
+```
+
+Edit that line in your own `docker-compose.yml`, then `docker compose pull &&
+docker compose up -d`.
+
+There is no rush — releases are published to both names for now, so an
+un-edited compose file keeps working. But the old name will stop being updated
+eventually, and it stops **silently**: no error, and the Update button in
+Admin → System simply never finds a new version. Worth doing on a weekday
+rather than discovering it on a Sunday.
+
+Nothing else changes — same image contents, same data directory, same tags.
 
 ### Notes
 

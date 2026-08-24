@@ -26,6 +26,13 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/prodmesh
+  # Where the image lived before the repo moved to the prodmesh org. Every
+  # church that ran the documented install has this name pinned in its own
+  # docker-compose.yml, and GHCR packages do NOT follow a repo transfer's
+  # redirect — so without the mirror step below they would quietly stop
+  # receiving updates, with no error and an Update button that finds nothing.
+  # Remove both once the compose files in the wild have moved on.
+  LEGACY_IMAGE: ghcr.io/jbeale/prodmesh
 
 jobs:
   image:
@@ -132,3 +139,31 @@ jobs:
             PRODMESH_COMMIT_SUBJECT=${{ steps.stamp.outputs.subject }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Point the old name at the manifest just pushed — no rebuild, just extra
+      # tags on the same digest, so `:latest` is byte-identical under both.
+      #
+      # NON-BLOCKING on purpose. This writes to a package owned by a different
+      # account, which needs a one-time grant in that package's settings
+      # (Package settings -> Manage Actions access -> add prodmesh/prodmesh with
+      # write). Until that exists this step 403s, and a missing courtesy mirror
+      # must never fail a release that is otherwise good.
+      - name: Mirror to the pre-transfer image name
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -u
+          mirrored=0
+          while read -r tag; do
+            [ -n "$tag" ] || continue
+            legacy="${LEGACY_IMAGE}:${tag##*:}"
+            if docker buildx imagetools create --tag "$legacy" "$tag"; then
+              echo "mirrored $tag -> $legacy"
+              mirrored=$((mirrored + 1))
+            else
+              echo "::warning::could not mirror $tag -> $legacy. Grant prodmesh/prodmesh write access to the ${LEGACY_IMAGE} package, or drop LEGACY_IMAGE once the migration is done."
+            fi
+          done <<< "$TAGS"
+          echo "mirrored $mirrored tag(s)"

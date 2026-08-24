@@ -12,7 +12,7 @@ calls you configure to Planning Center.
 ## Install
 
 ```bash
-curl -O https://raw.githubusercontent.com/jbeale/prodmesh/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/prodmesh/prodmesh/main/docker-compose.yml
 docker compose up -d
 ```
 
