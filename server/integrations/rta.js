@@ -172,7 +172,15 @@ function sampleFrom(data, cfg, state) {
   if (centers.length && centers.length === bands.length) {
     const spectrum = centers.map((hz, index) => ({ hz, db: bands[index] }))
       .filter(({ hz, db }) => typeof hz === 'number' && hz > 0 && typeof db === 'number' && Number.isFinite(db));
-    if (spectrum.length) sample.spectrum = spectrum;
+    if (spectrum.length) {
+      sample.spectrum = spectrum;
+      sample.spectrumMeta = {
+        fast: typeof frame.fast_db === 'number' ? frame.fast_db : null,
+        slow: typeof frame.slow_db === 'number' ? frame.slow_db : null,
+        leq: typeof frame.leq_db === 'number' ? frame.leq_db : null,
+        weighting: typeof frame.weighting === 'string' ? frame.weighting : null,
+      };
+    }
   }
   const ca = frame.metrics?.ca;
   if (typeof ca === 'number') {

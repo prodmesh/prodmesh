@@ -1130,10 +1130,11 @@ export interface SplState {
 /** Live normalized spectrum from an analysis provider. This is intentionally
  * transient: RTA history belongs to the analyzer, not the show report. */
 export interface RtaState {
-  provider: 'prodmesh-rta';
+  provider: 'prodmesh-rta' | 'smaart' | 'open-sound-meter';
   source: string;
   connected: boolean;
   points: Array<{ hz: number; db: number }>;
+  metrics: { fast: number | null; slow: number | null; leq: number | null; weighting: string | null } | null;
   updatedAt: number;
 }
 

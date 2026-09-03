@@ -491,16 +491,25 @@ function onSpl(roomId, sample) {
         : null,
   });
   publishSpl(roomId);
+  const provider = cfg.source === 'rta' ? 'prodmesh-rta' : cfg.source ?? 'smaart';
   if (sample.spectrum) {
     rtas.set(roomId, {
-      provider: 'prodmesh-rta',
+      provider,
       source: `${cfg.host}:${cfg.port ?? 8517}`,
       connected: true,
       points: sample.spectrum,
+      metrics: sample.spectrumMeta ?? null,
       updatedAt: sample.ts,
     });
   } else {
-    rtas.set(roomId, null);
+    rtas.set(roomId, {
+      provider,
+      source: cfg.source === 'open-sound-meter' ? 'Open Sound Meter multicast' : `${cfg.host}:${cfg.port ?? 8517}`,
+      connected: true,
+      points: [],
+      metrics: null,
+      updatedAt: sample.ts,
+    });
   }
   publishRta(roomId);
 }
