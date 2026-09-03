@@ -23,7 +23,7 @@ function Plot({ points, narrow, calibration }: { points: RtaState['points']; nar
   );
   const slot = width / Math.max(visible.length, 1);
   return (
-    <svg className="rta__chart" viewBox="0 0 500 280" preserveAspectRatio="none" role="img" aria-label={`Live 1/3-octave frequency spectrum from ${min} to ${max} dB SPL`}>
+    <svg className="rta__chart" viewBox="0 0 500 280" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Live 1/3-octave frequency spectrum from ${min} to ${max} dB SPL`}>
       <rect className="rta__frame" x={left} y={top} width={width} height={height} />
       {grid.map((db) => <g key={db}><line className="rta__grid" x1={left} x2={left + width} y1={y(db)} y2={y(db)} /><text className="rta__db" textAnchor="end" dominantBaseline="middle" x={left - 6} y={y(db)}>{db}</text></g>)}
       {visible.map((point, index) => {

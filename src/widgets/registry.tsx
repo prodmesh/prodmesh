@@ -59,9 +59,9 @@ export const widgetRegistry: Record<WidgetType, WidgetDef> = {
   },
 
   rta: {
-    title: 'RTA spectrum',
-    description: 'Live frequency spectrum from the selected ProdMesh RTA room.',
-    integration: 'analysis',
+    title: 'ProdMesh RTA',
+    description: 'Live 1/3-octave spectrum from the selected ProdMesh RTA room.',
+    integration: 'prodmesh-rta',
     component: RtaWidget,
     size: { w: 3, h: 2 },
     unique: false,
