@@ -169,8 +169,13 @@ function sampleFrom(data, cfg, state) {
   if (Object.keys(readings).length) sample.readings = readings;
   const centers = Array.isArray(frame.centers_hz) ? frame.centers_hz : [];
   const bands = Array.isArray(frame.bands_db) ? frame.bands_db : [];
+  const peaks = Array.isArray(frame.peaks_db) ? frame.peaks_db : [];
   if (centers.length && centers.length === bands.length) {
-    const spectrum = centers.map((hz, index) => ({ hz, db: bands[index] }))
+    const spectrum = centers.map((hz, index) => ({
+      hz,
+      db: bands[index],
+      ...(typeof peaks[index] === 'number' && Number.isFinite(peaks[index]) ? { peak: peaks[index] } : {}),
+    }))
       .filter(({ hz, db }) => typeof hz === 'number' && hz > 0 && typeof db === 'number' && Number.isFinite(db));
     if (spectrum.length) {
       sample.spectrum = spectrum;
@@ -179,6 +184,7 @@ function sampleFrom(data, cfg, state) {
         slow: typeof frame.slow_db === 'number' ? frame.slow_db : null,
         leq: typeof frame.leq_db === 'number' ? frame.leq_db : null,
         weighting: typeof frame.weighting === 'string' ? frame.weighting : null,
+        calibration: typeof frame.cal_db === 'number' ? frame.cal_db : null,
       };
     }
   }

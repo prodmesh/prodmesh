@@ -71,7 +71,7 @@ test('streams slow_db samples from /api/stream', async () => {
       assert.equal(s.ca, 8.3);
       assert.deepEqual(s.caBand, { lo: 8, hi: 12 });
       assert.deepEqual(s.spectrum, [{ hz: 1000, db: 60.1 }]);
-      assert.deepEqual(s.spectrumMeta, { fast: 86.2, slow: 85.34, leq: 84.1, weighting: 'A' });
+      assert.deepEqual(s.spectrumMeta, { fast: 86.2, slow: 85.34, leq: 84.1, weighting: 'A', calibration: 100 });
     }
   } finally {
     await srv.close();

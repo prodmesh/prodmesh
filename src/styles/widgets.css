@@ -89,16 +89,14 @@
 .ppcue__section { position: absolute; z-index: 2; top: 7px; left: 7px; max-width: calc(100% - 34px); overflow: hidden; padding: 2px 4px; border-left: 3px solid var(--part-color); border-radius: 3px; background: #05080de6; color: #fff !important; font-size: .55rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 
 .wgt--rta { min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.rta__logo { width: 20px; height: 20px; flex: 0 0 auto; border-radius: 5px; }
 .rta__status { margin-left: auto; color: var(--muted); font-size: .7rem; font-weight: 700; }
 .rta__status--ok { color: var(--green); }
-.rta__metrics { display: flex; gap: 14px; padding: 2px 0 5px; }
-.rta__metric { display: grid; color: var(--text); font-variant-numeric: tabular-nums; }
-.rta__metric small { color: var(--muted); font-size: .62rem; text-transform: uppercase; }
-.rta__metric b { font-size: 1rem; line-height: 1; }
 .rta__chart { min-height: 0; flex: 1; width: 100%; overflow: visible; }
 .rta__grid { stroke: color-mix(in srgb, var(--border) 80%, transparent); stroke-width: .35; }
-.rta__grid--vertical { stroke-dasharray: 1.2 1.2; }
 .rta__bar { fill: #59c5a8; opacity: .95; }
+.rta__bar-top { fill: #91ecd4; }
+.rta__peak { fill: #f3bd4d; }
 .rta__bar:hover { fill: #80e0c5; }
 .rta__db, .rta__hz { fill: var(--muted); font-size: 4px; font-family: inherit; }
 .rta__hz { text-anchor: middle; }

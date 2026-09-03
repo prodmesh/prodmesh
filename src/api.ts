@@ -1133,8 +1133,8 @@ export interface RtaState {
   provider: 'prodmesh-rta' | 'smaart' | 'open-sound-meter';
   source: string;
   connected: boolean;
-  points: Array<{ hz: number; db: number }>;
-  metrics: { fast: number | null; slow: number | null; leq: number | null; weighting: string | null } | null;
+  points: Array<{ hz: number; db: number; peak?: number }>;
+  metrics: { fast: number | null; slow: number | null; leq: number | null; weighting: string | null; calibration: number | null } | null;
   updatedAt: number;
 }
 
