@@ -56,10 +56,8 @@ export function RtaWidget({ roomId, config }: WidgetProps) {
       <div className="wgt__head">
         <img className="rta__logo" src={prodmeshRtaLogo} alt="ProdMesh RTA" />
         <span className="wgt__title">{name}</span>
-        <span className={`rta__status ${rta?.connected ? 'rta__status--ok' : ''}`}>{rta?.connected ? 'Live' : 'Waiting'}</span>
       </div>
       {rta?.points.length ? <Plot points={rta.points} narrow={narrow} calibration={rta.metrics?.calibration} /> : <p className="rta__empty">{rta?.connected ? `${name} is connected, but it is not publishing spectrum bands.` : 'Waiting for the configured audio analyzer…'}</p>}
-      <span className="rta__source">{rta ? `${name} · ${rta.source}${rta.metrics?.weighting ? ` · ${rta.metrics.weighting}-weighted` : ''}` : sourceRoomId === roomId ? 'This room’s analysis source' : `Source room: ${sourceRoomId}`}</span>
     </div>
   );
 }
