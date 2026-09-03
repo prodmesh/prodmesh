@@ -9,13 +9,26 @@ const providerName: Record<RtaState['provider'], string> = {
   'prodmesh-rta': 'ProdMesh RTA', smaart: 'Smaart', 'open-sound-meter': 'Open Sound Meter',
 };
 function Plot({ points, narrow, calibration }: { points: RtaState['points']; narrow: boolean; calibration: number | null | undefined }) {
+  const svg = useRef<SVGSVGElement>(null);
+  const [canvas, setCanvas] = useState({ width: 500, height: 280 });
+  useEffect(() => {
+    if (!svg.current || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setCanvas({ width: Math.max(1, Math.round(width)), height: Math.max(1, Math.round(height)) });
+    });
+    observer.observe(svg.current);
+    return () => observer.disconnect();
+  }, []);
+
   const visible = points.filter((point) => point.hz >= 25 && point.hz <= 20000);
   const max = calibration ?? 140;
   const min = max - 80;
   // These are the native RTA widget's canvas margins: 40/10/10/24 px.
-  // The 500×280 coordinate plane keeps those proportions responsive here.
+  // Measure the actual SVG canvas so the chart fills its tile without scaling
+  // text or grid geometry non-uniformly at narrow and wide sizes.
   const left = 40, right = 10, top = 10, bottom = 24;
-  const width = 500 - left - right, height = 280 - top - bottom;
+  const width = canvas.width - left - right, height = canvas.height - top - bottom;
   const y = (db: number) => top + height * (1 - ((Math.max(min, Math.min(max, db)) - min) / (max - min)));
   const grid = Array.from(
     { length: Math.floor((max - Math.ceil(min / 10) * 10) / 10) + 1 },
@@ -23,7 +36,7 @@ function Plot({ points, narrow, calibration }: { points: RtaState['points']; nar
   );
   const slot = width / Math.max(visible.length, 1);
   return (
-    <svg className="rta__chart" viewBox="0 0 500 280" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Live 1/3-octave frequency spectrum from ${min} to ${max} dB SPL`}>
+    <svg ref={svg} className="rta__chart" viewBox={`0 0 ${canvas.width} ${canvas.height}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Live 1/3-octave frequency spectrum from ${min} to ${max} dB SPL`}>
       <rect className="rta__frame" x={left} y={top} width={width} height={height} />
       {grid.map((db) => <g key={db}><line className="rta__grid" x1={left} x2={left + width} y1={y(db)} y2={y(db)} /><text className="rta__db" textAnchor="end" dominantBaseline="middle" x={left - 6} y={y(db)}>{db}</text></g>)}
       {visible.map((point, index) => {
