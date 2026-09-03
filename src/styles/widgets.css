@@ -93,7 +93,9 @@
 .rta__status { margin-left: auto; color: var(--muted); font-size: .7rem; font-weight: 700; }
 .rta__status--ok { color: var(--green); }
 .rta__chart { min-height: 0; flex: 1; width: 100%; overflow: visible; }
+.rta__frame { fill: color-mix(in srgb, var(--bg) 55%, transparent); stroke: var(--border); stroke-width: .35; }
 .rta__grid { stroke: color-mix(in srgb, var(--border) 80%, transparent); stroke-width: .35; }
+.rta__grid--vertical { stroke-dasharray: 1.2 1.2; }
 .rta__bar { fill: #59c5a8; opacity: .95; }
 .rta__bar-top { fill: #91ecd4; }
 .rta__peak { fill: #f3bd4d; }
