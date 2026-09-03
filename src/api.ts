@@ -1127,6 +1127,16 @@ export interface SplState {
   ca?: CaState | null;
 }
 
+/** Live normalized spectrum from an analysis provider. This is intentionally
+ * transient: RTA history belongs to the analyzer, not the show report. */
+export interface RtaState {
+  provider: 'prodmesh-rta';
+  source: string;
+  connected: boolean;
+  points: Array<{ hz: number; db: number }>;
+  updatedAt: number;
+}
+
 /** Live YouTube viewers. `current` is null when nothing is broadcasting or the
  *  broadcaster hid the counter — never 0, which would be a number people read. */
 export interface StreamState {
@@ -1355,6 +1365,7 @@ export interface WidgetConfigJson {
   metric?: string;
   weighting?: 'A' | 'B' | 'C' | 'Z';
   response?: 'Fast' | 'Slow';
+  sourceRoomId?: string;
   autoplay?: boolean;
   muted?: boolean;
   playerControls?: boolean;

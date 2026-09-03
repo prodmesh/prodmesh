@@ -37,6 +37,7 @@ const shows = new Map(); // roomId -> runtime show (only while active)
 const timers = new Map(); // roomId -> published PP timer state (or null)
 const timerWatchers = new Map(); // roomId -> AbortController (runs while subscribed)
 const spls = new Map(); // roomId -> published SPL state (or null)
+const rtas = new Map(); // roomId -> live spectrum only; never persisted
 const splWatchers = new Map(); // roomId -> AbortController (runs while subscribed)
 const streams = new Map(); // roomId -> published YouTube viewer state (or null)
 const streamWatchers = new Map(); // roomId -> AbortController
@@ -48,6 +49,7 @@ const streamWatchers = new Map(); // roomId -> AbortController
 export const showTopic = (roomId) => `room:${roomId}:show`;
 export const timerTopic = (roomId) => `room:${roomId}:timer`;
 export const splTopic = (roomId) => `room:${roomId}:spl`;
+export const rtaTopic = (roomId) => `room:${roomId}:rta`;
 export const streamTopic = (roomId) => `room:${roomId}:youtube`;
 
 const instanceId = (show) => `${show.planId}__${show.timeId}`;
@@ -88,6 +90,7 @@ export function getState(roomId) {
 const publishShow = (roomId) => hub.publish(showTopic(roomId), showState(roomId));
 const publishTimer = (roomId) => hub.publish(timerTopic(roomId), timers.get(roomId) ?? null);
 const publishSpl = (roomId) => hub.publish(splTopic(roomId), spls.get(roomId) ?? null);
+const publishRta = (roomId) => hub.publish(rtaTopic(roomId), rtas.get(roomId) ?? null);
 const publishStream = (roomId) => hub.publish(streamTopic(roomId), streams.get(roomId) ?? null);
 
 // The show topic's producer is the show itself, which runs whether or not a
@@ -112,6 +115,12 @@ hub.registerTopic('room:*:spl', {
   stop: stopSplWatcher,
   snapshot: (roomId) => spls.get(roomId) ?? null,
 });
+hub.registerTopic('room:*:rta', {
+  valid: (roomId) => Boolean(rooms[roomId]),
+  start: startSplWatcher,
+  stop: stopSplWatcher,
+  snapshot: (roomId) => rtas.get(roomId) ?? null,
+});
 hub.registerTopic('room:*:youtube', {
   valid: (roomId) => Boolean(rooms[roomId]),
   start: startStreamWatcher,
@@ -120,7 +129,7 @@ hub.registerTopic('room:*:youtube', {
 });
 
 /** Topics the legacy combined `state` event is assembled from. */
-export const roomTopics = (roomId) => [showTopic(roomId), timerTopic(roomId), splTopic(roomId)];
+export const roomTopics = (roomId) => [showTopic(roomId), timerTopic(roomId), splTopic(roomId), rtaTopic(roomId)];
 
 // ── PP timer watcher ─────────────────────────────────────────────────────────
 //  The room's "Service Start Timer" counts down BETWEEN services (a Message
@@ -162,7 +171,7 @@ function timerSleep(ms, signal) {
 //  SQLite only while a show is live; the live meter is broadcast either way.
 
 function splNeeded(roomId) {
-  return hub.subscriberCount(splTopic(roomId)) > 0 || shows.has(roomId);
+  return hub.subscriberCount(splTopic(roomId)) > 0 || hub.subscriberCount(rtaTopic(roomId)) > 0 || shows.has(roomId);
 }
 
 function startSplWatcher(roomId) {
@@ -175,6 +184,8 @@ function startSplWatcher(roomId) {
     if (!ctl.signal.aborted) {
       spls.set(roomId, null);
       publishSpl(roomId);
+      rtas.set(roomId, null);
+      publishRta(roomId);
     }
   });
 }
@@ -184,6 +195,8 @@ function stopSplWatcher(roomId) {
   splWatchers.get(roomId)?.abort();
   splWatchers.delete(roomId);
   spls.delete(roomId);
+  rtas.delete(roomId);
+  publishRta(roomId);
 }
 
 // ── YouTube Live watcher ─────────────────────────────────────────────────────
@@ -372,6 +385,8 @@ function restartSplWatcher(roomId) {
   }
   if (splNeeded(roomId)) startSplWatcher(roomId);
   publishSpl(roomId);
+  rtas.delete(roomId);
+  publishRta(roomId);
 }
 
 function restartTimerWatcher(roomId) {
@@ -476,6 +491,18 @@ function onSpl(roomId, sample) {
         : null,
   });
   publishSpl(roomId);
+  if (sample.spectrum) {
+    rtas.set(roomId, {
+      provider: 'prodmesh-rta',
+      source: `${cfg.host}:${cfg.port ?? 8517}`,
+      connected: true,
+      points: sample.spectrum,
+      updatedAt: sample.ts,
+    });
+  } else {
+    rtas.set(roomId, null);
+  }
+  publishRta(roomId);
 }
 
 async function watchTimers(roomId, pp, signal) {

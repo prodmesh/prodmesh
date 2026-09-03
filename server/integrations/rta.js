@@ -167,6 +167,13 @@ function sampleFrom(data, cfg, state) {
   if (typeof spl !== 'number') return null;
   const sample = { ts: Date.now(), spl: round(spl) };
   if (Object.keys(readings).length) sample.readings = readings;
+  const centers = Array.isArray(frame.centers_hz) ? frame.centers_hz : [];
+  const bands = Array.isArray(frame.bands_db) ? frame.bands_db : [];
+  if (centers.length && centers.length === bands.length) {
+    const spectrum = centers.map((hz, index) => ({ hz, db: bands[index] }))
+      .filter(({ hz, db }) => typeof hz === 'number' && hz > 0 && typeof db === 'number' && Number.isFinite(db));
+    if (spectrum.length) sample.spectrum = spectrum;
+  }
   const ca = frame.metrics?.ca;
   if (typeof ca === 'number') {
     sample.ca = round(ca);

@@ -69,6 +69,8 @@ export interface WidgetConfig {
   metric?: string;
   weighting?: 'A' | 'B' | 'C' | 'Z';
   response?: 'Fast' | 'Slow';
+  /** Room whose configured ProdMesh RTA feeds this widget. Omitted = this room. */
+  sourceRoomId?: string;
   autoplay?: boolean;
   muted?: boolean;
   playerControls?: boolean;
@@ -195,6 +197,7 @@ export type WidgetType =
   | 'countdown'
   | 'loudness'
   | 'loudness-trend'
+  | 'rta'
   | 'viewers'
   | 'restream'
   | 'obs-health'

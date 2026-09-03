@@ -70,6 +70,7 @@ test('streams slow_db samples from /api/stream', async () => {
       assert.ok(Number.isFinite(s.ts));
       assert.equal(s.ca, 8.3);
       assert.deepEqual(s.caBand, { lo: 8, hi: 12 });
+      assert.deepEqual(s.spectrum, [{ hz: 1000, db: 60.1 }]);
     }
   } finally {
     await srv.close();
