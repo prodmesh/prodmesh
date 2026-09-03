@@ -98,7 +98,7 @@
 .rta__bar-top { fill: #91ecd4; }
 .rta__peak { fill: #f3bd4d; }
 .rta__bar:hover { fill: #80e0c5; }
-.rta__db, .rta__hz { fill: #e8ecf4; font-size: 9px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.rta__db, .rta__hz { fill: #f4f7fb; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 700; }
 .rta__hz { text-anchor: middle; }
 .rta__empty { margin: auto; color: var(--muted); font-size: .82rem; text-align: center; }
 .ppitem__empty { padding: 7px; color: var(--text-dim); font-size: .72rem; }
