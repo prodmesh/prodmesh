@@ -124,6 +124,27 @@ function sampleFrom(data, cfg, state) {
   const spl = cfg.metric ? frame.metrics?.[cfg.metric] : frame.slow_db;
   if (typeof spl !== 'number') return null;
   const sample = { ts: Date.now(), spl: Math.round(spl * 10) / 10 };
+  const centers = Array.isArray(frame.centers_hz) ? frame.centers_hz : [];
+  const bands = Array.isArray(frame.bands_db) ? frame.bands_db : [];
+  const peaks = Array.isArray(frame.peaks_db) ? frame.peaks_db : [];
+  if (centers.length && centers.length === bands.length) {
+    const spectrum = centers.map((hz, index) => ({
+      hz,
+      db: bands[index],
+      ...(typeof peaks[index] === 'number' && Number.isFinite(peaks[index]) ? { peak: peaks[index] } : {}),
+    }))
+      .filter(({ hz, db }) => typeof hz === 'number' && hz > 0 && typeof db === 'number' && Number.isFinite(db));
+    if (spectrum.length) {
+      sample.spectrum = spectrum;
+      sample.spectrumMeta = {
+        fast: typeof frame.fast_db === 'number' ? frame.fast_db : null,
+        slow: typeof frame.slow_db === 'number' ? frame.slow_db : null,
+        leq: typeof frame.leq_db === 'number' ? frame.leq_db : null,
+        weighting: typeof frame.weighting === 'string' ? frame.weighting : null,
+        calibration: typeof frame.cal_db === 'number' ? frame.cal_db : null,
+      };
+    }
+  }
   const ca = frame.metrics?.ca;
   if (typeof ca === 'number') {
     sample.ca = Math.round(ca * 10) / 10;

@@ -220,6 +220,7 @@ export const WIDGET_TYPES = new Map([
   ['countdown', { unique: true, display: true, size: { w: 2, h: 1 } }],
   ['loudness', { unique: false, display: true, size: { w: 2, h: 1 } }],
   ['loudness-trend', { unique: true, display: true, size: { w: 2, h: 1 } }],
+  ['rta', { unique: false, display: true, size: { w: 3, h: 2 } }],
   ['viewers', { unique: true, display: true, size: { w: 1, h: 1 } }],
   ['restream', { unique: true, display: true, size: { w: 2, h: 2 } }],
   ['obs-health', { unique: true, display: true, size: { w: 3, h: 3 } }],
@@ -471,6 +472,12 @@ function viewWidgetConfig(config) {
   }
   if (['A', 'B', 'C', 'Z'].includes(config.weighting)) out.weighting = config.weighting;
   if (['Fast', 'Slow'].includes(config.response)) out.response = config.response;
+  if (config.sourceRoomId != null && config.sourceRoomId !== '') {
+    if (typeof config.sourceRoomId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,59}$/.test(config.sourceRoomId)) {
+      throw new Error('Widget sourceRoomId must be a room id');
+    }
+    out.sourceRoomId = config.sourceRoomId;
+  }
   if (['current', 'next', 'both'].includes(config.slides)) out.slides = config.slides;
   for (const key of ['autoplay', 'muted', 'playerControls', 'destinationLinks', 'videoPreview', 'hideHeader', 'obsPreview', 'obsDetails']) {
     if (typeof config[key] === 'boolean') out[key] = config[key];

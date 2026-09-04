@@ -21,7 +21,16 @@ export const SOURCES = ['smaart', 'rta', 'open-sound-meter'];
 
 export const isConfigured = (cfg) => Boolean(cfg && (cfg.mock || cfg.host || cfg.source === 'open-sound-meter'));
 
-export function watchSpl(cfg, onSample, signal, intervalMs = 1000) {
+// Keep the dashboard as close to each analyzer as its public transport allows.
+// ProdMesh RTA can push 20 frames/sec, Smaart tops out at 8, and Open Sound
+// Meter already delivers each multicast packet directly.
+export const sampleIntervalMs = (cfg) => {
+  if (cfg?.source === 'rta') return 50;
+  if (cfg?.source === 'smaart' || !cfg?.source || cfg?.mock) return 125;
+  return 0;
+};
+
+export function watchSpl(cfg, onSample, signal, intervalMs = sampleIntervalMs(cfg)) {
   // smaart.watchSpl also owns the mock loop, whatever the declared source.
   if (cfg?.mock || !cfg?.source || cfg.source === 'smaart') return smaart.watchSpl(cfg, onSample, signal, intervalMs);
   if (cfg.source === 'rta') return rta.watchSpl(cfg, onSample, signal, intervalMs);

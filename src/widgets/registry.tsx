@@ -20,6 +20,7 @@ import { LyricsWidget } from './LyricsWidget';
 import { SlidesLeftWidget } from './SlidesLeftWidget';
 import { LoudnessWidget } from './LoudnessWidget';
 import { LoudnessTrendWidget } from './LoudnessTrendWidget';
+import { RtaWidget } from './RtaWidget';
 import { ViewersWidget } from './ViewersWidget';
 import { RestreamWidget } from './RestreamWidget';
 import { ResiBroadcastWidget, ResiHealthWidget, ResiStreamWidget, ResiViewersWidget } from './ResiWidgets';
@@ -55,6 +56,16 @@ export const widgetRegistry: Record<WidgetType, WidgetDef> = {
     component: LoudnessTrendWidget,
     size: { w: 2, h: 1 },
     defaultSpan: 'third',
+  },
+
+  rta: {
+    title: 'ProdMesh RTA',
+    description: 'Live 1/3-octave spectrum from the selected ProdMesh RTA room.',
+    integration: 'prodmesh-rta',
+    component: RtaWidget,
+    size: { w: 3, h: 2 },
+    unique: false,
+    defaultSpan: 'two-thirds',
   },
 
   viewers: {
