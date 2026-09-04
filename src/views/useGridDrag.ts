@@ -1,5 +1,5 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
-import { isFree, occupancy, type Grid } from '../lib/gridLayout';
+import { isFree, occupancy, sizeCandidates, type Grid } from '../lib/gridLayout';
 import type { WidgetSize } from '../widgets/types';
 import type { ViewPlacement } from '../api';
 
@@ -147,7 +147,7 @@ export function useGridDrag({
   canvas: RefObject<HTMLDivElement | null>;
   grid: Grid;
   placements: ViewPlacement[];
-  onAdd: (type: string, at: Cell) => void;
+  onAdd: (type: string, at: Cell, size: WidgetSize) => void;
   onMove: (id: string, at: Cell) => void;
   onResize: (id: string, size: WidgetSize) => void;
 }) {
@@ -216,13 +216,34 @@ export function useGridDrag({
       return;
     }
 
+    // An add carries the widget's authored size as `max` and its declared
+    // floor as `min`. Where the full size will not fit under the pointer, try
+    // smaller ones rather than only reporting a refusal: the person has already
+    // chosen WHERE, so the only thing left to negotiate is how big. The ghost
+    // resizes as they move, which is the feedback that makes it obvious.
+    if (drag.kind === 'add' && drag.bounds) {
+      for (const size of sizeCandidates(drag.bounds.max, drag.bounds.min)) {
+        const box = boxFromPointer(m, under, drag.grab, size);
+        if (isFree(grid, cells, { ...box, ...size })) {
+          setDrag({ ...drag, size, at: box, ok: true });
+          return;
+        }
+      }
+      // Nothing fits here, so hold the authored size and let it read as refused
+      // — a ghost that shrank AND stayed red would suggest the size was at
+      // fault when the position is.
+      const box = boxFromPointer(m, under, drag.grab, drag.bounds.max);
+      setDrag({ ...drag, size: drag.bounds.max, at: box, ok: false });
+      return;
+    }
+
     const at = boxFromPointer(m, under, drag.grab, drag.size);
     setDrag({ ...drag, at, ok: isFree(grid, cells, { ...at, ...drag.size }) });
   };
 
   const end = () => {
     if (drag.kind !== 'none' && drag.at && drag.ok) {
-      if (drag.kind === 'add') onAdd(drag.ref, drag.at);
+      if (drag.kind === 'add') onAdd(drag.ref, drag.at, drag.size);
       else if (drag.kind === 'resize') onResize(drag.ref, drag.size);
       else onMove(drag.ref, drag.at);
     }
@@ -236,8 +257,9 @@ export function useGridDrag({
   };
 
   /** Spread onto a palette entry. */
-  const addHandlers = (type: string, size: WidgetSize) => ({
-    onPointerDown: (e: ReactPointerEvent) => begin('add', type, size, { x: 0, y: 0 }, e),
+  const addHandlers = (type: string, size: WidgetSize, min: WidgetSize = size) => ({
+    onPointerDown: (e: ReactPointerEvent) =>
+      begin('add', type, size, { x: 0, y: 0 }, e, { min, max: size }),
     onPointerMove: move,
     onPointerUp: end,
     onPointerCancel: cancel,

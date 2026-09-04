@@ -158,6 +158,26 @@ export function findFirstFit(
 }
 
 /**
+ * Every size between `min` and `preferred`, biggest first.
+ *
+ * Shared so the two ways of adding a widget agree on what "shrink a bit" means.
+ * Between equal areas the shape closest to what the widget asked for wins, so a
+ * 2x3 does not silently arrive as a 3x2.
+ */
+export function sizeCandidates(
+  preferred: { w: number; h: number },
+  min: { w: number; h: number },
+): { w: number; h: number }[] {
+  const out: { w: number; h: number }[] = [];
+  for (let w = Math.min(min.w, preferred.w); w <= preferred.w; w += 1) {
+    for (let h = Math.min(min.h, preferred.h); h <= preferred.h; h += 1) out.push({ w, h });
+  }
+  return out.sort((a, b) => (b.w * b.h) - (a.w * a.h)
+    || (Math.abs(a.w - preferred.w) + Math.abs(a.h - preferred.h))
+     - (Math.abs(b.w - preferred.w) + Math.abs(b.h - preferred.h)));
+}
+
+/**
  * The largest box between `preferred` and `min` that fits, and where it goes.
  *
  * `findFirstFit` asks one question — "does this exact rectangle exist?" — and a
@@ -182,19 +202,7 @@ export function findBestFit(
   preferred: { w: number; h: number },
   min: { w: number; h: number } = preferred,
 ): { x: number; y: number; w: number; h: number } | null {
-  const candidates: { w: number; h: number }[] = [];
-  for (let w = Math.min(min.w, preferred.w); w <= preferred.w; w += 1) {
-    for (let h = Math.min(min.h, preferred.h); h <= preferred.h; h += 1) {
-      candidates.push({ w, h });
-    }
-  }
-  // Biggest first; between equal areas prefer the shape closest to what the
-  // widget asked for, so a 2x3 does not silently become a 3x2.
-  candidates.sort((a, b) => (b.w * b.h) - (a.w * a.h)
-    || (Math.abs(a.w - preferred.w) + Math.abs(a.h - preferred.h))
-     - (Math.abs(b.w - preferred.w) + Math.abs(b.h - preferred.h)));
-
-  for (const size of candidates) {
+  for (const size of sizeCandidates(preferred, min)) {
     const at = findFirstFit(grid, placements, size);
     if (at) return { ...at, ...size };
   }

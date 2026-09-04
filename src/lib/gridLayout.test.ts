@@ -12,6 +12,7 @@ import {
   collisions,
   findBestFit,
   findFirstFit,
+  sizeCandidates,
   fits,
   isFree,
   normalize,
@@ -69,6 +70,19 @@ describe('gridLayout', () => {
     expect(occupancy(placements, 'w1').size).toBe(1); // its own cells are re-enterable
     expect(isFree(GRID.dashboard, occupancy(placements, 'w1'), box(0, 0, 2, 2))).toBe(true);
     expect(isFree(GRID.dashboard, occupancy(placements), box(0, 0, 2, 2))).toBe(false);
+  });
+
+  it('sizeCandidates: biggest first, and keeps the asked-for shape', () => {
+    // Shared by both ways of adding a widget so they agree on what shrinking
+    // means — the + button searches positions with these, the drag holds the
+    // position and walks them at the cell under the pointer.
+    expect(sizeCandidates({ w: 2, h: 2 }, { w: 2, h: 2 })).toEqual([{ w: 2, h: 2 }]);
+
+    const shrinking = sizeCandidates({ w: 2, h: 2 }, { w: 1, h: 1 });
+    expect(shrinking[0]).toEqual({ w: 2, h: 2 });
+    expect(shrinking.at(-1)).toEqual({ w: 1, h: 1 });
+    // 2x1 and 1x2 are both area 2; the one nearer the requested shape leads.
+    expect(sizeCandidates({ w: 3, h: 1 }, { w: 1, h: 1 })[1]).toEqual({ w: 2, h: 1 });
   });
 
   it('findBestFit: shrinks toward the minimum rather than refusing', () => {

@@ -107,6 +107,13 @@ export function ViewEditor({
     onResize: resizeTo,
   });
 
+  // The drag needs the same floor the button's placement search uses, so a
+  // widget dropped into a tight corner shrinks exactly as far as it claims to.
+  const dragFromPalette = (type: string, size: WidgetSize) => {
+    const def = isWidgetType(type) ? widgetRegistry[type] : null;
+    return addHandlers(type, size, def ? widgetPlacementMin(def) : size);
+  };
+
   const addFromPalette = (type: string) => {
     const def = isWidgetType(type) ? widgetRegistry[type] : null;
     // Shrink toward the widget's declared minimum rather than refusing outright
@@ -241,7 +248,7 @@ export function ViewEditor({
 
   return (
     <div className="vieweditor">
-      <WidgetPalette entries={palette} onAdd={addFromPalette} dragHandlers={addHandlers} />
+      <WidgetPalette entries={palette} onAdd={addFromPalette} dragHandlers={dragFromPalette} />
 
       <div className="vieweditor__canvas">
         {view.kind === 'display' ? (
