@@ -1,7 +1,7 @@
 import { ChevronDown, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { widgetRegistry, widgetTypes } from '../widgets/registry';
-import { widgetAllowedOn, widgetIsUnique, type WidgetType } from '../widgets/types';
+import { NEW_WIDGET_SIZE, widgetAllowedOn, widgetIsUnique, type WidgetType } from '../widgets/types';
 import { IntegrationBrand, integrationInfo, type IntegrationId } from '../components/IntegrationBrand';
 import { findFirstFit, type Grid, type ViewKind } from '../lib/gridLayout';
 import type { CaptionsConfig, ViewPlacement } from '../api';
@@ -38,14 +38,14 @@ export function paletteFor(kind: ViewKind, grid: Grid, placements: ViewPlacement
         type,
         title: analysisTitle ?? captionTitle ?? def.title,
         description: def.description,
-        size: def.size,
+        size: NEW_WIDGET_SIZE,
         integration: analysisTitle ? analysisIntegration(analysisSource) : captionTitle ? captionIntegration(captionSource) : def.integration ?? 'prodmesh',
         blocked:
           ['loudness', 'loudness-trend'].includes(type) && !analysisSource
             ? 'Choose an Audio Analysis source in Campus settings first'
             : widgetIsUnique(def) && placed
             ? 'Already on this view'
-            : findFirstFit(grid, placements, def.size)
+            : findFirstFit(grid, placements, NEW_WIDGET_SIZE)
               ? null
               : 'No room left',
       };
@@ -105,9 +105,6 @@ export function WidgetPalette({
                   <strong>{entry.title}</strong>
                   <small>{entry.blocked ?? entry.description}</small>
                 </div>
-                <span className="palette__size mono" aria-hidden>
-                  {entry.size.w}×{entry.size.h}
-                </span>
                 <button
                   type="button"
                   className="iconbtn"

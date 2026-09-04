@@ -142,12 +142,11 @@ export interface WidgetDef {
   integration?: IntegrationId;
   component: ComponentType<WidgetProps>;
 
-  /** Size in grid units on a View canvas (6 wide on a dashboard, 3 on a
-   *  display) — what it gets when first placed. */
+  /** Legacy footprint retained for registry/server parity. New placements use
+   *  NEW_WIDGET_SIZE so a widget does not impose its own dimensions. */
   size: WidgetSize;
 
-  /** Optional minimum size. A widget always starts at `size`, but every
-   * widget can be made larger in either direction by the layout editor. */
+  /** Legacy metadata; shared layout bounds now apply to every widget. */
   minSize?: WidgetSize;
   /** Retained for compatibility with existing layouts. The shared layout
    * maximum below is now used so every widget has the same resize freedom. */
@@ -215,8 +214,11 @@ export const widgetAllowedOn = (def: WidgetDef, kind: ViewKind): boolean =>
 
 export const MAX_WIDGET_SIZE: WidgetSize = { w: 6, h: 5 };
 
-// Widgets keep their authored starting size, but users may resize every one
-// down to a single cell. Their content then scales with the chosen cell.
+/** A new widget has no authored footprint. It starts as one neutral grid cell
+ *  and the person arranging the view decides how far it should grow. */
+export const NEW_WIDGET_SIZE: WidgetSize = { w: 1, h: 1 };
+
+// Users may resize every widget from one cell to the shared canvas maximum.
 export const widgetMin = (_def: WidgetDef): WidgetSize => ({ w: 1, h: 1 });
 // A dashboard is six columns wide. Displays are smaller, and their grid
 // validation naturally limits a resize to what fits on that display.

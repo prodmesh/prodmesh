@@ -53,13 +53,13 @@ describe('ViewEditor', () => {
 
     await openPaletteGroup(user, 'Smaart');
     await user.click(screen.getByRole('button', { name: 'Add Smaart Decibel Meter' }));
-    expect(at('loudness').style.gridColumn).toBe('1 / span 2');
+    expect(at('loudness').style.gridColumn).toBe('1 / span 1');
     expect(status()).toBe('Loudness added at column 1, row 1.');
 
     // Find-first-fit, not "append": the next one goes beside it, not below.
     await openPaletteGroup(user, 'ProPresenter');
     await user.click(screen.getByRole('button', { name: 'Add Countdown' }));
-    expect(at('countdown').style.gridColumn).toBe('3 / span 2');
+    expect(at('countdown').style.gridColumn).toBe('2 / span 1');
     expect(at('countdown').style.gridRow).toBe('1 / span 1');
   });
 
@@ -80,15 +80,17 @@ describe('ViewEditor', () => {
     const user = userEvent.setup();
     render(<Harness kind="display" />);
 
-    // 2-wide on a 3-wide grid, so each leaves a single free column beside it.
+    // New widgets all begin as one neutral grid cell; the person arranging the
+    // display decides which ones should be made wider or taller.
     await openPaletteGroup(user, 'ProPresenter');
     await user.click(screen.getByRole('button', { name: 'Add Countdown' }));
-    expect(at('countdown').style.gridColumn).toBe('1 / span 2');
+    expect(at('countdown').style.gridColumn).toBe('1 / span 1');
     await openPaletteGroup(user, 'Smaart');
     await user.click(screen.getByRole('button', { name: 'Add Smaart Decibel Meter' }));
-    expect(at('loudness').style.gridRow).toBe('2 / span 1');
+    expect(at('loudness').style.gridColumn).toBe('2 / span 1');
+    expect(at('loudness').style.gridRow).toBe('1 / span 1');
 
-    // The 1-wide viewers fits that gap on row 1 rather than starting a row.
+    // Viewers fills the remaining first-row cell.
     await openPaletteGroup(user, 'YouTube');
     await user.click(screen.getByRole('button', { name: 'Add YouTube Live Viewers' }));
     expect(at('viewers').style.gridColumn).toBe('3 / span 1');
@@ -105,12 +107,12 @@ describe('ViewEditor', () => {
   });
 
   it('says "No room left" rather than letting someone build a refused layout', async () => {
-    // A display is a hard 3x3. Filled to a single free cell, nothing 2 wide
-    // fits — the palette has to say that, not fail on save.
+    // A display is a hard 3x3. A full canvas must say so rather than offering
+    // a widget that cannot be placed.
     const user = userEvent.setup();
     render(<Harness kind="display" initial={[
       { id: 'a', type: 'loudness', x: 0, y: 0, w: 2, h: 3, config: {} },
-      { id: 'b', type: 'viewers', x: 2, y: 0, w: 1, h: 2, config: {} },
+      { id: 'b', type: 'viewers', x: 2, y: 0, w: 1, h: 3, config: {} },
     ]} />);
 
     await openPaletteGroup(user, 'ProPresenter');
@@ -351,11 +353,11 @@ describe('ViewEditor', () => {
     expect(within(at('companion-variables')).getByText(/add them in Widget settings/i)).toBeInTheDocument();
   });
 
-  it('the palette shows each widget’s size, since the grid is what it competes for', async () => {
+  it('the palette does not expose a fixed widget size', async () => {
     const user = userEvent.setup();
     render(<Harness />);
     await openPaletteGroup(user, 'Smaart');
     const loudness = screen.getByText('Smaart Decibel Meter').closest('li')!;
-    expect(within(loudness).getByText('2×1')).toBeInTheDocument();
+    expect(within(loudness).queryByText('2×1')).not.toBeInTheDocument();
   });
 });

@@ -761,12 +761,6 @@
   white-space: nowrap;
 }
 
-.palette__size {
-  margin-left: auto;
-  font-size: 0.75rem;
-  color: var(--text-faint);
-}
-
 /* ── Cells while editing ─────────────────────────────────────────────────── */
 
 /* The editor draws a spare row past the content (see ViewEditor's row count),
