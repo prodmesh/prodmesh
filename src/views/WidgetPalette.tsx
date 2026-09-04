@@ -1,9 +1,9 @@
 import { ChevronDown, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { widgetRegistry, widgetTypes } from '../widgets/registry';
-import { widgetAllowedOn, widgetIsUnique, type WidgetType } from '../widgets/types';
+import { widgetAllowedOn, widgetIsUnique, widgetPlacementMin, type WidgetType } from '../widgets/types';
 import { IntegrationBrand, integrationInfo, type IntegrationId } from '../components/IntegrationBrand';
-import { findFirstFit, type Grid, type ViewKind } from '../lib/gridLayout';
+import { findBestFit, type Grid, type ViewKind } from '../lib/gridLayout';
 import type { CaptionsConfig, ViewPlacement } from '../api';
 import type { AnalysisSource } from '../api';
 import { analysisIntegration, analysisWidgetTitle } from '../lib/analysisSource';
@@ -45,9 +45,12 @@ export function paletteFor(kind: ViewKind, grid: Grid, placements: ViewPlacement
             ? 'Choose an Audio Analysis source in Campus settings first'
             : widgetIsUnique(def) && placed
             ? 'Already on this view'
-            : findFirstFit(grid, placements, def.size)
+            : findBestFit(grid, placements, def.size, widgetPlacementMin(def))
               ? null
-              : 'No room left',
+              // Only reachable when even the widget's own minimum has nowhere
+              // to go, so this is now a true statement rather than "your
+              // authored size happens not to fit".
+              : `No room left — needs ${widgetPlacementMin(def).w}×${widgetPlacementMin(def).h}`,
       };
     });
 

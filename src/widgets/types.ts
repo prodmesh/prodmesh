@@ -143,11 +143,23 @@ export interface WidgetDef {
   component: ComponentType<WidgetProps>;
 
   /** Size in grid units on a View canvas (6 wide on a dashboard, 3 on a
-   *  display) — what it gets when first placed. */
+   *  display) — what it gets when placed and there is room for it. */
   size: WidgetSize;
 
-  /** Optional minimum size. A widget always starts at `size`, but every
-   * widget can be made larger in either direction by the layout editor. */
+  /**
+   * The smallest this widget still renders acceptably at.
+   *
+   * A CLAIM, not a layout hint: declaring it says somebody has looked at the
+   * widget at that size and it is still worth putting on a wall. The editor
+   * treats it as permission to shrink a placement to make it fit, so a widget
+   * that has not been designed small must not declare a small minimum — a 1x1
+   * lyrics widget is not a smaller lyrics widget, it is an empty box.
+   *
+   * Omitted means "does not shrink": placement then uses `size` as both the
+   * preferred and the minimum, which is what every widget did before
+   * shrink-to-fit existed. Lowering this is a design change and belongs with
+   * the layout work that earns it, never on its own.
+   */
   minSize?: WidgetSize;
   /** Retained for compatibility with existing layouts. The shared layout
    * maximum below is now used so every widget has the same resize freedom. */
@@ -215,9 +227,25 @@ export const widgetAllowedOn = (def: WidgetDef, kind: ViewKind): boolean =>
 
 export const MAX_WIDGET_SIZE: WidgetSize = { w: 6, h: 5 };
 
-// Widgets keep their authored starting size, but users may resize every one
-// down to a single cell. Their content then scales with the chosen cell.
+// Two different floors, and the difference is who is choosing.
+//
+// This one is the RESIZE floor: how small a person may deliberately drag a
+// widget. It stays 1x1 for everything, because the server accepts 1x1 for
+// everything and saved layouts in the wild already contain such placements.
+// Someone dragging a widget down to one cell can see exactly what they get and
+// has decided they want it there.
 export const widgetMin = (_def: WidgetDef): WidgetSize => ({ w: 1, h: 1 });
+
+/**
+ * The PLACEMENT floor: how small the editor may silently shrink a widget in
+ * order to fit it somewhere, without anyone asking for that.
+ *
+ * Different question, different answer. A person choosing a tiny widget has
+ * seen the result; the editor choosing one on their behalf has not. So this
+ * respects `minSize` — the widget's own claim about where it stays legible —
+ * and defaults to no shrinking at all when a widget has not made that claim.
+ */
+export const widgetPlacementMin = (def: WidgetDef): WidgetSize => def.minSize ?? def.size;
 // A dashboard is six columns wide. Displays are smaller, and their grid
 // validation naturally limits a resize to what fits on that display.
 export const widgetMax = (_def: WidgetDef): WidgetSize => MAX_WIDGET_SIZE;

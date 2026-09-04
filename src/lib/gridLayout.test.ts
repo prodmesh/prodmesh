@@ -10,6 +10,7 @@ import {
   GRID,
   MAX_ROWS_HARD,
   collisions,
+  findBestFit,
   findFirstFit,
   fits,
   isFree,
@@ -68,6 +69,36 @@ describe('gridLayout', () => {
     expect(occupancy(placements, 'w1').size).toBe(1); // its own cells are re-enterable
     expect(isFree(GRID.dashboard, occupancy(placements, 'w1'), box(0, 0, 2, 2))).toBe(true);
     expect(isFree(GRID.dashboard, occupancy(placements), box(0, 0, 2, 2))).toBe(false);
+  });
+
+  it('findBestFit: shrinks toward the minimum rather than refusing', () => {
+    // The case this exists for. A 3x3 display holds exactly one 2x2 — any
+    // second one overlaps — so a single 2x2 widget used to make five empty
+    // cells unreachable to every other 2x2 widget.
+    const full2x2 = [at('big', 0, 0, 2, 2)];
+    expect(findFirstFit(GRID.display, full2x2, { w: 2, h: 2 })).toBeNull();
+    // 1x2 rather than 1x1: the leftover column is two cells tall, and the
+    // search takes the biggest thing that fits, not merely something that does.
+    expect(findBestFit(GRID.display, full2x2, { w: 2, h: 2 }, { w: 1, h: 1 }))
+      .toEqual({ x: 2, y: 0, w: 1, h: 2 });
+  });
+
+  it('findBestFit: takes the largest that fits, and keeps the asked-for shape', () => {
+    const dash = GRID.dashboard;
+    // Room for everything: nothing shrinks.
+    expect(findBestFit(dash, [], { w: 2, h: 2 }, { w: 1, h: 1 }))
+      .toEqual({ x: 0, y: 0, w: 2, h: 2 });
+    // A 2-wide, 1-tall gap in an otherwise full first row: 2x1 beats 1x1.
+    const row = [at('a', 0, 0, 4, 1), at('b', 0, 1, 6, 5)];
+    expect(findBestFit({ ...dash, maxRows: 6 }, row, { w: 2, h: 2 }, { w: 1, h: 1 }))
+      .toEqual({ x: 4, y: 0, w: 2, h: 1 });
+  });
+
+  it('findBestFit: without a minimum a widget does not shrink at all', () => {
+    // Omitting the floor means the widget never vouched for a smaller size, so
+    // the answer stays no rather than silently producing an unreadable tile.
+    const full2x2 = [at('big', 0, 0, 2, 2)];
+    expect(findBestFit(GRID.display, full2x2, { w: 2, h: 2 })).toBeNull();
   });
 
   it('findFirstFit: empty grid, into a gap, and a full display', () => {
