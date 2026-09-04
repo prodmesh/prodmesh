@@ -117,6 +117,15 @@ export function WidgetPalette({
                   disabled={Boolean(entry.blocked)}
                   aria-label={`Add ${entry.title}`}
                   title={entry.blocked ?? `Add ${entry.title}`}
+                  // The row around this button starts a drag on pointerdown,
+                  // and that handler both preventDefault()s and takes pointer
+                  // capture on the row. Bubbling into it retargets the pointerup
+                  // away from this button and suppresses the click entirely, so
+                  // pressing + ran a zero-distance drag instead of adding
+                  // anything. jsdom does not enforce pointer capture, so the
+                  // tests below could not see it — this was only visible in a
+                  // real browser.
+                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => onAdd(entry.type)}
                 >
                   <Plus size={15} />
