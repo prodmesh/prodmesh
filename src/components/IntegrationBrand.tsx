@@ -7,7 +7,7 @@ import restreamLogo from '../assets/integrations/restream.png';
 import resiLogo from '../assets/integrations/resi.svg';
 import companionLogo from '../assets/integrations/companion.png';
 import prodMeshLogo from '../assets/prodmesh-logo.svg';
-import prodMeshRtaLogo from '../assets/integrations/prodmesh-rta.svg';
+import prodMeshRtaLogo from '../assets/integrations/prodmesh-rta.png';
 import smaartLogo from '../assets/integrations/smaart.png';
 import openSoundMeterLogo from '../assets/integrations/open-sound-meter.png';
 import prodComLogo from '../assets/integrations/prodcom.png';
