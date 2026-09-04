@@ -56,6 +56,10 @@ export function ViewCanvas({
   const room = useQuery(`room:${view.roomId}`, () => getRoom(view.roomId), { staleMs: 60_000 }).data;
   const connectivity = useQuery(`room-connectivity:${view.roomId}`, () => getRoomConnectivity(view.roomId), { staleMs: 15_000 }).data;
   const visibleWidgets = view.widgets.filter((placement) => {
+    // Room Mode is optional per room. Keep its placement in the editor so an
+    // administrator can re-enable it (or remove it deliberately), but do not
+    // reserve a blank card on live dashboards and displays when it is off.
+    if (placement.type === 'room-mode' && room?.roomModeEnabled === false && !chromeFor) return false;
     // Old layouts can contain a widget introduced by a newer server. Let
     // PlacedWidget render its safe "not available" placeholder rather than
     // silently removing the occupied slot.

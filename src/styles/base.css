@@ -344,6 +344,17 @@ input[type='time']::-webkit-calendar-picker-indicator {
   line-height: 1.25;
 }
 
+/* Settings that turn an entire feature on/off read better as a switch than
+   as one of the many selectable mode checkboxes below them. */
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; color: var(--text); }
+.switch__input { position: absolute; opacity: 0; pointer-events: none; }
+.switch__track { width: 36px; height: 20px; padding: 2px; box-sizing: border-box; border-radius: 999px; background: var(--bg-raised); border: 1px solid var(--border); transition: background 120ms, border-color 120ms; }
+.switch__thumb { display: block; width: 14px; height: 14px; border-radius: 50%; background: var(--text-faint); transition: transform 120ms, background 120ms; }
+.switch__input:checked + .switch__track { background: var(--accent); border-color: var(--accent); }
+.switch__input:checked + .switch__track .switch__thumb { transform: translateX(16px); background: var(--text-on-accent); }
+.switch__input:focus-visible + .switch__track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switch__label { line-height: 1.25; }
+
 /* ── Pills ───────────────────────────────────────────────────────────────── */
 .pill {
   font-family: var(--font-mono);

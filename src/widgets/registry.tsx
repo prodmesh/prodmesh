@@ -11,6 +11,7 @@
 import { CaptionsWidget } from './CaptionsWidget';
 import { ClockWidget } from './ClockWidget';
 import { CompanionVariablesWidget } from './CompanionVariablesWidget';
+import { CompanionEmulatorWidget } from './CompanionEmulatorWidget';
 import { CountdownWidget } from './CountdownWidget';
 import { NowNextWidget } from './NowNextWidget';
 import { RoomHealthWidget } from './RoomHealthWidget';
@@ -126,6 +127,16 @@ export const widgetRegistry: Record<WidgetType, WidgetDef> = {
     // their rows are the identity that tells them apart.
     unique: false,
     defaultSpan: 'third',
+  },
+
+  'companion-emulator': {
+    title: 'Bitfocus Companion',
+    description: 'The room’s live Companion emulator, including buttons, feedback and page navigation.',
+    integration: 'companion',
+    component: CompanionEmulatorWidget,
+    size: { w: 3, h: 3 },
+    kinds: ['dashboard'],
+    defaultSpan: 'two-thirds',
   },
 
   'room-health': {

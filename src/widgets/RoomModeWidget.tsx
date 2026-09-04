@@ -29,6 +29,8 @@ export function RoomModeWidget({ roomId }: WidgetProps) {
     staleMs: MODES_STALE_MS,
   }).data;
 
+  if (room?.roomModeEnabled === false) return null;
+
   const mode = room?.modes.find((m) => m.id === state?.mode) ?? null;
   const protection = state?.protection;
 

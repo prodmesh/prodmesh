@@ -81,28 +81,31 @@ test('a room created in Admin → Campuses is a live server room', async () => {
     site.auditoriums.push({ id: CHAPEL, name: 'North Campus · Prayer Room', tiles: [] });
   });
 
-  // Listed with the standard simulated mode set, no restart, no file edit.
+  // New rooms start simulated without Room Mode. An administrator enables it
+  // and adds only the controls this room actually needs.
   const listed = (await getRooms()).find((r) => r.id === CHAPEL);
   assert.ok(listed, 'chapel should be listed');
-  assert.deepEqual(listed.modes.map((m) => m.id), ['sunday', 'midweek', 'special', 'standby']);
+  assert.deepEqual(listed.modes, []);
+  assert.equal(listed.roomModeEnabled, false);
   assert.equal(listed.hasCompanion, false); // simulated
 
-  // The room configuration page opens pre-filled with the live defaults.
+  // The room configuration page opens with the same optional Room Mode state.
   const conn = await getConn(CHAPEL);
   assert.equal(conn.hasServerRoom, true);
   assert.equal(conn.companion.mock, true);
-  assert.equal(conn.companion.modes.length, 4);
+  assert.equal(conn.companion.roomMode, false);
+  assert.deepEqual(conn.companion.modes, []);
   assert.deepEqual(conn.planningCenter, { serviceTypes: [] });
 
-  // Mode changes work immediately (simulated room, in-memory state).
+  // A disabled Room Mode cannot be changed through its old endpoint.
   const mode = await post(`/api/rooms/${CHAPEL}/mode`, { mode: 'sunday' }, operatorToken, station.token);
-  assert.equal(mode.status, 200);
-  assert.equal((await mode.json()).mode, 'sunday');
+  assert.equal(mode.status, 409);
 
-  // And its connectivity is editable like any seeded room.
+  // Enabling it and adding controls makes the room mode-capable.
   const saved = await put(`/api/config/rooms/${CHAPEL}/connectivity/companion`, {
     companion: {
       mock: true,
+      roomMode: true,
       modes: [
         { id: 'service', label: 'Service', color: '#34c759', match: 'SERVICE' },
         { id: 'standby', label: 'Standby', color: '#8b97a8', match: 'STANDBY', isStandby: true },
@@ -111,7 +114,12 @@ test('a room created in Admin → Campuses is a live server room', async () => {
   }, adminToken);
   assert.equal(saved.status, 200);
   const relisted = (await getRooms()).find((r) => r.id === CHAPEL);
+  assert.equal(relisted.roomModeEnabled, true);
   assert.deepEqual(relisted.modes.map((m) => m.id), ['service', 'standby']);
+
+  const enabledMode = await post(`/api/rooms/${CHAPEL}/mode`, { mode: 'service' }, operatorToken, station.token);
+  assert.equal(enabledMode.status, 200);
+  assert.equal((await enabledMode.json()).mode, 'service');
 });
 
 test('renaming a room updates the live map in place', async () => {

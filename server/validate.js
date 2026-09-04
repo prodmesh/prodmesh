@@ -16,8 +16,8 @@ export function validateRooms(rooms) {
     if (!room.id) fail(`${where} is missing an id.`);
     if (room.id !== key) fail(`${where} id "${room.id}" must match its key "${key}".`);
     if (!room.name) fail(`${where} is missing a name.`);
-    if (!Array.isArray(room.modes) || room.modes.length === 0) {
-      fail(`${where} must have a non-empty modes array.`);
+    if (!Array.isArray(room.modes)) {
+      fail(`${where} must have a modes array.`);
     }
 
     if (!room.mock) {
@@ -239,6 +239,7 @@ export const WIDGET_TYPES = new Map([
     unique: false, display: true,
     size: { w: 2, h: 2 }, min: { w: 1, h: 1 }, max: { w: 3, h: 4 },
   }],
+  ['companion-emulator', { unique: true, display: false, size: { w: 3, h: 3 } }],
   ['clock', { unique: true, display: true, size: { w: 2, h: 1 } }],
   ['captions', {
     unique: true, display: true,

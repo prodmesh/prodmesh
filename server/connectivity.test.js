@@ -194,7 +194,6 @@ test('setCompanion rejects bad input without changing anything', () => {
   assert.throws(() => conn.setCompanion('north-youth', null), /must be an object/);
   assert.throws(() => conn.setCompanion('north-youth', { mock: false, variable: 'v', modes }), /needs a Companion host/);
   assert.throws(() => conn.setCompanion('north-youth', { mock: false, host: 'x', modes }), /needs a state variable/);
-  assert.throws(() => conn.setCompanion('north-youth', { mock: true, modes: [] }), /At least one mode/);
   assert.throws(
     () => conn.setCompanion('north-youth', { mock: true, modes: [modes[0], modes[0]] }),
     /Duplicate mode id/,
@@ -216,6 +215,13 @@ test('setCompanion rejects bad input without changing anything', () => {
     /integer page\/row\/column/,
   );
   assert.deepEqual(conn.getCompanion('north-youth'), before);
+});
+
+test('Companion can keep a blank mode list while Room Mode is disabled', () => {
+  const clean = conn.setCompanion('north-youth', { mock: true, roomMode: false, modes: [] });
+  assert.deepEqual(clean, { mock: true, roomMode: false, modes: [] });
+  assert.equal(rooms['north-youth'].roomMode, false);
+  assert.deepEqual(rooms['north-youth'].modes, []);
 });
 
 test('setPlanningCenter rejects bad input without changing anything', () => {

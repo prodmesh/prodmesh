@@ -14,7 +14,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { getDb } from './db.js';
 import './appConfig.js'; // topology seeding must run before the first build
-import { rooms as seedRooms, standardModes } from './rooms.config.js';
+import { rooms as seedRooms } from './rooms.config.js';
 
 export const rooms = Object.create(null);
 
@@ -24,7 +24,7 @@ export const rooms = Object.create(null);
 function makeRoom(row, seed) {
   const base = seed
     ? structuredClone(seed)
-    : { mock: true, companion: {}, state: { variable: 'roomState' }, modes: standardModes() };
+    : { mock: true, companion: {}, state: { variable: 'roomState' }, roomMode: false, modes: [] };
   return { ...base, id: row.id, name: row.name, site: row.siteId };
 }
 

@@ -8,6 +8,7 @@ export function publicRoom(room) {
     name: room.name,
     site: room.site ?? null,
     hasCompanion: Boolean(room.companion?.host) && !room.mock,
+    roomModeEnabled: room.roomMode !== false,
     // This is safe public metadata: widgets need a friendly source name and
     // mark, not the analyzer's host, port, password, or source identifier.
     analysisSource: room.analysis?.source ?? (room.analysis?.mock ? 'rta' : null),

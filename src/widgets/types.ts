@@ -96,6 +96,9 @@ export interface WidgetConfig {
    *  every other widget answers one question, and this one is a rack of
    *  labelled values whose whole point is holding several at once. */
   rows?: CompanionVariableRow[];
+  /** The Companion surface is configured per room. This reserved field keeps
+   * layouts forward-compatible if per-widget surface selection is added. */
+  companionEmulator?: string;
   /** Runtime-only identity injected by ViewCanvas; never persisted. */
   viewId?: string;
   widgetId?: string;
@@ -194,6 +197,7 @@ export type WidgetType =
   | 'now-next'
   | 'room-mode'
   | 'companion-variables'
+  | 'companion-emulator'
   | 'room-health'
   | 'captions'
   | 'lyrics'

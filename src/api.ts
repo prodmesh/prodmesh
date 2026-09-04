@@ -18,6 +18,8 @@ export interface RoomMeta {
   name: string;
   site: string | null;
   hasCompanion: boolean;
+  /** Whether this room exposes its operator-defined Room Mode control surface. */
+  roomModeEnabled?: boolean;
   analysisSource?: AnalysisSource | null;
   modes: RoomMode[];
 }
@@ -683,6 +685,10 @@ export interface CompanionConfig {
   host?: string;
   port?: number;
   variable?: string;
+  /** ID of the Companion emulator surface for this room. Blank means main. */
+  emulator?: string;
+  /** Keep Companion available while hiding its optional Room Mode controls. */
+  roomMode?: boolean;
   modes: ModeConfig[];
 }
 
@@ -746,6 +752,10 @@ export interface RoomConnectivityStatus {
 
 export const getRoomConnectivityStatus = (roomId: string) =>
   getJson<RoomConnectivityStatus>(`/api/config/rooms/${roomId}/connectivity/status`);
+
+export interface CompanionEmulator { id: string; name: string }
+export const getCompanionEmulators = (roomId: string) =>
+  getJson<{ emulators: CompanionEmulator[] }>(`/api/config/rooms/${roomId}/connectivity/companion/emulators`);
 
 export async function savePcServiceTypes(
   roomId: string,

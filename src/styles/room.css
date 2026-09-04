@@ -272,6 +272,13 @@
   padding-top: 16px;
 }
 
+/* Live controls are a focused console surface: keep the room-card language,
+   but give Companion a subtle branded edge so it reads as an integration,
+   rather than another generic expandable panel. */
+.acc--companion { border-color: color-mix(in srgb, var(--accent) 36%, var(--border)); }
+.acc--companion .acc__head { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 42%); }
+.acc--companion .acc__head:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 16%, transparent), transparent 52%); }
+
 /* Full-width console layout wants a grid, not the home sidebar's tall list. */
 .roomtiles {
   display: grid;
