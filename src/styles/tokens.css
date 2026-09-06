@@ -9,20 +9,20 @@
   --bg-tile-hover: #1a2530;
   --border: #27323d;
   --border-subtle: #1b242d;
-  --border-strong: #3a4856;
+  --border-strong: #465564;
 
   /* Text */
   --text: #edf2f7;
-  --text-dim: #95a2af;
-  --text-faint: #65717d;
+  --text-dim: #9aa8b6;
+  --text-faint: #7e8c9a;
   --text-on-accent: #07111c;
 
   /* Accents */
-  --accent: #52a8ff;
-  --accent-hover: #78bbff;
-  --accent-text: #9fd0ff;
-  --accent-soft: rgba(82, 168, 255, 0.1);
-  --accent-border: rgba(82, 168, 255, 0.34);
+  --accent: #6aabeb;
+  --accent-hover: #8bc0f2;
+  --accent-text: #a8cff4;
+  --accent-soft: rgba(106, 171, 235, 0.09);
+  --accent-border: rgba(106, 171, 235, 0.3);
   --ok: #43d17d;
   --ok-soft: rgba(52, 199, 89, 0.12);
   --ok-border: rgba(52, 199, 89, 0.35);
