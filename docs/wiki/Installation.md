@@ -35,8 +35,10 @@ only quitting the app from the menu bar does.
 
 **Install:**
 
-1. Download the installer for your platform from the project's
-   [GitHub Releases](https://github.com/prodmesh/prodmesh/releases) page.
+1. Download the installer for your platform from the
+   [latest release](https://github.com/prodmesh/prodmesh/releases/latest):
+   `ProdMesh-mac-arm64.dmg` for Apple silicon, `ProdMesh-mac-x64.dmg` for an
+   Intel Mac, `ProdMesh-windows-x64.exe` for Windows.
 2. **macOS:** open the `.dmg` and drag ProdMesh to Applications. The build is
    signed and notarized, so it opens with no security warning.
 3. **Windows:** run the `.exe` installer. The build is not code-signed, so

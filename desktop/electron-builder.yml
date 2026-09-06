@@ -51,13 +51,19 @@ mac:
       to ProPresenter, Companion and your audio analyser over the local network.
 
 dmg:
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  # Version-free on purpose: a stable filename is what makes
+  # /releases/latest/download/<name> a permanent link, so README and docs can
+  # point straight at a download instead of at a page listing eight files a
+  # volunteer has to choose between. Nothing consumes these names
+  # programmatically — there is no auto-updater — and the version is still in
+  # the release title, the app bundle and Admin → System.
+  artifactName: ${productName}-mac-${arch}.${ext}
 
 win:
   target:
     - target: nsis
       arch: [x64]
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: ${productName}-windows-${arch}.${ext}
 
 nsis:
   oneClick: false
