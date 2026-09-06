@@ -186,6 +186,24 @@ playing.
   slide action. Keep the last mapped item as a baseline.
 - **Zero-slide "shell" presentations** (a placeholder like "Message") cannot be
   activated at all.
+- **The API can enter a state where `/v1/playlist/active` returns an empty but
+  well-formed body** — `{ presentation: { playlist: null, playlist_item: null } }`
+  — while a presentation is genuinely on screen and everything else answers
+  correctly. Seen live mid-service on 2026-09-06: `/v1/presentation/slide_index`
+  reported the right presentation uuid and cue, `/v1/playlist/focused` returned
+  the full playlist, health was green.
+
+  **Restarting ProPresenter cleared it.** Try that first — it is not a version
+  regression and no amount of reconnecting from our side fixes it, because the
+  connection was never the problem. It is indistinguishable from the PP 21
+  behaviour below without knowing a restart resolves it, so it will look like a
+  version issue and be chased as one.
+
+  Both readers survive it now: `activeFrom` resolves the live item by its
+  presentation uuid when `active` reads empty. Before that, the show manager
+  recovered and the production console did not, so the same machine at the same
+  moment followed the order of service while every console widget showed
+  nothing.
 
 Trigger endpoints: `GET /v1/playlist/focused/{index}/trigger`,
 `GET /v1/trigger/next`, `GET /v1/presentation/active/{i}/trigger`.

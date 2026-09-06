@@ -211,3 +211,39 @@ test('an unreachable ProPresenter is an error, not an empty console', () => {
     /unreachable/i,
   );
 });
+
+test('PP 21: the console resolves the live item when playlist/active is empty', async (t) => {
+  // Reproduces a real service, 2026-09-06: /v1/playlist/active answered with
+  // nothing while Pre-Service Slides was genuinely on screen, so the console
+  // showed no active item — even though slide_index knew the presentation and
+  // the focused playlist listed it. readActive already recovered from this;
+  // readConsoleState had been written without the same rescue.
+  const PRES = 'E7B0566B-7F6B-4BCE-B6EE-1358294E5E50';
+  const realFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = realFetch; });
+
+  const body = (value) => ({ ok: true, status: 200, json: async () => value, headers: new Map() });
+  globalThis.fetch = async (url) => {
+    const path = String(url).replace(/^http:\/\/[^/]+/, '');
+    // PP 21's regression: present, well-formed, and entirely empty.
+    if (path === '/v1/playlist/active') return body({ presentation: { playlist: null, playlist_item: null } });
+    if (path === '/v1/presentation/slide_index') {
+      return body({ presentation_index: { index: 5, presentation_id: { uuid: PRES, name: 'Pre-Service Slides' } } });
+    }
+    if (path === '/v1/playlist/focused') {
+      return body({
+        playlist: { uuid: 'PL1', name: 'Summer in the Psalms — September 6, 2026' },
+        playlist_item: { id: { uuid: 'i0', name: 'Pre-Service Slides', index: 0 }, presentation_info: { presentation_uuid: PRES } },
+        items: [{ id: { uuid: 'i0', name: 'Pre-Service Slides', index: 0 }, type: 'presentation', presentation_info: { presentation_uuid: PRES } }],
+      });
+    }
+    return body({});
+  };
+
+  const state = await readConsoleState({ host: '192.0.2.15', port: 1025 });
+  // The whole point: an index, not null, from the presentation uuid alone.
+  assert.equal(state.runtime.activePlaylistIndex, 0);
+  assert.equal(state.runtime.activePresentationUuid, PRES);
+  // And the playlist it was found in is named rather than reported absent.
+  assert.equal(state.activePlaylist?.name, 'Summer in the Psalms — September 6, 2026');
+});

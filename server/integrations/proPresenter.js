@@ -209,11 +209,29 @@ async function resolveByPresentation(pp, slide, signal) {
  * presentation's uuid; pass a pre-fetched `slide` (from readSlide) to skip
  * the extra slide_index request.
  */
-export async function readActive(pp, signal, slide) {
-  const parsed = parseActive(await ppGet(pp, '/v1/playlist/active', signal));
+/**
+ * `parseActive` plus the PP 21 rescue, from an ALREADY-FETCHED active body.
+ *
+ * Every reader of "what is live" must come through here. When the console got
+ * its own reader it called `parseActive` alone, and on PP 21 — where
+ * /v1/playlist/active answers all-null while a presentation is genuinely up —
+ * that silently produced no active item at all, in an install where
+ * `readActive` right beside it was resolving the same thing correctly. The
+ * fallback existing is not enough if a second path can be written without it,
+ * so the fallback and the parse are one function now rather than a convention.
+ *
+ * Observed live 2026-09-06: playlist/active empty, slide_index reporting the
+ * presentation uuid, focused playlist fully populated.
+ */
+async function activeFrom(pp, activeRaw, slide, signal) {
+  const parsed = parseActive(activeRaw);
   if (parsed.index != null) return parsed;
   const s = slide === undefined ? await readSlide(pp, signal).catch(() => null) : slide;
   return (await resolveByPresentation(pp, s, signal).catch(() => null)) ?? parsed;
+}
+
+export async function readActive(pp, signal, slide) {
+  return activeFrom(pp, await ppGet(pp, '/v1/playlist/active', signal), slide, signal);
 }
 
 /**
@@ -660,7 +678,10 @@ export async function readConsoleState(pp, signal) {
   const activePlaylist = normalizePlaylist(activeRaw ?? {});
   const focusedUsable = Boolean(focusedPlaylist.uuid || focusedPlaylist.items.length);
   const playlist = focusedUsable ? focusedPlaylist : activePlaylist;
-  const active = parseActive(activeRaw);
+  // Same rescue readActive uses — see activeFrom. Without it the console
+  // resolves no active item at all on PP 21, while the show manager beside it
+  // maps the identical presentation correctly.
+  const active = await activeFrom(pp, activeRaw, slide, signal);
   // Fetch detail lazily and independently: a malformed/missing presentation
   // must never erase the rest of the playlist.
   const items = await Promise.all(playlist.items.map(async (item) => {
@@ -677,7 +698,12 @@ export async function readConsoleState(pp, signal) {
   }));
   return {
     focusedPlaylist: { ...playlist, items, source: focusedUsable ? 'focused' : 'active-fallback' },
-    activePlaylist: activeRef ? { uuid: activeRef.uuid ?? null, name: activeRef.name ?? null } : null,
+    // On PP 21 activeRef is null even mid-service, but the rescue above knows
+    // the playlist the live item was found in — so report that rather than
+    // "no active playlist" while one is plainly on screen.
+    activePlaylist: activeRef
+      ? { uuid: activeRef.uuid ?? null, name: activeRef.name ?? null }
+      : active.playlistName ? { uuid: null, name: active.playlistName } : null,
     runtime: runtimeFrom(slide, active, timers, video),
   };
 }
