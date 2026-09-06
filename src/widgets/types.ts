@@ -234,6 +234,12 @@ export const MAX_WIDGET_SIZE: WidgetSize = { w: 6, h: 5 };
 // everything and saved layouts in the wild already contain such placements.
 // Someone dragging a widget down to one cell can see exactly what they get and
 // has decided they want it there.
+//
+// It therefore ignores `minSize`, which the placement floor below respects —
+// a known asymmetry, left deliberately rather than missed. Tightening it in
+// the editor alone is easy; tightening the SERVER would fail validation for
+// every stored layout already holding a sub-minimum widget, and there are
+// churches running those. Revisit with the dashboard revamp, together.
 export const widgetMin = (_def: WidgetDef): WidgetSize => ({ w: 1, h: 1 });
 
 /**
