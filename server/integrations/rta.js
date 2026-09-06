@@ -7,6 +7,7 @@
 //
 //   Stream  ws://<host>:<port>/api/stream
 //    ← { type: 'levels', time_ms, weighting, fast_db, slow_db, leq_db,
+//        spl: { A: { fast_db, slow_db }, B: { ... }, C: { ... }, Z: { ... } },
 //        bands_db: [...], metrics: { laf, las, leq, leqS, leqL, ... }, alarm }
 //    Pushed at the app's configured stream rate (1–20 Hz); the current
 //    snapshot arrives immediately on connect. Levels are null until the
@@ -44,7 +45,10 @@ function sleep(ms, signal) {
 
 /**
  * Emit ≤1 sample/interval until the signal aborts:
- *   onSample({ ts, spl, ca?, caBand? })
+ *   onSample({ ts, spl, readings?, ca?, caBand? })
+ * readings contains each RTA-provided A/B/C/Z × Fast/Slow value. It is a
+ * single shared stream, so dashboard widgets choose independently without
+ * sending commands that could change another widget's reading.
  * ca = the app's C-A ratio (C-weighted minus A-weighted energy, dB) — the
  * bass-pressure indicator; caBand = its target range when one is configured
  * in the app ({ lo, hi }). Both ride along only when the stream carries them.
@@ -108,6 +112,43 @@ function streamOnce(cfg, onSample, signal, intervalMs, state) {
 // Build a sample from a levels frame. Levels are null until the analyzer's
 // input has audio — those frames keep the stream alive but yield no sample
 // (the meter simply stays dark, like Smaart before logging starts).
+const WEIGHTINGS = ['A', 'B', 'C', 'Z'];
+const RESPONSES = ['Fast', 'Slow'];
+
+function round(value) {
+  return Math.round(value * 10) / 10;
+}
+
+function readingsFrom(frame) {
+  const readings = {};
+  for (const weighting of WEIGHTINGS) {
+    const source = frame.spl?.[weighting] ?? frame.spl?.[weighting.toLowerCase()];
+    for (const response of RESPONSES) {
+      const key = response === 'Fast' ? 'fast' : 'slow';
+      // Current RTA releases group each response beneath its weighting:
+      //   spl: { A: { fast_db, slow_db }, ... }
+      // An earlier concurrent-readings build grouped the inverse way:
+      //   spl: { fast_db: { a, b, c, z }, slow_db: { a, b, c, z } }
+      // Accept both while deployments upgrade independently.
+      const value = source?.[`${key}_db`] ?? source?.[key]
+        ?? frame.spl?.[`${key}_db`]?.[weighting]
+        ?? frame.spl?.[`${key}_db`]?.[weighting.toLowerCase()];
+      if (typeof value === 'number' && Number.isFinite(value)) readings[`SPL ${weighting} ${response}`] = round(value);
+    }
+  }
+
+  // Older RTA releases expose only the measurement selected in their own UI.
+  // Keep that one available until the analyzer is upgraded, without pretending
+  // it supplies the other seven independent readings.
+  if (!Object.keys(readings).length && WEIGHTINGS.includes(frame.weighting)) {
+    for (const response of RESPONSES) {
+      const value = frame[response === 'Fast' ? 'fast_db' : 'slow_db'];
+      if (typeof value === 'number' && Number.isFinite(value)) readings[`SPL ${frame.weighting} ${response}`] = round(value);
+    }
+  }
+  return readings;
+}
+
 function sampleFrom(data, cfg, state) {
   let frame;
   try {
@@ -121,12 +162,14 @@ function sampleFrom(data, cfg, state) {
     console.log(`[rta] ${cfg.host}: ProdMesh Remote RTA (${frame.weighting ?? '?'}-weighted)`);
     state.announced = true;
   }
-  const spl = cfg.metric ? frame.metrics?.[cfg.metric] : frame.slow_db;
+  const readings = readingsFrom(frame);
+  const spl = cfg.metric ? frame.metrics?.[cfg.metric] : readings['SPL A Slow'] ?? frame.slow_db;
   if (typeof spl !== 'number') return null;
-  const sample = { ts: Date.now(), spl: Math.round(spl * 10) / 10 };
+  const sample = { ts: Date.now(), spl: round(spl) };
+  if (Object.keys(readings).length) sample.readings = readings;
   const ca = frame.metrics?.ca;
   if (typeof ca === 'number') {
-    sample.ca = Math.round(ca * 10) / 10;
+    sample.ca = round(ca);
     const band = frame.targets?.ca;
     if (typeof band?.lo_db === 'number' && typeof band?.hi_db === 'number') {
       sample.caBand = { lo: band.lo_db, hi: band.hi_db };
