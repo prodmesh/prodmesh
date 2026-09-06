@@ -36,7 +36,7 @@ only quitting the app from the menu bar does.
 **Install:**
 
 1. Download the installer for your platform from the project's
-   [GitHub Releases](https://github.com/jbeale/prodmesh/releases) page.
+   [GitHub Releases](https://github.com/prodmesh/prodmesh/releases) page.
 2. **macOS:** open the `.dmg` and drag ProdMesh to Applications. The build is
    signed and notarized, so it opens with no security warning.
 3. **Windows:** run the `.exe` installer. The build is not code-signed, so
@@ -72,7 +72,7 @@ The right choice for a church with an existing server, NAS, or homelab box —
 somewhere already running other always-on services.
 
 ```bash
-curl -O https://raw.githubusercontent.com/jbeale/prodmesh/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/prodmesh/prodmesh/main/docker-compose.yml
 docker compose up -d
 ```
 
