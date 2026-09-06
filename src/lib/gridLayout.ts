@@ -158,6 +158,58 @@ export function findFirstFit(
 }
 
 /**
+ * Every size between `min` and `preferred`, biggest first.
+ *
+ * Shared so the two ways of adding a widget agree on what "shrink a bit" means.
+ * Between equal areas the shape closest to what the widget asked for wins, so a
+ * 2x3 does not silently arrive as a 3x2.
+ */
+export function sizeCandidates(
+  preferred: { w: number; h: number },
+  min: { w: number; h: number },
+): { w: number; h: number }[] {
+  const out: { w: number; h: number }[] = [];
+  for (let w = Math.min(min.w, preferred.w); w <= preferred.w; w += 1) {
+    for (let h = Math.min(min.h, preferred.h); h <= preferred.h; h += 1) out.push({ w, h });
+  }
+  return out.sort((a, b) => (b.w * b.h) - (a.w * a.h)
+    || (Math.abs(a.w - preferred.w) + Math.abs(a.h - preferred.h))
+     - (Math.abs(b.w - preferred.w) + Math.abs(b.h - preferred.h)));
+}
+
+/**
+ * The largest box between `preferred` and `min` that fits, and where it goes.
+ *
+ * `findFirstFit` asks one question — "does this exact rectangle exist?" — and a
+ * no meant the widget could not be added at all. On a 3x3 display that is
+ * brutal: a single 2x2 widget leaves five free cells but no 2x2 hole, so every
+ * other 2x2 widget reads as "No room left" against a grid that is half empty.
+ * The operator's only recourse was to delete something, add the new widget,
+ * shrink it, and put the deleted one back.
+ *
+ * So try the authored size first and step down toward the widget's declared
+ * minimum, largest area first, and place the biggest thing that actually fits.
+ * With room, a widget still opens at the size its author chose; without room it
+ * arrives small rather than not at all. Only when even the minimum has nowhere
+ * to go is the answer still no — and that answer is now true.
+ *
+ * The floor is the widget's own claim about where it stays legible, so a
+ * shrunk-to-fit placement is never one its author did not sign off on.
+ */
+export function findBestFit(
+  grid: Grid,
+  placements: Placement[],
+  preferred: { w: number; h: number },
+  min: { w: number; h: number } = preferred,
+): { x: number; y: number; w: number; h: number } | null {
+  for (const size of sizeCandidates(preferred, min)) {
+    const at = findFirstFit(grid, placements, size);
+    if (at) return { ...at, ...size };
+  }
+  return null;
+}
+
+/**
  * Sort by (y, x) and renumber `position`.
  *
  * Not cosmetic: it makes the stored order the READING order, which is what

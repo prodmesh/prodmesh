@@ -116,10 +116,39 @@ describe('ViewEditor', () => {
     await openPaletteGroup(user, 'ProPresenter');
     const add = screen.getByRole('button', { name: 'Add Countdown' });
     expect(add).toBeDisabled();
-    expect(add).toHaveAttribute('title', 'No room left');
+    // The refusal now names the size that would be needed. It is only reachable
+    // once even the widget's own minimum has nowhere to go, so unlike the old
+    // "your authored size does not fit" it is a true statement.
+    expect(add).toHaveAttribute('title', 'No room left — needs 2×1');
     // Said on the entry itself, not only in a tooltip nobody hovers.
     const entry = screen.getByText('Countdown').closest('li')!;
-    expect(within(entry).getByText('No room left')).toBeInTheDocument();
+    expect(within(entry).getByText(/No room left/)).toBeInTheDocument();
+  });
+
+  it('shrinks a widget to fit rather than refusing a half-empty grid', async () => {
+    // A 3x3 display holds exactly one 2x2, so a single 2x2 widget used to make
+    // the remaining five cells unreachable to everything with a 2x2 footprint.
+    // The operator's workaround was to delete something, add, shrink, re-add.
+    // Two columns of a 3-wide display taken for its full height leaves a single
+    // free column. Companion Variables asks for 2x2 and declares it stays
+    // readable at 1x1, so it should arrive shrunk rather than not at all.
+    const user = userEvent.setup();
+    render(<Harness kind="display" initial={[
+      { id: 'a', type: 'loudness', x: 0, y: 0, w: 2, h: 3, config: {} },
+    ]} />);
+
+    await openPaletteGroup(user, 'Bitfocus Companion');
+    const add = screen.getByRole('button', { name: 'Add Companion variables' });
+    expect(add).toBeEnabled();
+    await user.click(add);
+
+    // One column wide because that is all there is, two rows tall because the
+    // search takes the largest that fits rather than the smallest that does.
+    expect(at('companion-variables').style.gridColumn).toBe('3 / span 1');
+    expect(at('companion-variables').style.gridRow).toBe('1 / span 2');
+    // The announcement names the size when it is not the authored one, so a
+    // small arrival reads as deliberate rather than broken.
+    expect(status()).toBe('Companion variables added at 1×2 at column 3, row 1.');
   });
 
   it('the keyboard moves a widget, announces it, and refuses a collision', async () => {

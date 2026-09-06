@@ -3,9 +3,9 @@ import { GripVertical, X } from 'lucide-react';
 import { ViewCanvas } from './ViewCanvas';
 import { WidgetPalette, paletteFor } from './WidgetPalette';
 import { useGridDrag, type Cell } from './useGridDrag';
-import { findFirstFit, isFree, occupancy, rowCount, type Grid } from '../lib/gridLayout';
+import { findBestFit, isFree, occupancy, rowCount, type Grid } from '../lib/gridLayout';
 import { widgetRegistry, isWidgetType } from '../widgets/registry';
-import { widgetMax, widgetMin, widgetResizable, type CompanionVariableRow, type WidgetSize } from '../widgets/types';
+import { widgetMax, widgetMin, widgetPlacementMin, widgetResizable, type CompanionVariableRow, type WidgetSize } from '../widgets/types';
 import { IntegrationBeta, IntegrationBrand } from '../components/IntegrationBrand';
 import { HelpTip } from '../components/HelpTip';
 import { getEnabledIntegrations, getRoom, getRoomConnectivity, type View, type ViewPlacement } from '../api';
@@ -65,12 +65,14 @@ export function ViewEditor({
     grid.maxRows ?? Math.max(rowCount(grid, placements) + 1, grid.defaultRows ?? 1);
   const palette = useMemo(() => paletteFor(view.kind, grid, placements, analysisSource, captionSource, enabledIntegrations), [view.kind, grid, placements, analysisSource, captionSource, enabledIntegrations]);
 
-  const place = (type: string, at: Cell) => {
+  // `size` overrides the widget's authored footprint when placement had to
+  // shrink it to fit; without one a widget arrives at the size it asked for.
+  const place = (type: string, at: Cell, size?: WidgetSize) => {
     const def = isWidgetType(type) ? widgetRegistry[type] : null;
     if (!def) return;
     onChange([
       ...placements,
-      { id: `new-${type}-${placements.length}`, type, ...at, ...def.size, config: {} },
+      { id: `new-${type}-${placements.length}`, type, ...at, ...(size ?? def.size), config: {} },
     ]);
   };
 
@@ -105,12 +107,24 @@ export function ViewEditor({
     onResize: resizeTo,
   });
 
+  // The drag needs the same floor the button's placement search uses, so a
+  // widget dropped into a tight corner shrinks exactly as far as it claims to.
+  const dragFromPalette = (type: string, size: WidgetSize) => {
+    const def = isWidgetType(type) ? widgetRegistry[type] : null;
+    return addHandlers(type, size, def ? widgetPlacementMin(def) : size);
+  };
+
   const addFromPalette = (type: string) => {
     const def = isWidgetType(type) ? widgetRegistry[type] : null;
-    const at = def && findFirstFit(grid, placements, def.size);
+    // Shrink toward the widget's declared minimum rather than refusing outright
+    // when its authored size has nowhere to go — see findBestFit.
+    const at = def && findBestFit(grid, placements, def.size, widgetPlacementMin(def));
     if (!at || !def) return;
-    place(type, at);
-    setAnnounce(`${def.title} added at column ${at.x + 1}, row ${at.y + 1}.`);
+    place(type, at, { w: at.w, h: at.h });
+    // Say the size too when it is not the one the widget asked for, so a
+    // smaller-than-usual arrival reads as deliberate rather than broken.
+    const sized = at.w !== def.size.w || at.h !== def.size.h ? ` at ${at.w}×${at.h}` : '';
+    setAnnounce(`${def.title} added${sized} at column ${at.x + 1}, row ${at.y + 1}.`);
   };
 
   const titleOf = (type: string) =>
@@ -234,7 +248,7 @@ export function ViewEditor({
 
   return (
     <div className="vieweditor">
-      <WidgetPalette entries={palette} onAdd={addFromPalette} dragHandlers={addHandlers} />
+      <WidgetPalette entries={palette} onAdd={addFromPalette} dragHandlers={dragFromPalette} />
 
       <div className="vieweditor__canvas">
         {view.kind === 'display' ? (
