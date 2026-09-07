@@ -169,6 +169,9 @@ function timerSleep(ms, signal) {
 //  Unlike the (display-only) timer watcher, SPL feeds the Show Report — so it
 //  runs while the room has subscribers OR an active show. Samples persist to
 //  SQLite only while a show is live; the live meter is broadcast either way.
+//  Fast RTA frames are aggregated into one energy-equivalent row per second
+//  before persistence, keeping the live spectrum smooth without multiplying
+//  report data.
 
 function splNeeded(roomId) {
   return hub.subscriberCount(splTopic(roomId)) > 0 || hub.subscriberCount(rtaTopic(roomId)) > 0 || shows.has(roomId);
@@ -453,21 +456,32 @@ function onSpl(roomId, sample) {
   let caAvg = null;
   let caMax = null;
   if (show && show.splStats) {
-    splStore.record(roomId, instanceId(show), sample.ts, sample.spl, sample.ca ?? null);
     const st = show.splStats;
-    st.n += 1;
-    st.sumEnergy += 10 ** (sample.spl / 10);
-    st.peak = st.peak == null ? sample.spl : Math.max(st.peak, sample.spl);
-    avg = splStore.round1(10 * Math.log10(st.sumEnergy / st.n));
-    peak = splStore.round1(st.peak);
-    if (sample.ca != null) {
-      st.caN = (st.caN ?? 0) + 1;
-      st.caSum = (st.caSum ?? 0) + sample.ca;
-      st.caMax = st.caMax == null ? sample.ca : Math.max(st.caMax, sample.ca);
+    if (st.bucketAt == null || sample.ts >= st.bucketAt + 1000) {
+      flushSplBucket(roomId, show);
+      st.bucketAt = sample.ts;
+      st.bucketEnergy = 0;
+      st.bucketN = 0;
+      st.bucketCaSum = 0;
+      st.bucketCaN = 0;
+      st.bucketPeak = null;
+      st.bucketCaMax = null;
     }
-    if (st.caN) {
-      caAvg = splStore.round1(st.caSum / st.caN);
-      caMax = splStore.round1(st.caMax);
+    st.bucketEnergy += 10 ** (sample.spl / 10);
+    st.bucketN += 1;
+    st.bucketPeak = st.bucketPeak == null ? sample.spl : Math.max(st.bucketPeak, sample.spl);
+    if (sample.ca != null) {
+      st.bucketCaSum += sample.ca;
+      st.bucketCaN += 1;
+      st.bucketCaMax = st.bucketCaMax == null ? sample.ca : Math.max(st.bucketCaMax, sample.ca);
+    }
+    const totalN = st.n + st.bucketN;
+    avg = totalN ? splStore.round1(10 * Math.log10((st.sumEnergy + st.bucketEnergy) / totalN)) : null;
+    peak = totalN ? splStore.round1(Math.max(st.peak ?? -Infinity, st.bucketPeak)) : null;
+    const totalCaN = (st.caN ?? 0) + st.bucketCaN;
+    if (totalCaN) {
+      caAvg = splStore.round1(((st.caSum ?? 0) + st.bucketCaSum) / totalCaN);
+      caMax = splStore.round1(Math.max(st.caMax ?? -Infinity, st.bucketCaMax ?? -Infinity));
     }
   }
   spls.set(roomId, {
@@ -512,6 +526,25 @@ function onSpl(roomId, sample) {
     });
   }
   publishRta(roomId);
+}
+
+function flushSplBucket(roomId, show) {
+  const st = show.splStats;
+  if (!st || !st.bucketN) return;
+  const spl = 10 * Math.log10(st.bucketEnergy / st.bucketN);
+  const ca = st.bucketCaN ? st.bucketCaSum / st.bucketCaN : null;
+  splStore.record(roomId, instanceId(show), st.bucketAt, spl, ca);
+  st.n += 1;
+  st.sumEnergy += 10 ** (spl / 10);
+  st.peak = st.peak == null ? spl : Math.max(st.peak, spl);
+  if (ca != null) {
+    st.caN = (st.caN ?? 0) + 1;
+    st.caSum = (st.caSum ?? 0) + ca;
+    st.caMax = st.caMax == null ? ca : Math.max(st.caMax, ca);
+  }
+  st.bucketN = 0;
+  st.bucketPeak = null;
+  st.bucketCaMax = null;
 }
 
 async function watchTimers(roomId, pp, signal) {
@@ -671,6 +704,7 @@ export function endShow(roomId) {
     throw err;
   }
   show.abort.abort();
+  flushSplBucket(roomId, show);
   timeline.finalize(instanceId(show));
   // Freeze a loudness summary for each item before raw SPL retention can prune
   // the samples. This is intentionally independent of which live widget was
