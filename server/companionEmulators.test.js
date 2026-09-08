@@ -81,6 +81,23 @@ test('no host is refused before a socket is opened', () => {
   assert.throws(() => listCompanionEmulators({}), /Set a Companion host/);
 });
 
+test('a signal already aborted rejects instead of crashing the process', async () => {
+  // finish() terminates the socket, and terminating a CONNECTING socket emits
+  // 'error'. Reached synchronously, that fired before the error listener
+  // existed — an unhandled event, so the server died rather than the settings
+  // page showing a message.
+  const srv = fakeCompanion([STARTED], { holdOpen: true });
+  const ctl = new AbortController();
+  ctl.abort();
+  try {
+    await assert.rejects(() => listCompanionEmulators({ host: '127.0.0.1', port: srv.port() }, ctl.signal), /aborted/);
+    // Give the terminated socket a tick to emit anything it is going to emit.
+    await new Promise((r) => setTimeout(r, 50));
+  } finally {
+    await srv.close();
+  }
+});
+
 test('an aborted request settles', async () => {
   const srv = fakeCompanion([STARTED], { holdOpen: true }); // started, then silence
   const ctl = new AbortController();

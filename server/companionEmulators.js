@@ -22,11 +22,6 @@ export function listCompanionEmulators({ host, port = 8000 }, signal) {
       err ? reject(err) : resolve(value);
     };
 
-    if (signal) {
-      if (signal.aborted) return finish(new Error('aborted'));
-      signal.addEventListener('abort', () => finish(new Error('aborted')), { once: true });
-    }
-
     socket.once('open', () => {
       // tRPC v11 subscription protocol. Companion sends the current list as
       // the first data frame, then streams changes we intentionally do not
@@ -34,6 +29,16 @@ export function listCompanionEmulators({ host, port = 8000 }, signal) {
       socket.send(JSON.stringify({ id: 1, method: 'subscription', params: { path: 'surfaces.emulatorList', input: { json: null } } }));
     });
     socket.once('error', (err) => finish(new Error(`Could not connect to Companion: ${err.message}`)));
+
+    // Registered AFTER the error listener, deliberately. finish() terminates the
+    // socket, and terminating one that is still connecting emits 'error' — with
+    // no handler attached yet that is an unhandled event, which takes the
+    // process down rather than rejecting the promise. An already-aborted signal
+    // reaches finish() synchronously, so this ordering is the whole guard.
+    if (signal) {
+      if (signal.aborted) return finish(new Error('aborted'));
+      signal.addEventListener('abort', () => finish(new Error('aborted')), { once: true });
+    }
     socket.on('message', (raw) => {
       try {
         const message = JSON.parse(raw.toString());

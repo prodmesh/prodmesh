@@ -690,6 +690,9 @@ export interface CompanionConfig {
   emulator?: string;
   /** Keep Companion available while hiding its optional Room Mode controls. */
   roomMode?: boolean;
+  /** Embed Companion's own emulator on the ROOM page. Off unless asked for:
+   *  its presses skip the permission, lockout and audit a mode change gets. */
+  surface?: boolean;
   modes: ModeConfig[];
 }
 
