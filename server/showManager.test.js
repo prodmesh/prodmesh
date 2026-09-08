@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { once } from 'node:events';
 import { WebSocketServer } from 'ws';
 
 process.env.PRODMESH_DATA_DIR = mkdtempSync(join(tmpdir(), 'prodmesh-show-'));
@@ -65,8 +66,8 @@ test('getState is inactive with no show; ending twice errors', () => {
 // Streams at 20 Hz like the real analyzer. `transientDb` fires on a single
 // frame, which is the whole point of the peak test below: one snare hit inside
 // a second that is otherwise quiet.
-function fakeRta(slowDb, { transientDb = null, transientAfter = 4 } = {}) {
-  const wss = new WebSocketServer({ port: 0 });
+async function fakeRta(slowDb, { transientDb = null, transientAfter = 4 } = {}) {
+  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   wss.on('connection', (ws) => {
     const frame = (db) => JSON.stringify({ type: 'levels', slow_db: db, metrics: {} });
     let n = 0;
@@ -77,6 +78,8 @@ function fakeRta(slowDb, { transientDb = null, transientAfter = 4 } = {}) {
     }, 50);
     ws.on('close', () => clearInterval(iv));
   });
+  // Binding a host makes listen() asynchronous, so address() is null until now.
+  await once(wss, 'listening');
   return { port: () => wss.address().port, close: () => new Promise((r) => wss.close(r)) };
 }
 
@@ -132,8 +135,8 @@ test('auto-complete ignores PP’s stale last-slide flash when the end item is r
 });
 
 test('a connectivity save restarts the SPL watcher with the new config', async () => {
-  const srvA = fakeRta(85);
-  const srvB = fakeRta(90);
+  const srvA = await fakeRta(85);
+  const srvB = await fakeRta(90);
   // A subscriber on the room's SPL topic is what keeps the watcher wanted.
   const res = { write: () => {} };
   hub.subscribe(res, [sm.splTopic(ROOM)]);
@@ -199,7 +202,7 @@ test('a transient inside an aggregated second survives the bucket flush', async 
   // 88 dB plus one at 105 has a 1-second Leq of 93.4, and quoting THAT as the
   // peak understates a snare hit or a feedback squeal by about 12 dB.
   const plan = (await pco.getUpcomingPlans(ST, 5))[0];
-  const srv = fakeRta(88, { transientDb: 105 });
+  const srv = await fakeRta(88, { transientDb: 105 });
   conn.setAnalysis(ROOM, { source: 'rta', host: '127.0.0.1', port: srv.port() });
   try {
     await sm.startShow(ROOM, plan.id, 'tpeak');

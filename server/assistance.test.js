@@ -9,6 +9,7 @@ import http from 'node:http';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { listenOnLoopback } from './testServer.js';
 
 process.env.PRODMESH_DATA_DIR = mkdtempSync(join(tmpdir(), 'prodmesh-assist-'));
 
@@ -38,9 +39,8 @@ const fakeSlack = http.createServer((req, res) => {
     return res.end(JSON.stringify({ ok: true }));
   });
 });
-await new Promise((r) => fakeSlack.listen(0, r));
 process.env.PRODMESH_ASSIST_POLL_MS = '50'; // fast ack polling for tests
-process.env.PRODMESH_SLACK_API = `http://127.0.0.1:${fakeSlack.address().port}`;
+process.env.PRODMESH_SLACK_API = (await listenOnLoopback(fakeSlack)).base;
 process.env.PRODMESH_SLACK_ENV = 'test';
 process.env.PRODMESH_SECRET_SLACK_TEST_BOTOAUTHTOKEN = 'xoxb-fake';
 process.env.PRODMESH_SECRET_SLACK_TEST_CHANNEL = 'C-TEST';
@@ -52,9 +52,8 @@ const station = auth.registerStation({ name: 'FOH – Test Booth' });
 
 let base;
 let server;
-before(() => {
-  server = app.listen(0);
-  base = `http://127.0.0.1:${server.address().port}`;
+before(async () => {
+  ({ server, base } = await listenOnLoopback(app));
 });
 after(() => {
   server.close();

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { listenOnLoopback } from './testServer.js';
 
 process.env.PRODMESH_DATA_DIR = mkdtempSync(join(tmpdir(), 'prodmesh-setupapi-'));
 process.env.PRODMESH_SEED = 'empty';
@@ -21,8 +22,7 @@ let adminToken;
 let leadToken;
 
 before(async () => {
-  server = app.listen(0);
-  base = `http://127.0.0.1:${server.address().port}`;
+  ({ server, base } = await listenOnLoopback(app));
   // The wizard's own path: bootstrap the admin PIN, then sign in with it.
   await post('/api/settings/pins', { admin: 'admin1234' });
   adminToken = (await (await post('/api/auth/admin', { pin: 'admin1234' })).json()).token;
