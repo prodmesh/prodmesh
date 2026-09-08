@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDown, ArrowUp, CircleUser, MonitorCog, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, CircleUser, MonitorCog, Trash2, X } from 'lucide-react';
 import { Checkbox } from '../components/Checkbox';
 import { HelpTip } from '../components/HelpTip';
 import { useCan } from '../lib/identity';
@@ -407,9 +407,19 @@ function ResetPinDialog({ user, onClose, onDone }: {
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
+  // Escape closes it. A dialog that declares aria-modal and then offers only a
+  // close button leaves keyboard users hunting for the one way out.
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', escape);
+    return () => document.removeEventListener('keydown', escape);
+  }, [onClose]);
+
   return (
-    <div className="identity__scrim" role="presentation" onClick={onClose}>
-      <div className="identity" role="dialog" aria-modal="true" aria-labelledby="resetpin-title" onClick={(e) => e.stopPropagation()}>
+    <div className="identity" role="dialog" aria-modal="true" aria-labelledby="resetpin-title">
+      <div className="identity__card">
+        <button className="identity__close" onClick={onClose} aria-label="Close"><X size={17} /></button>
         <p className="eyebrow">@{user.username}</p>
         <h2 id="resetpin-title">Set a new PIN for {user.displayName}</h2>
         <p className="identity__hint">

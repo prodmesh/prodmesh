@@ -76,6 +76,17 @@ describe('Users & access', () => {
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Reset PIN' }).length).toBeGreaterThan(0));
   });
 
+  it('the PIN reset dialog can be left with Escape, not only the close button', async () => {
+    // It declares aria-modal, so the keyboard needs a way out. The first
+    // version had neither Escape nor a scrim click — only an X.
+    asIdentity(['*'], <UserManagementPanel />);
+    const row = (await screen.findByText('Photo User')).closest('.users__row') as HTMLElement;
+    await userEvent.click(within(row).getByRole('button', { name: 'Reset PIN' }));
+    expect(screen.getByText(/Set a new PIN for Photo User/)).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByText(/Set a new PIN for Photo User/)).toBeNull();
+  });
+
   it('revokes access without deleting the account, and says so on the row', async () => {
     api.setUserActive.mockResolvedValue({});
     asIdentity(['*'], <UserManagementPanel />);

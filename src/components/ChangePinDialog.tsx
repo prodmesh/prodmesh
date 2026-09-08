@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
 import { changeOwnPin } from '../api';
 import { PasswordInput } from './PasswordInput';
 
@@ -21,6 +22,14 @@ export function ChangePinDialog({ onClose, onChanged }: { onClose: () => void; o
   const [confirmPin, setConfirmPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
+  // Escape closes it. A dialog that declares aria-modal and then offers only a
+  // close button leaves keyboard users hunting for the one way out.
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', escape);
+    return () => document.removeEventListener('keydown', escape);
+  }, [onClose]);
 
   const mismatch = confirmPin.length > 0 && newPin !== confirmPin;
   const ready = currentPin.length >= 4 && newPin.length >= 4 && newPin === confirmPin;
@@ -45,8 +54,9 @@ export function ChangePinDialog({ onClose, onChanged }: { onClose: () => void; o
   };
 
   return (
-    <div className="identity__scrim" role="presentation" onClick={onClose}>
-      <div className="identity" role="dialog" aria-modal="true" aria-labelledby="changepin-title" onClick={(e) => e.stopPropagation()}>
+    <div className="identity" role="dialog" aria-modal="true" aria-labelledby="changepin-title">
+      <div className="identity__card">
+        <button className="identity__close" onClick={onClose} aria-label="Close"><X size={17} /></button>
         <p className="eyebrow">Your account</p>
         <h2 id="changepin-title">Change your PIN</h2>
         <p className="identity__hint">
