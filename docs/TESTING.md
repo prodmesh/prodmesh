@@ -10,6 +10,17 @@ integrations, authorization rules, persistence, and coordination logic. Use
 throwaway data directories and local fake servers; never depend on production
 credentials or live church equipment.
 
+**Every test server binds loopback, never the wildcard.** Start one with
+`listenOnLoopback()` from `server/testServer.js` (or, for a `ws` fixture,
+`{ host: '127.0.0.1', port: 0 }` plus an awaited `'listening'`) — never
+`app.listen(0)`. `listen(0)` binds `::` and draws from the IPv6 ephemeral
+space, which does not collide with the *specific* address `127.0.0.1:P`, so it
+happily returns a port some unrelated daemon on the developer's machine is
+already serving on IPv4 loopback — Dropbox, an Adobe helper, a stray `workerd`.
+The test's own `fetch('http://127.0.0.1:P')` then lands in that process. This
+was a real intermittent failure, and it is invisible in CI, where nothing else
+is listening. `server/testServer.js` has the demonstration.
+
 ## Frontend tests
 
 `npm run test:ui` runs Vitest + Testing Library in jsdom. These tests exercise

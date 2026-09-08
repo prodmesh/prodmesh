@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { listenOnLoopback } from './testServer.js';
 
 // Isolated store, then import the app (which won't listen on its own).
 process.env.PRODMESH_DATA_DIR = mkdtempSync(join(tmpdir(), 'prodmesh-cal-'));
@@ -11,9 +12,8 @@ const cal = await import('./integrations/pcCalendar.js');
 
 let base;
 let server;
-before(() => {
-  server = app.listen(0);
-  base = `http://127.0.0.1:${server.address().port}`;
+before(async () => {
+  ({ server, base } = await listenOnLoopback(app));
 });
 after(() => server.close());
 
