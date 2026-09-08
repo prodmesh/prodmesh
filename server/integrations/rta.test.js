@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
 import { WebSocketServer } from 'ws';
 import { watchSpl, isConfigured } from './rta.js';
 
 // A fake ProdMesh Remote RTA: pushes a `levels` snapshot on connect (like the
 // real app's greeting) and then at a fixed rate.
-function fakeRta({ intervalMs = 20, frame = {} } = {}) {
-  const wss = new WebSocketServer({ port: 0 });
+async function fakeRta({ intervalMs = 20, frame = {} } = {}) {
+  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   const seen = { path: null, connections: 0 };
   const levels = () =>
     JSON.stringify({
@@ -33,6 +34,8 @@ function fakeRta({ intervalMs = 20, frame = {} } = {}) {
     ws.on('close', () => clearInterval(iv));
   });
 
+  // Binding a host makes listen() asynchronous, so address() is null until now.
+  await once(wss, 'listening');
   return {
     seen,
     port: () => wss.address().port,
@@ -61,7 +64,7 @@ test('isConfigured needs a host', () => {
 });
 
 test('streams slow_db samples from /api/stream', async () => {
-  const srv = fakeRta();
+  const srv = await fakeRta();
   try {
     const samples = await collect({ host: '127.0.0.1', port: srv.port() }, 3);
     assert.equal(srv.seen.path, '/api/stream');
@@ -79,7 +82,7 @@ test('streams slow_db samples from /api/stream', async () => {
 });
 
 test('cfg.metric picks from the metrics map', async () => {
-  const srv = fakeRta();
+  const srv = await fakeRta();
   try {
     const [s] = await collect({ host: '127.0.0.1', port: srv.port(), metric: 'leqS' }, 1);
     assert.equal(s.spl, 84.9);
@@ -89,7 +92,7 @@ test('cfg.metric picks from the metrics map', async () => {
 });
 
 test('publishes all concurrent RTA readings without changing the primary SPL', async () => {
-  const srv = fakeRta({ frame: { spl: {
+  const srv = await fakeRta({ frame: { spl: {
     A: { fast_db: 90.12, slow_db: 89.34 },
     B: { fast_db: 91.23, slow_db: 90.45 },
     C: { fast_db: 94.56, slow_db: 93.67 },
@@ -110,7 +113,7 @@ test('publishes all concurrent RTA readings without changing the primary SPL', a
 });
 
 test('accepts the earlier response-grouped concurrent RTA payload', async () => {
-  const srv = fakeRta({ frame: { spl: {
+  const srv = await fakeRta({ frame: { spl: {
     fast_db: { a: 81.1, b: 82.2, c: 83.3, z: 84.4 },
     slow_db: { a: 85.5, b: 86.6, c: 87.7, z: 88.8 },
   } } });
@@ -129,7 +132,7 @@ test('accepts the earlier response-grouped concurrent RTA payload', async () => 
 });
 
 test('missing ca / targets just omit those fields', async () => {
-  const srv = fakeRta({ frame: { metrics: { las: 85.34 }, targets: {} } });
+  const srv = await fakeRta({ frame: { metrics: { las: 85.34 }, targets: {} } });
   try {
     const [s] = await collect({ host: '127.0.0.1', port: srv.port() }, 1);
     assert.equal(s.spl, 85.3);
@@ -141,7 +144,7 @@ test('missing ca / targets just omit those fields', async () => {
 });
 
 test('null levels (no input audio) yield no samples but keep the stream alive', async () => {
-  const srv = fakeRta({ frame: { slow_db: null, metrics: {} } });
+  const srv = await fakeRta({ frame: { slow_db: null, metrics: {} } });
   try {
     const samples = [];
     const ctl = new AbortController();
@@ -157,7 +160,7 @@ test('null levels (no input audio) yield no samples but keep the stream alive', 
 });
 
 test('throttles a fast stream down to the sampling interval', async () => {
-  const srv = fakeRta({ intervalMs: 5 }); // ~200 Hz push
+  const srv = await fakeRta({ intervalMs: 5 }); // ~200 Hz push
   try {
     const samples = [];
     const ctl = new AbortController();
@@ -176,7 +179,7 @@ test('program mode is carried through with the ceiling the analyzer reports', as
   // the app zeroes its calibration and leaves the bands negative. Consumers
   // have to switch on `mode` to label the units — and a cal of 0 is a real
   // ceiling, not a missing one, so it must survive as 0 rather than default.
-  const srv = fakeRta({ frame: { mode: 'program', cal_db: 0, bands_db: [-32.5] } });
+  const srv = await fakeRta({ frame: { mode: 'program', cal_db: 0, bands_db: [-32.5] } });
   try {
     const [s] = await collect({ host: '127.0.0.1', port: srv.port() }, 1);
     assert.equal(s.spectrumMeta.mode, 'program');
