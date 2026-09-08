@@ -21,7 +21,7 @@ export function Accordion({
   className,
   children,
 }: {
-  title: string;
+  title: ReactNode;
   summary?: ReactNode;
   defaultOpen?: boolean;
   className?: string;

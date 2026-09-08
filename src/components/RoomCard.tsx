@@ -27,6 +27,7 @@ function fmtNextTime(service: RoomService | null) {
 // One room on the campus Home: current mode, live-show badge, next event.
 // The whole card clicks into the room's status/operate page.
 export function RoomCard({ room, showRoomMode = true }: { room: RoomMeta; showRoomMode?: boolean }) {
+  showRoomMode &&= room.roomModeEnabled !== false;
   // Mode and show state are pushed: Home showing six rooms used to run six
   // intervals firing three requests each, per browser, and each mode read went
   // all the way to Companion uncached. Now one shared connection carries them,

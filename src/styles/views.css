@@ -224,6 +224,10 @@
   height: 100%;
 }
 
+/* Companion uses the same title strip and inset as every other widget. The
+   control surface itself still fills the available body below it. */
+.viewcell[data-widget="companion-emulator"] .viewcell__body { gap: 8px; }
+
 /* A compact Now & Next cell used to hide the end of an item title with an
    ellipsis. The canvas gives every widget its actual selected dimensions, so
    use available lines rather than discarding content. */

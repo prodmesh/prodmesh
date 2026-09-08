@@ -24,9 +24,9 @@ test('validateRooms rejects a key/id mismatch', () => {
   assert.throws(() => validateRooms(bad), /must match its key/);
 });
 
-test('validateRooms rejects empty modes', () => {
-  const bad = { r1: { ...goodRoom.r1, modes: [] } };
-  assert.throws(() => validateRooms(bad), /non-empty modes/);
+test('validateRooms accepts an empty mode list for an optional Room Mode setup', () => {
+  const room = { r1: { ...goodRoom.r1, roomMode: false, modes: [] } };
+  assert.doesNotThrow(() => validateRooms(room));
 });
 
 test('validateRooms rejects duplicate mode ids', () => {

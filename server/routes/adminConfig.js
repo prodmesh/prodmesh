@@ -17,6 +17,7 @@ import * as restream from '../integrations/restream.js';
 import * as resi from '../integrations/resi.js';
 import * as analysis from '../integrations/analysis.js';
 import { roomStatus } from '../connectivityStatus.js';
+import { listCompanionEmulators } from '../companionEmulators.js';
 import { requirePermission, permissionRequired, auditSuccess } from '../httpAuth.js';
 
 const router = express.Router();
@@ -365,6 +366,17 @@ router.get('/api/config/rooms/:roomId/connectivity/status', requirePermission('c
   const room = rooms[req.params.roomId];
   if (!room) return res.status(404).json({ error: 'unknown room' });
   res.json(await roomStatus(room));
+});
+
+router.get('/api/config/rooms/:roomId/connectivity/companion/emulators', requirePermission('config.manage'), async (req, res) => {
+  const room = rooms[req.params.roomId];
+  if (!room) return res.status(404).json({ error: 'unknown room' });
+  const cfg = connectivity.getCompanion(room.id) ?? connectivity.companionFromRoom(room);
+  try {
+    res.json({ emulators: await listCompanionEmulators(cfg) });
+  } catch (err) {
+    res.status(502).json({ error: String(err.message ?? err) });
+  }
 });
 
 // Tests the same data path the Loudness widgets consume. The draft is accepted

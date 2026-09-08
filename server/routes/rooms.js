@@ -31,6 +31,7 @@ router.get('/api/rooms/:id/state', async (req, res) => {
 router.post('/api/rooms/:id/mode', requirePermission('rooms.mode.change'), async (req, res) => {
   const room = rooms[req.params.id];
   if (!room) return res.status(404).json({ error: 'Unknown room' });
+  if (room.roomMode === false) return res.status(409).json({ error: 'Room Mode is disabled for this room' });
 
   const mode = room.modes.find((m) => m.id === req.body?.mode);
   if (!mode) return res.status(400).json({ error: 'Unknown mode' });
