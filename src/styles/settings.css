@@ -250,8 +250,6 @@
   left: 0;
   right: 0;
   max-height: 244px;
-  /* NOTE: overlaying like this only works while nothing above the picker
-     clips. Inside a dialog it does — see the rule after this block. */
   margin: 4px 0 0;
   padding: 4px;
   overflow: auto;
@@ -262,16 +260,15 @@
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
 }
 
-/* Inside a dialog the results sit in the flow instead of overlaying.
-   `.editdlg__body` is a scroll container, and an absolutely-positioned child
-   of a scroll container is clipped at its edge — the list came out cut in half
-   with no way to scroll to the rest of it. In flow it pushes what is below it
-   down and the body scrolls, so every match is reachable. The picker keeps its
-   overlay behaviour anywhere that does not clip. */
-.editdlg__body .personpicker__results {
-  position: static;
-  margin-top: 4px;
-  box-shadow: none;
+/* Portalled to <body> and positioned against the input, so no ancestor can
+   clip it. Above `.confirm` (z-index 100) because it has to float over the
+   dialog it was opened from. Its top/left/width/max-height are set inline from
+   the input's rect — see PersonPicker. */
+.personpicker__results--floating {
+  position: fixed;
+  right: auto;
+  z-index: 300;
+  margin: 0;
 }
 
 .personpicker__option,
@@ -1527,9 +1524,11 @@
   min-height: 0;
   overflow: auto;
   /* Focus rings and the colour swatch's shadow must not be clipped by the
-     scroll container. */
-  padding: 2px;
-  margin: -2px;
+     scroll container. A focused field draws `outline: 2px` at
+     `outline-offset: 2px`, so it reaches 4px beyond its own box — at 2px the
+     glow came out shaved down both sides of the dialog. */
+  padding: 5px;
+  margin: -5px;
 }
 
 .editdlg__body > .btn { align-self: flex-start; }
