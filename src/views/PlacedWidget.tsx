@@ -66,9 +66,9 @@ export function PlacedWidget({
   // chrome takes the header's place, so a headerless widget still has its grab
   // strip, its remove button and the click target that opens its settings —
   // which is what stops this option from being a way to lose a widget.
-  // RTA carries its own analyzer-style source header (including the product
-  // mark and live state). A generic canvas strip above it is redundant.
-  const bare = (Boolean(config.hideHeader) || placement.type === 'rta') && !chrome;
+  // A widget that draws its own header (the RTA's analyzer-style product mark
+  // and source line) gets no canvas strip above it — see WidgetDef.ownHeader.
+  const bare = (Boolean(config.hideHeader) || Boolean(def?.ownHeader)) && !chrome;
 
   return (
     <div

@@ -163,6 +163,18 @@ export interface WidgetDef {
    * the layout work that earns it, never on its own.
    */
   minSize?: WidgetSize;
+  /**
+   * The widget draws its own header, so the canvas must not add one.
+   *
+   * Set it where the header is part of the instrument rather than a caption —
+   * the RTA reproduces its analyzer's product mark and source line, and a
+   * generic strip above that is the same words twice. Both the live canvas and
+   * the editor's chrome read this, which is the point of it living here: they
+   * used to disagree, so the editor showed the name twice while the live view
+   * showed it once.
+   */
+  ownHeader?: boolean;
+
   /** Retained for compatibility with existing layouts. The shared layout
    * maximum below is now used so every widget has the same resize freedom. */
   maxSize?: WidgetSize;

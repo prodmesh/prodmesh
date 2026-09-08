@@ -207,8 +207,12 @@ export function ViewEditor({
           }}
         >
           <GripVertical size={14} aria-hidden />
-          {def && <IntegrationBrand integration={integrationOf(placement.type)} />}
-          <span className="viewcell__name">{title}</span>{def && <IntegrationBeta integration={integrationOf(placement.type)} />}
+          {/* A widget drawing its own header would otherwise be named twice,
+              a foot apart. Only the VISIBLE name goes — the grip and remove
+              buttons keep `title` in their accessible names, so a screen
+              reader still hears which widget it is holding. */}
+          {def && !def.ownHeader && <IntegrationBrand integration={integrationOf(placement.type)} />}
+          {!def?.ownHeader && <span className="viewcell__name">{title}</span>}{def && <IntegrationBeta integration={integrationOf(placement.type)} />}
         </button>
         <button
           type="button"

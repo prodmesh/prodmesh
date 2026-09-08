@@ -204,6 +204,22 @@ describe('ViewEditor', () => {
     expect(screen.getByRole('button', { name: 'Move YouTube Live Viewers, column 5, row 3, 2 by 1' })).toBeInTheDocument();
   });
 
+  it('does not name a self-headed widget twice, but still labels its buttons', () => {
+    // The RTA draws its analyzer's own product mark and source line, so the
+    // canvas suppresses its strip. The editor's chrome did not know that, and
+    // printed "ProdMesh RTA" a second time an inch above the widget's own.
+    render(<Harness initial={[{ id: 'a', type: 'rta', x: 0, y: 0, w: 3, h: 2, config: {} }]} />);
+    expect(document.querySelector('.viewcell__name')).toBeNull();
+    // The name is gone from the chrome, not from the accessibility tree.
+    expect(screen.getByRole('button', { name: /^Move ProdMesh RTA, column 1, row 1/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove ProdMesh RTA' })).toBeInTheDocument();
+  });
+
+  it('keeps the chrome name for a widget that has no header of its own', () => {
+    render(<Harness initial={[{ id: 'a', type: 'viewers', x: 0, y: 0, w: 2, h: 1, config: {} }]} />);
+    expect(document.querySelector('.viewcell__name')?.textContent).toBe('YouTube Live Viewers');
+  });
+
   describe('stretching', () => {
     const runOfShow = (h = 3): ViewPlacement =>
       ({ id: 'a', type: 'run-of-show', x: 0, y: 0, w: 2, h, config: {} });

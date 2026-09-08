@@ -64,6 +64,7 @@ export const widgetRegistry: Record<WidgetType, WidgetDef> = {
     integration: 'prodmesh-rta',
     component: RtaWidget,
     size: { w: 3, h: 2 },
+    ownHeader: true,
     unique: false,
     defaultSpan: 'two-thirds',
   },
