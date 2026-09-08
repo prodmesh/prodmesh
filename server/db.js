@@ -383,6 +383,20 @@ const MIGRATIONS = [
       addColumn(d, 'views', 'scale', 'REAL NOT NULL DEFAULT 1');
     },
   },
+  {
+    // A row used to BE one instantaneous reading, so `spl` was also the peak.
+    // Once fast analyzers (ProdMesh RTA at 20 Hz) began arriving, a row became
+    // one second of energy-averaged samples — and a snare hit or a feedback
+    // squeal averaged away, understating the reported peak by ~10 dB. `peak`
+    // carries the loudest sample in that second alongside its Leq.
+    //
+    // Readers use `peak ?? spl`, which is right for both eras: pre-aggregation
+    // rows have no peak, and their single instantaneous `spl` IS the peak.
+    name: 'spl-samples-peak',
+    up(d) {
+      addColumn(d, 'spl_samples', 'peak', 'REAL');
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

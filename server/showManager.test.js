@@ -13,6 +13,7 @@ const pco = await import('./integrations/planningCenter.js');
 const timeline = await import('./timeline.js');
 const conn = await import('./connectivity.js');
 const showCfg = await import('./showConfig.js');
+const splStore = await import('./splStore.js');
 const { fakeProPresenter } = await import('./integrations/fakeProPresenter.js');
 
 // north-youth has no proPresenter host → no live poller (test stays offline),
@@ -61,12 +62,19 @@ test('getState is inactive with no show; ending twice errors', () => {
 });
 
 // A fake ProdMesh Remote RTA that reports a fixed SPL (see rta.test.js).
-function fakeRta(slowDb) {
+// Streams at 20 Hz like the real analyzer. `transientDb` fires on a single
+// frame, which is the whole point of the peak test below: one snare hit inside
+// a second that is otherwise quiet.
+function fakeRta(slowDb, { transientDb = null, transientAfter = 4 } = {}) {
   const wss = new WebSocketServer({ port: 0 });
   wss.on('connection', (ws) => {
-    const frame = JSON.stringify({ type: 'levels', slow_db: slowDb, metrics: {} });
-    ws.send(frame);
-    const iv = setInterval(() => ws.send(frame), 50);
+    const frame = (db) => JSON.stringify({ type: 'levels', slow_db: db, metrics: {} });
+    let n = 0;
+    ws.send(frame(slowDb));
+    const iv = setInterval(() => {
+      n += 1;
+      ws.send(frame(transientDb != null && n === transientAfter ? transientDb : slowDb));
+    }, 50);
     ws.on('close', () => clearInterval(iv));
   });
   return { port: () => wss.address().port, close: () => new Promise((r) => wss.close(r)) };
@@ -181,5 +189,35 @@ test('a service marked "not streamed" records nothing and starts no watcher', as
   } finally {
     showCfg.clearConfig(ROOM2, 'plan-x');
     conn.setYouTube(ROOM2, null);
+  }
+});
+
+test('a transient inside an aggregated second survives the bucket flush', async () => {
+  // Fast analyzers (ProdMesh RTA at 20 Hz) are recorded as one energy-averaged
+  // row per second, so the report keeps ~5,400 rows for a service instead of
+  // ~108,000. The averaging must not swallow the loudest moment: 19 frames of
+  // 88 dB plus one at 105 has a 1-second Leq of 93.4, and quoting THAT as the
+  // peak understates a snare hit or a feedback squeal by about 12 dB.
+  const plan = (await pco.getUpcomingPlans(ST, 5))[0];
+  const srv = fakeRta(88, { transientDb: 105 });
+  conn.setAnalysis(ROOM, { source: 'rta', host: '127.0.0.1', port: srv.port() });
+  try {
+    await sm.startShow(ROOM, plan.id, 'tpeak');
+    await waitFor(() => sm.getState(ROOM).spl?.peak === 105, 'the live meter to catch the transient');
+
+    // Cross a bucket boundary. The peak is a hold: it must not fall back to the
+    // bucket average when the flush lands, or the widget appears to un-hold.
+    await new Promise((r) => setTimeout(r, 1200));
+    assert.equal(sm.getState(ROOM).spl.peak, 105, 'the live peak must survive the flush');
+
+    sm.endShow(ROOM);
+    const agg = splStore.aggregate(`${plan.id}__tpeak`);
+    assert.equal(agg.peak, 105, 'and reach the report');
+    assert.ok(agg.leq < 95, `while the Leq stays energy-averaged, got ${agg.leq}`);
+    assert.ok(agg.count < 20, `one row per second, not one per frame — got ${agg.count}`);
+  } finally {
+    if (sm.getState(ROOM).active) sm.endShow(ROOM);
+    conn.setAnalysis(ROOM, null); // leave the shared room as this test found it
+    await srv.close();
   }
 });

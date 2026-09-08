@@ -167,6 +167,35 @@ function sampleFrom(data, cfg, state) {
   if (typeof spl !== 'number') return null;
   const sample = { ts: Date.now(), spl: round(spl) };
   if (Object.keys(readings).length) sample.readings = readings;
+  const centers = Array.isArray(frame.centers_hz) ? frame.centers_hz : [];
+  const bands = Array.isArray(frame.bands_db) ? frame.bands_db : [];
+  const peaks = Array.isArray(frame.peaks_db) ? frame.peaks_db : [];
+  if (centers.length && centers.length === bands.length) {
+    const spectrum = centers.map((hz, index) => ({
+      hz,
+      db: bands[index],
+      ...(typeof peaks[index] === 'number' && Number.isFinite(peaks[index]) ? { peak: peaks[index] } : {}),
+    }))
+      .filter(({ hz, db }) => typeof hz === 'number' && hz > 0 && typeof db === 'number' && Number.isFinite(db));
+    if (spectrum.length) {
+      sample.spectrum = spectrum;
+      sample.spectrumMeta = {
+        fast: typeof frame.fast_db === 'number' ? frame.fast_db : null,
+        slow: typeof frame.slow_db === 'number' ? frame.slow_db : null,
+        leq: typeof frame.leq_db === 'number' ? frame.leq_db : null,
+        weighting: typeof frame.weighting === 'string' ? frame.weighting : null,
+        // dB SPL against the calibration offset ("acoustic") or LUFS/dBFS
+        // against digital full scale ("program", for broadcast loudness). The
+        // analyzer's own API header tells consumers to switch on this before
+        // interpreting anything else, and the units on screen depend on it.
+        mode: frame.mode === 'program' ? 'program' : 'acoustic',
+        // The SPL at 0 dBFS, so it doubles as the top of the plot. The app
+        // reports 0 in program mode and leaves the bands in dBFS, which lands
+        // the same window on the right scale without a second branch.
+        calibration: typeof frame.cal_db === 'number' ? frame.cal_db : null,
+      };
+    }
+  }
   const ca = frame.metrics?.ca;
   if (typeof ca === 'number') {
     sample.ca = round(ca);

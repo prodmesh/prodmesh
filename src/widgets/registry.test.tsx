@@ -94,7 +94,7 @@ describe('the registry contract', () => {
     // type alone no longer identifies the placement, and its CONFIG does.
     // Loudness — A-slow and C-slow meters side by side from one analysis
     // source. Companion variables — two racks of different variables.
-    const many = new Set(['loudness', 'companion-variables']);
+    const many = new Set(['loudness', 'companion-variables', 'rta']);
     for (const type of widgetTypes) {
       expect(widgetIsUnique(widgetRegistry[type]), `${type}`).toBe(!many.has(type));
     }
