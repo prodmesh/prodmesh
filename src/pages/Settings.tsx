@@ -3,6 +3,10 @@ import { Link } from 'react-router-dom';
 import { ArrowDown, ArrowUp, CircleUser, MonitorCog, Trash2, X } from 'lucide-react';
 import { Checkbox } from '../components/Checkbox';
 import { HelpTip } from '../components/HelpTip';
+import { EditDialog } from '../components/form/EditDialog';
+import { Field } from '../components/form/Field';
+import { FormRow } from '../components/form/FormRow';
+import { useDraft } from '../components/form/useDraft';
 import { useCan } from '../lib/identity';
 import { PersonPicker } from '../components/PersonPicker';
 import { PasswordInput } from '../components/PasswordInput';
@@ -48,6 +52,7 @@ import {
   type TemplateItem,
   type UserDirectory,
   type ManagedUser,
+  type PermissionGroup,
   type ManagedStation,
   logoSrc,
   uploadLogo,
@@ -183,6 +188,9 @@ function AdminPanels({ section }: { section: AdminSection }) {
 // ── Save/action feedback ─────────────────────────────────────────────────────
 //  Success is green, errors are red — a panel must never announce a failure in
 //  the success color, so panels carry the kind alongside the text.
+const toggle = (values: string[], value: string) =>
+  values.includes(value) ? values.filter((x) => x !== value) : [...values, value];
+
 /** The users screen refuses in ways that need explaining rather than echoing:
  *  each is a deliberate guard, and a bare "403" tells nobody what to do next. */
 function guardError(err: unknown, who: string): Feedback {
@@ -205,6 +213,7 @@ function guardError(err: unknown, who: string): Feedback {
 export function UserManagementPanel() {
   const [directory, setDirectory] = useState<UserDirectory | null>(null);
   const [resetting, setResetting] = useState<ManagedUser | null>(null);
+  const [editingGroup, setEditingGroup] = useState<PermissionGroup | null>(null);
   // Only a full administrator may reset somebody else's PIN — see the route.
   // Guidance, not enforcement: an identity that has not loaded yet answers yes
   // (see lib/identity), so this hides the button from someone known to lack
@@ -245,9 +254,6 @@ export function UserManagementPanel() {
     } catch (err) { setMsg(fail(err)); }
   };
 
-  const toggle = (values: string[], value: string) =>
-    values.includes(value) ? values.filter((x) => x !== value) : [...values, value];
-
   return (
     <section className="panel users">
       <div>
@@ -285,12 +291,18 @@ export function UserManagementPanel() {
       </div>
 
       {/* Groups were create-only, so a permission set was fixed the moment it
-          was made and the way to change one was to make another. Administrators
-          is not here: its every-permission is computed rather than stored. */}
+          was made and the way to change one was to make another. A summary row
+          that opens a dialog, following the room cards (#23): seventeen
+          checkboxes per group inline turned this list into a wall of them, and
+          the answer a reader wants from a row is "what does this group do",
+          not "which of seventeen boxes are ticked".
+
+          Administrators is not here — its every-permission is computed from
+          system_key rather than stored, so there is nothing to edit. */}
       <div className="users__list">
         <h3>Permission groups</h3>
         {directory.groups.filter((group) => group.permissions?.[0] !== '*').map((group) => (
-          <div className="users__row" key={group.id}>
+          <div className="users__row users__row--group" key={group.id}>
             <div className="users__identity">
               <span><strong>{group.name}</strong><small>
                 {group.permissions.length
@@ -298,23 +310,18 @@ export function UserManagementPanel() {
                   : 'No permissions — members get read-only access'}
               </small></span>
             </div>
-            <div className="users__checks users__checks--permissions">
-              {directory.permissions.map((permission) => (
-                <Checkbox
-                  key={permission.id}
-                  label={<><strong>{permission.label}</strong><small>{permission.id}</small></>}
-                  checked={group.permissions.includes(permission.id)}
-                  onChange={async () => {
-                    try {
-                      await updateGroup(group.id, { permissions: toggle(group.permissions, permission.id) });
-                      setMsg(ok(`Updated ${group.name}.`));
-                    } catch (err) {
-                      setMsg(guardError(err, group.name));
-                    }
-                    refresh();
-                  }}
-                />
-              ))}
+            {/* The labels, not the ids: this line is the answer to "what does
+                this group let someone do". */}
+            <p className="users__summary">
+              {group.permissions.length
+                ? directory.permissions
+                  .filter((permission) => group.permissions.includes(permission.id))
+                  .map((permission) => permission.label)
+                  .join(' · ')
+                : '—'}
+            </p>
+            <div className="users__actions">
+              <button className="btn btn--sm" onClick={() => setEditingGroup(group)}>Edit</button>
             </div>
           </div>
         ))}
@@ -387,6 +394,14 @@ export function UserManagementPanel() {
         ))}
       </div>
       <Msg msg={msg} />
+      {editingGroup && (
+        <GroupDialog
+          group={editingGroup}
+          permissions={directory.permissions}
+          onClose={() => setEditingGroup(null)}
+          onSaved={(name) => { setEditingGroup(null); setMsg(ok(`Updated ${name}.`)); refresh(); }}
+        />
+      )}
       {resetting && (
         <ResetPinDialog
           user={resetting}
@@ -395,6 +410,54 @@ export function UserManagementPanel() {
         />
       )}
     </section>
+  );
+}
+
+/** Edit one group's permissions behind a single Save.
+ *
+ *  Deliberately not save-per-checkbox like the user rows above. Those toggle
+ *  one membership; this is a permission SET, where the intermediate states on
+ *  the way to what somebody meant are real grants — each one written, audited,
+ *  and live for whoever is signed in at the time. One Save keeps the
+ *  half-finished thought out of the database.
+ */
+function GroupDialog({ group, permissions, onClose, onSaved }: {
+  group: PermissionGroup;
+  permissions: { id: string; label: string; description: string }[];
+  onClose: () => void;
+  onSaved: (name: string) => void;
+}) {
+  const f = useDraft({ name: group.name, permissions: group.permissions }, async (draft) => {
+    const stored = await updateGroup(group.id, { name: draft.name, permissions: draft.permissions });
+    onSaved(stored.name);
+    return { name: stored.name, permissions: stored.permissions };
+  });
+  const { draft } = f;
+
+  return (
+    <EditDialog
+      title={`Edit ${group.name}`}
+      help="A member's access is the union of every group they are in. Removing a permission here removes it from everyone in this group."
+      form={f}
+      onClose={onClose}
+      wide
+    >
+      <FormRow>
+        <Field label="Group name" width="grow">
+          <input className="field" value={draft.name} onChange={(e) => f.patch({ name: e.target.value })} />
+        </Field>
+      </FormRow>
+      <div className="users__checks users__checks--permissions">
+        {permissions.map((permission) => (
+          <Checkbox
+            key={permission.id}
+            label={<><strong>{permission.label}</strong><small>{permission.description}</small></>}
+            checked={draft.permissions.includes(permission.id)}
+            onChange={() => f.patch({ permissions: toggle(draft.permissions, permission.id) })}
+          />
+        ))}
+      </div>
+    </EditDialog>
   );
 }
 

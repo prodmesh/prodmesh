@@ -76,6 +76,43 @@ describe('Users & access', () => {
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Reset PIN' }).length).toBeGreaterThan(0));
   });
 
+  it('edits a group behind one Save, not a live write per checkbox', async () => {
+    // Each intermediate state on the way to what somebody meant would be a
+    // real grant — written, audited, and live for whoever is signed in.
+    api.getUserDirectory.mockResolvedValue({
+      users: [],
+      groups: [
+        { id: 'g1', name: 'Booth Operators', permissions: ['rooms.mode.change'] },
+        { id: 'admins', name: 'Administrators', systemKey: 'admin', permissions: ['*'] },
+      ],
+      permissions: [
+        { id: 'rooms.mode.change', label: 'Change room modes', description: 'Change the mode.' },
+        { id: 'shows.operate', label: 'Operate shows', description: 'Start and end shows.' },
+      ],
+    });
+    api.updateGroup.mockResolvedValue({ id: 'g1', name: 'Booth Operators', permissions: ['rooms.mode.change', 'shows.operate'] });
+    asIdentity(['*'], <UserManagementPanel />);
+
+    await screen.findAllByText('Booth Operators'); // also a checkbox in Create user
+    // Administrators is assignable to a user but has nothing to EDIT — its '*'
+    // is computed from system_key rather than stored, so it gets no row here.
+    const groupRows = document.querySelectorAll('.users__row--group');
+    expect(groupRows).toHaveLength(1);
+    expect(groupRows[0].textContent).toContain('Booth Operators');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    // Scoped to the dialog: the create-group form lists the same permissions.
+    const dialog = within(document.querySelector('.editdlg') as HTMLElement);
+    await userEvent.click(dialog.getByLabelText(/Operate shows/));
+    expect(api.updateGroup).not.toHaveBeenCalled();
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Save' }));
+    expect(api.updateGroup).toHaveBeenCalledWith('g1', {
+      name: 'Booth Operators',
+      permissions: ['rooms.mode.change', 'shows.operate'],
+    });
+  });
+
   it('the PIN reset dialog can be left with Escape, not only the close button', async () => {
     // It declares aria-modal, so the keyboard needs a way out. The first
     // version had neither Escape nor a scrim click — only an X.

@@ -181,6 +181,21 @@
   justify-content: flex-end;
 }
 
+/* A group row answers "what does this let someone do" in one line, and opens a
+   dialog to change it — the permission set is edited behind one Save, so the
+   row itself needs no controls beyond Edit. */
+.users__row--group {
+  grid-template-columns: minmax(160px, 0.5fr) 1fr auto;
+}
+
+.users__summary {
+  margin: 0;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 /* A revoked account stays listed — the audit trail points at it — so it reads
    as present but inert rather than disappearing and leaving its history
    attached to a name nobody can find. */
