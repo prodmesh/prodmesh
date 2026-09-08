@@ -1134,7 +1134,7 @@ export interface RtaState {
   source: string;
   connected: boolean;
   points: Array<{ hz: number; db: number; peak?: number }>;
-  metrics: { fast: number | null; slow: number | null; leq: number | null; weighting: string | null; calibration: number | null } | null;
+  metrics: { fast: number | null; slow: number | null; leq: number | null; weighting: string | null; mode?: 'acoustic' | 'program'; calibration: number | null } | null;
   updatedAt: number;
 }
 

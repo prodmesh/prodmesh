@@ -8,7 +8,7 @@ const ticks: Record<number, string> = { 31.5: '31', 63: '63', 125: '125', 250: '
 const providerName: Record<RtaState['provider'], string> = {
   'prodmesh-rta': 'ProdMesh RTA', smaart: 'Smaart', 'open-sound-meter': 'Open Sound Meter',
 };
-function Plot({ points, narrow, calibration }: { points: RtaState['points']; narrow: boolean; calibration: number | null | undefined }) {
+function Plot({ points, narrow, calibration, mode }: { points: RtaState['points']; narrow: boolean; calibration: number | null | undefined; mode: 'acoustic' | 'program' | undefined }) {
   const svg = useRef<SVGSVGElement>(null);
   const [canvas, setCanvas] = useState({ width: 500, height: 280 });
   useEffect(() => {
@@ -22,8 +22,13 @@ function Plot({ points, narrow, calibration }: { points: RtaState['points']; nar
   }, []);
 
   const visible = points.filter((point) => point.hz >= 25 && point.hz <= 20000);
+  // The analyzer's calibration is the SPL at 0 dBFS, i.e. the clip point, so it
+  // is also the top of the plot. In program (broadcast loudness) mode it
+  // reports 0 and leaves the bands in dBFS, which turns this same expression
+  // into a −80…0 dBFS window. Hence `??` and not `||`: 0 is a real ceiling.
   const max = calibration ?? 140;
   const min = max - 80;
+  const unit = mode === 'program' ? 'dBFS' : 'dB SPL';
   // These are the native RTA widget's canvas margins: 40/10/10/24 px.
   // Measure the actual SVG canvas so the chart fills its tile without scaling
   // text or grid geometry non-uniformly at narrow and wide sizes.
@@ -36,7 +41,7 @@ function Plot({ points, narrow, calibration }: { points: RtaState['points']; nar
   );
   const slot = width / Math.max(visible.length, 1);
   return (
-    <svg ref={svg} className="rta__chart" viewBox={`0 0 ${canvas.width} ${canvas.height}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Live 1/3-octave frequency spectrum from ${min} to ${max} dB SPL`}>
+    <svg ref={svg} className="rta__chart" viewBox={`0 0 ${canvas.width} ${canvas.height}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Live 1/3-octave frequency spectrum from ${min} to ${max} ${unit}`}>
       <rect className="rta__frame" x={left} y={top} width={width} height={height} />
       {grid.map((db) => <g key={db}><line className="rta__grid" x1={left} x2={left + width} y1={y(db)} y2={y(db)} /><text className="rta__db" textAnchor="end" dominantBaseline="middle" x={left - 6} y={y(db)}>{db}</text></g>)}
       {visible.map((point, index) => {
@@ -74,7 +79,7 @@ export function RtaWidget({ roomId, config }: WidgetProps) {
         <img className="rta__logo" src={prodmeshRtaLogo} alt="ProdMesh RTA" />
         <span className="wgt__title">{name}</span>
       </div>
-      {rta?.points.length ? <Plot points={rta.points} narrow={narrow} calibration={rta.metrics?.calibration} /> : <p className="rta__empty">{rta?.connected ? `${name} is connected, but it is not publishing spectrum bands.` : 'Waiting for the configured audio analyzer…'}</p>}
+      {rta?.points.length ? <Plot points={rta.points} narrow={narrow} calibration={rta.metrics?.calibration} mode={rta.metrics?.mode} /> : <p className="rta__empty">{rta?.connected ? `${name} is connected, but it is not publishing spectrum bands.` : 'Waiting for the configured audio analyzer…'}</p>}
     </div>
   );
 }

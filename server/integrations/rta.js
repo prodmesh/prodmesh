@@ -184,6 +184,14 @@ function sampleFrom(data, cfg, state) {
         slow: typeof frame.slow_db === 'number' ? frame.slow_db : null,
         leq: typeof frame.leq_db === 'number' ? frame.leq_db : null,
         weighting: typeof frame.weighting === 'string' ? frame.weighting : null,
+        // dB SPL against the calibration offset ("acoustic") or LUFS/dBFS
+        // against digital full scale ("program", for broadcast loudness). The
+        // analyzer's own API header tells consumers to switch on this before
+        // interpreting anything else, and the units on screen depend on it.
+        mode: frame.mode === 'program' ? 'program' : 'acoustic',
+        // The SPL at 0 dBFS, so it doubles as the top of the plot. The app
+        // reports 0 in program mode and leaves the bands in dBFS, which lands
+        // the same window on the right scale without a second branch.
         calibration: typeof frame.cal_db === 'number' ? frame.cal_db : null,
       };
     }
