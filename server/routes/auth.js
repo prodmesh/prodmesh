@@ -326,4 +326,106 @@ router.put('/api/users/:userId/groups', requirePermission('users.manage'), (req,
   }
 });
 
+/**
+ * Change your own PIN.
+ *
+ * No permission gates this — it is the one account operation that needs no
+ * authority beyond being the account. It does need the CURRENT PIN, because a
+ * session alone only proves somebody is at a browser that was logged in, and a
+ * booth machine left signed in is the normal state of a booth machine.
+ *
+ * Throttled on the same counter as a login: this endpoint verifies a PIN, so
+ * without it, it would be a quieter door to guess at than /api/auth/login.
+ */
+router.post('/api/auth/pin', (req, res) => {
+  const userId = req.auth?.user?.id;
+  if (!userId) return res.status(401).json({ error: 'not_signed_in' });
+
+  const keys = [{ k: `pin:${userId}`, after: 5 }];
+  const retryAfter = lockedFor(keys);
+  if (retryAfter > 0) return res.status(429).json({ error: 'temporarily_locked', retryAfter });
+
+  if (!auth.pinMatches(userId, req.body?.currentPin)) {
+    recordFailure(keys);
+    auth.audit({ userId, stationId: req.station?.id, action: 'auth.pin.change', result: 'denied' });
+    return res.status(403).json({ error: 'current_pin_incorrect' });
+  }
+  try {
+    auth.setUserPin(userId, req.body?.newPin);
+    clearFailures(keys);
+    // Every session goes, including this one — see setUserPin. Saying so is the
+    // difference between "you have been signed out" and "something broke".
+    auditSuccess(req, 'auth.pin.change', { resourceType: 'user', resourceId: userId });
+    res.json({ ok: true, signedOut: true });
+  } catch (err) {
+    res.status(400).json({ error: String(err.message ?? err) });
+  }
+});
+
+/**
+ * Reset somebody else's PIN. Full administrators only.
+ *
+ * Deliberately NOT `users.manage`. Setting an account's PIN is taking that
+ * account over, so a users.manage holder who could do it would have a
+ * one-request path to any authority in the building: reset a full admin's PIN,
+ * sign in as them. That is the same escalation the groups route below refuses,
+ * and it is worth less flexibility to keep the two consistent.
+ */
+router.put('/api/users/:userId/pin', requirePermission('users.manage'), (req, res) => {
+  if (!auth.hasPermission(req.auth, '*')) {
+    return res.status(403).json({ error: 'admin_required' });
+  }
+  try {
+    const user = auth.setUserPin(req.params.userId, req.body?.pin);
+    auditSuccess(req, 'users.manage', { resourceType: 'user', resourceId: user.id, details: { operation: 'pin-reset' } });
+    res.json({ user });
+  } catch (err) {
+    res.status(400).json({ error: String(err.message ?? err) });
+  }
+});
+
+/** Deactivate or restore an account — how access is revoked when somebody
+ *  leaves. Not a delete: the audit trail points at these rows. */
+router.put('/api/users/:userId/active', requirePermission('users.manage'), (req, res) => {
+  const active = req.body?.active === true;
+  if (req.auth?.user?.id === req.params.userId) {
+    // Nobody has ever meant to do this, and the person who does it is by
+    // definition the one who can no longer undo it.
+    return res.status(403).json({ error: 'cannot_deactivate_yourself' });
+  }
+  if (!auth.hasPermission(req.auth, '*')) {
+    const target = auth.listDirectory().users.find((u) => u.id === req.params.userId);
+    const mine = new Set(req.auth?.permissions ?? []);
+    const over = (target?.permissions ?? []).filter((p) => !mine.has(p));
+    if (over.length) return res.status(403).json({ error: 'cannot_manage_higher_privilege', permissions: over });
+  }
+  try {
+    const user = auth.setUserActive(req.params.userId, active);
+    auditSuccess(req, 'users.manage', {
+      resourceType: 'user', resourceId: user.id, details: { operation: active ? 'reactivate' : 'deactivate' },
+    });
+    res.json({ user });
+  } catch (err) {
+    res.status(400).json({ error: String(err.message ?? err) });
+  }
+});
+
+/** Edit a group's name and permission set. Same rule as assigning a group:
+ *  you cannot put a permission into a group that you do not hold yourself. */
+router.put('/api/groups/:groupId', requirePermission('users.manage'), (req, res) => {
+  try {
+    const permissions = req.body?.permissions;
+    if (permissions !== undefined && !auth.hasPermission(req.auth, '*')) {
+      const mine = new Set(req.auth?.permissions ?? []);
+      const over = permissions.filter((p) => !mine.has(p));
+      if (over.length) return res.status(403).json({ error: 'cannot_grant_unheld_permissions', permissions: over });
+    }
+    const group = auth.updateGroup(req.params.groupId, { name: req.body?.name, permissions });
+    auditSuccess(req, 'users.manage', { resourceType: 'permission-group', resourceId: group.id, details: { operation: 'update' } });
+    res.json({ group });
+  } catch (err) {
+    res.status(400).json({ error: String(err.message ?? err) });
+  }
+});
+
 export default router;

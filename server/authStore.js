@@ -363,6 +363,93 @@ export function updateUserGroups(userId, groupIds) {
   return getUser(userId);
 }
 
+/**
+ * Set a user's PIN, ending every session that PIN opened.
+ *
+ * A credential that MOVED takes its sessions with it — the same rule
+ * projectAdminAccount states for @admin, and for the same reason: changing a
+ * PIN is what somebody does when they think it leaked, so leaving the old
+ * session alive for the rest of its eight hours answers the wrong question.
+ *
+ * @admin is refused here on purpose. Its PIN lives in settings and is
+ * projected onto the account by projectAdminAccount, so writing it directly
+ * would leave the two disagreeing until the next boot — and the stale settings
+ * copy is the one the login route re-projects from.
+ */
+export function setUserPin(userId, pin) {
+  const db = getDb();
+  const user = getUser(userId);
+  if (!user) throw new Error('Unknown user');
+  if (adminUser()?.id === userId) {
+    throw new Error(`@${ADMIN_USERNAME}'s PIN is changed in Admin → General, not here`);
+  }
+  if (String(pin ?? '').length < 4) throw new Error('PIN must be at least 4 characters');
+  db.transaction(() => {
+    db.prepare('UPDATE users SET pin_hash = ? WHERE id = ?').run(hashPin(pin), userId);
+    db.prepare('DELETE FROM user_sessions WHERE user_id = ?').run(userId);
+  })();
+  return getUser(userId);
+}
+
+/** Does this PIN currently open this account? For the self-service change,
+ *  which must prove the person at the keyboard is the account's owner and not
+ *  someone who found it logged in. */
+export function pinMatches(userId, pin) {
+  const row = getDb().prepare('SELECT pin_hash FROM users WHERE id = ? AND active = 1').get(userId);
+  return Boolean(row && verifyPin(pin, row.pin_hash));
+}
+
+/**
+ * Deactivate or restore an account. Deactivation is how a volunteer who has
+ * moved on loses access; the row stays because the audit trail points at it,
+ * and a deleted user would turn its own history into anonymous ids.
+ *
+ * `authenticate` and `resolveSession` both require active = 1, so dropping the
+ * sessions here is belt-and-braces — but it makes the revocation immediate
+ * rather than "immediate on their next request".
+ */
+export function setUserActive(userId, active) {
+  const db = getDb();
+  if (!getUser(userId)) throw new Error('Unknown user');
+  if (!active && adminUser()?.id === userId) {
+    // Same reasoning as updateUserGroups: this account is the way back into a
+    // box in a building, and a screen that can switch it off is a screen that
+    // can lock a church out of its own booth on a Sunday.
+    throw new Error(`@${ADMIN_USERNAME} cannot be deactivated`);
+  }
+  db.transaction(() => {
+    db.prepare('UPDATE users SET active = ? WHERE id = ?').run(active ? 1 : 0, userId);
+    if (!active) db.prepare('DELETE FROM user_sessions WHERE user_id = ?').run(userId);
+  })();
+  return getUser(userId);
+}
+
+/**
+ * Change a group's name and the permissions it carries.
+ *
+ * Administrators is refused: its `['*']` is computed from `system_key` in
+ * listDirectory rather than stored as rows, so an edit here would write
+ * permissions nothing reads and report a change that did not happen.
+ */
+export function updateGroup(groupId, { name, permissions }) {
+  const db = getDb();
+  const existing = listDirectory().groups.find((group) => group.id === groupId);
+  if (!existing) throw new Error('Unknown group');
+  if (existing.systemKey === 'admin') throw new Error('The Administrators group always holds every permission');
+  const clean = name === undefined ? existing.name : String(name ?? '').trim();
+  if (clean.length < 2 || clean.length > 60) throw new Error('Group name must be 2–60 characters');
+  const next = permissions === undefined ? existing.permissions : permissions;
+  const allowed = new Set(PERMISSIONS.map(([permission]) => permission));
+  if (!next.every((permission) => allowed.has(permission))) throw new Error('Unknown permission');
+  db.transaction(() => {
+    db.prepare('UPDATE permission_groups SET name = ? WHERE id = ?').run(clean, groupId);
+    db.prepare('DELETE FROM group_permissions WHERE group_id = ?').run(groupId);
+    const add = db.prepare('INSERT INTO group_permissions (group_id, permission_id) VALUES (?, ?)');
+    for (const permission of next) add.run(groupId, permission);
+  })();
+  return listDirectory().groups.find((group) => group.id === groupId);
+}
+
 export function listAudit(limit = 200) {
   const n = Math.max(1, Math.min(500, Number(limit) || 200));
   return getDb().prepare(
