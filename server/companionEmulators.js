@@ -5,7 +5,7 @@ import WebSocket from 'ws';
 
 const TIMEOUT_MS = 4_000;
 
-export function listCompanionEmulators({ host, port = 8000 }) {
+export function listCompanionEmulators({ host, port = 8000 }, signal) {
   if (!host) throw new Error('Set a Companion host before loading emulators');
   const authority = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
   const url = `ws://${authority}:${port}/trpc`;
@@ -22,6 +22,11 @@ export function listCompanionEmulators({ host, port = 8000 }) {
       err ? reject(err) : resolve(value);
     };
 
+    if (signal) {
+      if (signal.aborted) return finish(new Error('aborted'));
+      signal.addEventListener('abort', () => finish(new Error('aborted')), { once: true });
+    }
+
     socket.once('open', () => {
       // tRPC v11 subscription protocol. Companion sends the current list as
       // the first data frame, then streams changes we intentionally do not
@@ -32,6 +37,11 @@ export function listCompanionEmulators({ host, port = 8000 }) {
     socket.on('message', (raw) => {
       try {
         const message = JSON.parse(raw.toString());
+        // Verified against Companion 4 on 2026-09-08: the subscription answers
+        // {"result":{"type":"started"}} first and the list arrives in a second
+        // frame as a BARE array under result.data — not the `{json: …}`
+        // superjson envelope tRPC uses elsewhere. Accept both: the started
+        // frame has no array at all and is skipped by the check below.
         const data = message?.result?.data?.json ?? message?.result?.data;
         if (!Array.isArray(data)) return;
         const emulators = data

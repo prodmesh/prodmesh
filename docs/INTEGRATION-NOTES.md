@@ -490,6 +490,39 @@ kind. Anything that can reach the port can press any button, which is the
 reason these reads happen server-side and the reason a Companion belongs on a
 production VLAN.
 
+### Emulator surfaces — probed live on Companion 4, 2026-09-08
+
+The HTTP API cannot list surfaces. Companion's own UI gets them from a **tRPC
+WebSocket at `ws://host:8000/trpc`**, and `surfaces.emulatorList` is the path:
+
+```json
+→ {"id":1,"method":"subscription","params":{"path":"surfaces.emulatorList","input":{"json":null}}}
+← {"id":1,"result":{"type":"started"}}
+← {"id":1,"result":{"type":"data","data":[{"id":"LeqG7hIEDm1rJffJW6hhU","name":"Booth emulator"}]}}
+```
+
+**The list is in the SECOND frame.** A client that reads one reply and closes
+gets nothing. It is a subscription, so it then streams changes forever —
+`companionEmulators.js` takes the first array and hangs up.
+
+**The payload is a bare array**, not the `{json: …}` superjson envelope tRPC
+uses on other paths. Both are accepted, because the unwrapped shape is the one
+observed and the wrapped one is what the protocol would normally imply.
+
+**An id is a nanoid, not a name** (`LeqG7hIEDm1rJffJW6hhU`), so it must be
+picked rather than typed. A fresh Companion answers `[]` — an empty picker
+means "no emulator exists yet", not a failure.
+
+`/emulator` and `/emulator/<id>` both serve the surface, and **any unknown id
+also returns 200** (SPA fallback), so a deleted emulator shows a broken surface
+rather than an error. The pages send no `X-Frame-Options` and no CSP
+`frame-ancestors`, which is what makes embedding them possible at all.
+
+Because Companion has no auth, an embedded surface presses buttons with none of
+the permission, schedule-lockout or audit machinery a prodmesh mode change goes
+through. That is why it is a per-room opt-in, off by default — see
+`validateCompanion`.
+
 ---
 
 ## ProdMesh RTA — read from the analyzer's source 2026-09-07

@@ -1054,6 +1054,7 @@ interface ModeDraft {
 interface CompanionDraft {
   mock: boolean;
   roomMode: boolean;
+  surface: boolean;
   host: string;
   port: string;
   variable: string;
@@ -1078,6 +1079,7 @@ function toCompanionDraft(cfg: CompanionConfig | null): CompanionDraft {
   return {
     mock: cfg ? cfg.mock : true,
     roomMode: cfg?.roomMode !== false,
+    surface: cfg?.surface === true,
     host: cfg?.host ?? '',
     port: cfg?.port != null ? String(cfg.port) : '',
     variable: cfg?.variable ?? '',
@@ -1093,6 +1095,7 @@ function CompanionDialog({ roomId, initial, onSaved, onClose }: {
     const stored = await saveCompanion(roomId, {
       mock: d.mock,
       ...(d.roomMode ? {} : { roomMode: false }),
+      ...(d.surface ? { surface: true } : {}),
       host: d.host || undefined,
       port: d.port === '' ? undefined : Number(d.port),
       variable: d.variable || undefined,
@@ -1142,6 +1145,14 @@ function CompanionDialog({ roomId, initial, onSaved, onClose }: {
           checked={draft.roomMode}
           onChange={(e) => f.patch({ roomMode: e.target.checked })}
         />
+      </FormRow>
+      <FormRow>
+        <Switch
+          label="Show Companion controls on the room page"
+          checked={draft.surface}
+          onChange={(e) => f.patch({ surface: e.target.checked })}
+        />
+        <HelpTip text="Embeds Companion's own emulator on the room page. Those buttons are pressed in Companion directly, so schedule lockouts, the override PIN and the audit trail do not apply to them — unlike Room Mode above. Always available as a dashboard widget regardless." />
       </FormRow>
       <FormRow>
         <Field label="Host" width="grow">

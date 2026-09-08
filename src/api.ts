@@ -20,6 +20,7 @@ export interface RoomMeta {
   hasCompanion: boolean;
   /** Whether this room exposes its operator-defined Room Mode control surface. */
   roomModeEnabled?: boolean;
+  companionSurfaceEnabled?: boolean;
   analysisSource?: AnalysisSource | null;
   modes: RoomMode[];
 }

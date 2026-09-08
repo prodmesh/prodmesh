@@ -312,7 +312,21 @@ export function validateCompanion(input) {
   if (input === null || typeof input !== 'object' || Array.isArray(input)) {
     throw new Error('companion must be an object (rooms cannot clear it — use Simulated instead)');
   }
-  const out = { mock: input.mock === true, roomMode: input.roomMode !== false };
+  // Two independent switches, deliberately not one three-way choice. Room Mode
+  // is prodmesh's opinionated model — gated by `rooms.mode.change`, lockable on
+  // a schedule, and audited. The Companion surface is Companion's own emulator
+  // embedded raw: no permission, no lockout, no audit row, because the browser
+  // talks straight to Companion, which has no auth of its own.
+  //
+  // A church may reasonably want either, both, or neither, and asking for both
+  // is expected rather than a mistake — so the combination stays available and
+  // this stays two booleans. `surface` defaults OFF (=== true, not !== false)
+  // so upgrading never silently adds an ungated control to a room's page.
+  const out = {
+    mock: input.mock === true,
+    roomMode: input.roomMode !== false,
+    surface: input.surface === true,
+  };
   // Optional here: a simulated room has no Companion at all. Validated the
   // same way when present.
   const host = String(input.host ?? '').trim();
@@ -332,10 +346,15 @@ export function validateCompanion(input) {
   if (emulator) out.emulator = emulator;
   if (!out.mock) {
     if (!out.host) throw new Error('A live (non-simulated) room needs a Companion host');
-    if (!out.variable) throw new Error('A live (non-simulated) room needs a state variable');
+    // The state variable exists only so Room Mode can read the room's current
+    // mode back. Requiring it with Room Mode switched off made a room that had
+    // opted out of the feature invent a variable name for it anyway.
+    if (out.roomMode && !out.variable) throw new Error('A live (non-simulated) room needs a state variable');
   }
   if (!Array.isArray(input.modes)) throw new Error('modes must be an array');
-  if (input.modes.length > 100) throw new Error('Too many modes (max 100)');
+  // Modes render as buttons on the room's own page, so the cap is a layout
+  // limit rather than a storage one.
+  if (input.modes.length > 12) throw new Error('Too many modes (max 12)');
   const ids = new Set();
   out.modes = input.modes.map((m) => {
     const id = String(m?.id ?? '').trim();
@@ -390,6 +409,7 @@ export function companionFromRoom(room) {
     ...(room.state?.variable ? { variable: room.state.variable } : {}),
     ...(room.companion?.emulator ? { emulator: room.companion.emulator } : {}),
     roomMode: room.roomMode !== false,
+    surface: room.companionSurface === true,
     modes: room.modes,
   };
 }
@@ -402,6 +422,7 @@ function applyCompanion(room, stored) {
     : {};
   room.state = { variable: stored.variable };
   room.roomMode = stored.roomMode;
+  room.companionSurface = stored.surface;
   room.modes = stored.modes;
 }
 

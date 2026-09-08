@@ -258,7 +258,11 @@ export function RoomStatus() {
         <ServicePanel roomId={roomId} />
       </WidgetGrid>
 
-      {companionEnabled && room.hasCompanion && (
+      {/* Off by default. Companion's emulator is its own control surface with
+          no permission check, no schedule lockout and no audit row, so whether
+          it belongs on the room's own page is a decision each church makes —
+          not one prodmesh makes for them. See validateCompanion. */}
+      {companionEnabled && room.hasCompanion && room.companionSurfaceEnabled && (
         <Accordion
           className="acc--companion"
           title={<IntegrationTitle integration="companion">Bitfocus Companion</IntegrationTitle>}

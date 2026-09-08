@@ -219,9 +219,43 @@ test('setCompanion rejects bad input without changing anything', () => {
 
 test('Companion can keep a blank mode list while Room Mode is disabled', () => {
   const clean = conn.setCompanion('north-youth', { mock: true, roomMode: false, modes: [] });
-  assert.deepEqual(clean, { mock: true, roomMode: false, modes: [] });
+  assert.deepEqual(clean, { mock: true, roomMode: false, surface: false, modes: [] });
   assert.equal(rooms['north-youth'].roomMode, false);
   assert.deepEqual(rooms['north-youth'].modes, []);
+});
+
+test('the Companion surface is off unless a room asks for it', () => {
+  // It embeds Companion's own emulator, whose presses skip the permission
+  // check, the schedule lockout and the audit row that a Room Mode change goes
+  // through. An upgrade must never add that to a room's page on its own.
+  const modes = conn.getCompanion('north-chapel').modes;
+  assert.equal(conn.setCompanion('north-chapel', { mock: true, modes }).surface, false);
+  assert.equal(rooms['north-chapel'].companionSurface, false);
+
+  const on = conn.setCompanion('north-chapel', { mock: true, surface: true, modes });
+  assert.equal(on.surface, true);
+  assert.equal(rooms['north-chapel'].companionSurface, true);
+  // Independent of Room Mode: a church may run either, both, or neither.
+  assert.equal(on.roomMode, true);
+});
+
+test('a state variable is only required by the feature that reads it', () => {
+  const modes = conn.getCompanion('north-chapel').modes;
+  // Room Mode on (the default) still needs the variable it reads back.
+  assert.throws(
+    () => conn.setCompanion('north-chapel', { mock: false, host: '192.0.2.10', modes }),
+    /needs a state variable/,
+  );
+  // Off, and the room is no longer asked to invent one.
+  const clean = conn.setCompanion('north-chapel', { mock: false, host: '192.0.2.10', roomMode: false, modes: [] });
+  assert.equal(clean.roomMode, false);
+  assert.equal(clean.variable, undefined);
+});
+
+test('modes stay capped at what the room page can lay out', () => {
+  const one = conn.getCompanion('north-chapel').modes[0];
+  const many = Array.from({ length: 13 }, (_, i) => ({ ...one, id: `m${i}`, match: `m${i}` }));
+  assert.throws(() => conn.setCompanion('north-chapel', { mock: true, modes: many }), /max 12/);
 });
 
 test('setPlanningCenter rejects bad input without changing anything', () => {
