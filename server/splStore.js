@@ -9,11 +9,18 @@
 
 import { getDb } from './db.js';
 
-export function record(roomId, instanceId, ts, spl, ca = null) {
+// `spl` is the row's Leq (one instantaneous reading from a slow analyzer, or a
+// second of energy-averaged fast ones). `peak` is the loudest single sample
+// behind it — see the spl-samples-peak migration for why they had to separate.
+export function record(roomId, instanceId, ts, spl, ca = null, peak = null) {
   getDb()
-    .prepare('INSERT INTO spl_samples (room_id, instance_id, ts, spl, ca) VALUES (?, ?, ?, ?, ?)')
-    .run(roomId, instanceId, ts, spl, ca);
+    .prepare('INSERT INTO spl_samples (room_id, instance_id, ts, spl, ca, peak) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(roomId, instanceId, ts, spl, ca, peak);
 }
+
+// Rows written before the peak column carry only an instantaneous reading, for
+// which spl and peak are the same number.
+const peakOf = (row) => row.peak ?? row.spl;
 
 // Average loudness is an energy average (Leq), not an arithmetic mean:
 // 10·log10( mean( 10^(L/10) ) ). A minute at 95 dB moves it far more than a
@@ -50,7 +57,7 @@ function maxOf(values) {
  */
 export function aggregate(instanceId) {
   const rows = getDb()
-    .prepare('SELECT ts, spl, ca FROM spl_samples WHERE instance_id = ? ORDER BY ts')
+    .prepare('SELECT ts, spl, ca, peak FROM spl_samples WHERE instance_id = ? ORDER BY ts')
     .all(instanceId);
   if (rows.length === 0) return null;
   const values = rows.map((r) => r.spl);
@@ -58,7 +65,7 @@ export function aggregate(instanceId) {
   return {
     count: rows.length,
     leq: round1(leq(values)),
-    peak: round1(maxOf(values)),
+    peak: round1(maxOf(rows.map(peakOf))),
     from: rows[0].ts,
     to: rows[rows.length - 1].ts,
     ca: cas.length
@@ -76,7 +83,7 @@ export function aggregate(instanceId) {
 export function aggregateRange(instanceId, from, to) {
   if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return null;
   const rows = getDb()
-    .prepare('SELECT ts, spl, ca FROM spl_samples WHERE instance_id = ? AND ts >= ? AND ts < ? ORDER BY ts')
+    .prepare('SELECT ts, spl, ca, peak FROM spl_samples WHERE instance_id = ? AND ts >= ? AND ts < ? ORDER BY ts')
     .all(instanceId, from, to);
   if (rows.length === 0) return null;
   const values = rows.map((r) => r.spl);
@@ -84,7 +91,7 @@ export function aggregateRange(instanceId, from, to) {
   return {
     count: rows.length,
     leq: round1(leq(values)),
-    peak: round1(maxOf(values)),
+    peak: round1(maxOf(rows.map(peakOf))),
     from: rows[0].ts,
     to: rows[rows.length - 1].ts,
     ca: cas.length
@@ -96,13 +103,13 @@ export function aggregateRange(instanceId, from, to) {
 /** Running stats seed for a (re)starting show — continues where it left off. */
 export function runningStats(instanceId) {
   const rows = getDb()
-    .prepare('SELECT spl, ca FROM spl_samples WHERE instance_id = ?')
+    .prepare('SELECT spl, ca, peak FROM spl_samples WHERE instance_id = ?')
     .all(instanceId);
   const cas = rows.map((r) => r.ca).filter((v) => v != null);
   return {
     n: rows.length,
     sumEnergy: rows.reduce((s, r) => s + 10 ** (r.spl / 10), 0),
-    peak: maxOf(rows.map((r) => r.spl)),
+    peak: maxOf(rows.map(peakOf)),
     caN: cas.length,
     caSum: cas.reduce((s, v) => s + v, 0),
     caMax: maxOf(cas),

@@ -459,13 +459,7 @@ function onSpl(roomId, sample) {
     const st = show.splStats;
     if (st.bucketAt == null || sample.ts >= st.bucketAt + 1000) {
       flushSplBucket(roomId, show);
-      st.bucketAt = sample.ts;
-      st.bucketEnergy = 0;
-      st.bucketN = 0;
-      st.bucketCaSum = 0;
-      st.bucketCaN = 0;
-      st.bucketPeak = null;
-      st.bucketCaMax = null;
+      resetSplBucket(st, sample.ts);
     }
     st.bucketEnergy += 10 ** (sample.spl / 10);
     st.bucketN += 1;
@@ -528,22 +522,41 @@ function onSpl(roomId, sample) {
   publishRta(roomId);
 }
 
+/** Write the open bucket as one row and fold it into the running stats.
+ *
+ *  Leq and peak part company here. The row's `spl` is the bucket's energy
+ *  average, which is what a loudness average must be built from; its `peak` is
+ *  the loudest single sample inside it. Folding the AVERAGE into `st.peak`
+ *  instead — as this did when it was written — buries transients: 19 frames of
+ *  88 dB plus one at 105 reports 93.4, and the live meter visibly falls back
+ *  from 105 as the flush lands, so a peak-hold appears to un-hold. */
 function flushSplBucket(roomId, show) {
-  const st = show.splStats;
+  const st = show?.splStats;
   if (!st || !st.bucketN) return;
   const spl = 10 * Math.log10(st.bucketEnergy / st.bucketN);
+  const peak = st.bucketPeak ?? spl;
   const ca = st.bucketCaN ? st.bucketCaSum / st.bucketCaN : null;
-  splStore.record(roomId, instanceId(show), st.bucketAt, spl, ca);
+  splStore.record(roomId, instanceId(show), st.bucketAt, spl, ca, peak);
   st.n += 1;
   st.sumEnergy += 10 ** (spl / 10);
-  st.peak = st.peak == null ? spl : Math.max(st.peak, spl);
+  st.peak = st.peak == null ? peak : Math.max(st.peak, peak);
   if (ca != null) {
     st.caN = (st.caN ?? 0) + 1;
     st.caSum = (st.caSum ?? 0) + ca;
     st.caMax = st.caMax == null ? ca : Math.max(st.caMax, ca);
   }
+  resetSplBucket(st, null);
+}
+
+/** Clear the open bucket. One writer, because the two callers used to zero
+ *  different subsets of these fields and only agreed by accident. */
+function resetSplBucket(st, bucketAt) {
+  st.bucketAt = bucketAt;
+  st.bucketEnergy = 0;
   st.bucketN = 0;
   st.bucketPeak = null;
+  st.bucketCaSum = 0;
+  st.bucketCaN = 0;
   st.bucketCaMax = null;
 }
 
