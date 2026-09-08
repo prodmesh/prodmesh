@@ -507,3 +507,100 @@ test('secrets are write-only over HTTP and need full admin', async () => {
   assert.ok(audit.includes('planningCenter.secret'), 'the change should be audited');
   assert.ok(!audit.includes(SECRET), 'a value leaked into the audit trail');
 });
+
+test('resetting somebody else’s PIN needs full admin, not users.manage', async () => {
+  // Setting an account's PIN is taking that account over, so users.manage
+  // holders are refused: otherwise the screen that exists to manage volunteers
+  // is a one-request path to every authority in the building.
+  const g = auth.createGroup({ name: 'PIN Admins', permissions: ['users.manage'] });
+  auth.createUser({ username: 'pinadm', displayName: 'PIN Admin', pin: '8181', groupIds: [g.id] });
+  const target = auth.createUser({ username: 'pintarget', displayName: 'Target', pin: '9191', groupIds: [] });
+  const token = (await (await post('/api/auth/login', { username: 'pinadm', pin: '8181' }, null, station.token)).json()).token;
+
+  const put = (tok, body) => fetch(`${base}/api/users/${target.id}/pin`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}`, 'X-Prodmesh-Station': station.token },
+    body: JSON.stringify(body),
+  });
+
+  const res = await put(token, { pin: '0000' });
+  assert.equal(res.status, 403);
+  assert.equal((await res.json()).error, 'admin_required');
+  // …and the old PIN still works, i.e. the refusal was before any write.
+  assert.ok(auth.pinMatches(target.id, '9191'));
+});
+
+test('changing your own PIN needs the current one, and ends every session', async () => {
+  const user = auth.createUser({ username: 'selfserve', displayName: 'Self Serve', pin: '1212', groupIds: [] });
+  const login = async (pin) =>
+    (await (await post('/api/auth/login', { username: 'selfserve', pin }, null, station.token)).json()).token;
+  const token = await login('1212');
+  const change = (tok, body) => fetch(`${base}/api/auth/pin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}`, 'X-Prodmesh-Station': station.token },
+    body: JSON.stringify(body),
+  });
+
+  // A session alone is not proof: a booth machine left signed in is the normal
+  // state of a booth machine.
+  const wrong = await change(token, { currentPin: '9999', newPin: '3434' });
+  assert.equal(wrong.status, 403);
+  assert.equal((await wrong.json()).error, 'current_pin_incorrect');
+
+  assert.equal((await change(token, { currentPin: '1212', newPin: '3434' })).status, 200);
+  assert.ok(auth.pinMatches(user.id, '3434'));
+  // The session that made the change is gone with the credential it used.
+  const after = await fetch(`${base}/api/users`, { headers: { Authorization: `Bearer ${token}` } });
+  assert.equal(after.status, 401);
+  assert.ok(await login('3434'), 'the new PIN signs in');
+});
+
+test('deactivating revokes access immediately, and cannot reach @admin or yourself', async () => {
+  const g = auth.createGroup({ name: 'Volunteer Admins', permissions: ['users.manage'] });
+  const me = auth.createUser({ username: 'voladm', displayName: 'Volunteer Admin', pin: '2323', groupIds: [g.id] });
+  const leaver = auth.createUser({ username: 'leaver', displayName: 'Leaver', pin: '4545', groupIds: [] });
+  const token = (await (await post('/api/auth/login', { username: 'voladm', pin: '2323' }, null, station.token)).json()).token;
+  const leaverToken = (await (await post('/api/auth/login', { username: 'leaver', pin: '4545' }, null, station.token)).json()).token;
+
+  const setActive = (userId, active) => fetch(`${base}/api/users/${userId}/active`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'X-Prodmesh-Station': station.token },
+    body: JSON.stringify({ active }),
+  });
+
+  assert.equal((await setActive(me.id, false)).status, 403, 'the one nobody means to do');
+  assert.equal((await setActive(leaver.id, false)).status, 200);
+  // Revocation is immediate rather than immediate-on-next-login.
+  assert.equal((await fetch(`${base}/api/auth/status`, { headers: { Authorization: `Bearer ${leaverToken}` } })
+    .then((r) => r.json())).authenticated ?? false, false);
+  assert.equal((await post('/api/auth/login', { username: 'leaver', pin: '4545' }, null, station.token)).status, 401);
+
+  // Restoring works, so this is revocation and not a one-way door.
+  assert.equal((await setActive(leaver.id, true)).status, 200);
+  assert.ok((await post('/api/auth/login', { username: 'leaver', pin: '4545' }, null, station.token)).ok);
+});
+
+test('a group cannot be given permissions its editor does not hold', async () => {
+  const g = auth.createGroup({ name: 'Group Editors', permissions: ['users.manage'] });
+  auth.createUser({ username: 'grpadm', displayName: 'Group Admin', pin: '5656', groupIds: [g.id] });
+  const target = auth.createGroup({ name: 'Editable', permissions: [] });
+  const token = (await (await post('/api/auth/login', { username: 'grpadm', pin: '5656' }, null, station.token)).json()).token;
+
+  const put = (groupId, body) => fetch(`${base}/api/groups/${groupId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'X-Prodmesh-Station': station.token },
+    body: JSON.stringify(body),
+  });
+
+  // Editing a group you are in is the other one-request path to '*'.
+  const over = await put(target.id, { permissions: ['system.backup'] });
+  assert.equal(over.status, 403);
+  assert.equal((await over.json()).error, 'cannot_grant_unheld_permissions');
+
+  assert.equal((await put(target.id, { permissions: ['users.manage'] })).status, 200);
+
+  // Administrators is computed, not stored — editing it would report a change
+  // that did not happen.
+  const adminGroup = auth.listDirectory().groups.find((x) => x.systemKey === 'admin');
+  assert.equal((await put(adminGroup.id, { name: 'Nope' })).status, 400);
+});

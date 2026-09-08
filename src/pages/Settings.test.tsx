@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { IdentityContext } from '../lib/identity';
 import { CampusesPanel, LogsPanel, RoomConfigPanel, StationsPanel, SystemPanel, UserManagementPanel } from './Settings';
 
 const api = vi.hoisted(() => ({
@@ -11,6 +12,9 @@ const api = vi.hoisted(() => ({
   createUser: vi.fn(),
   createGroup: vi.fn(),
   setUserGroups: vi.fn(),
+  setUserActive: vi.fn(),
+  resetUserPin: vi.fn(),
+  updateGroup: vi.fn(),
   getStations: vi.fn(),
   getRooms: vi.fn(),
   getViews: vi.fn(),
@@ -52,6 +56,138 @@ describe('Users & access', () => {
       groups: [],
       permissions: [],
     });
+  });
+
+  const asIdentity = (permissions: string[], ui: React.ReactElement) => render(
+    <IdentityContext.Provider value={{
+      authenticated: true, station: null, permissions,
+      user: { id: 'me', username: 'me', displayName: 'Me', avatarUrl: null, planningCenterPersonId: null },
+    } as never}>{ui}</IdentityContext.Provider>,
+  );
+
+  it('offers a PIN reset only to a full administrator', async () => {
+    // Taking over an account is not something users.manage may do — see the
+    // route. The button is guidance; the refusal is the server's.
+    asIdentity(['users.manage'], <UserManagementPanel />);
+    await screen.findByText('Photo User');
+    expect(screen.queryByRole('button', { name: 'Reset PIN' })).toBeNull();
+
+    asIdentity(['*'], <UserManagementPanel />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Reset PIN' }).length).toBeGreaterThan(0));
+  });
+
+  it('creates a user from a dialog, not a form parked on the page', async () => {
+    api.createUser.mockResolvedValue({ id: 'new', displayName: 'Sam Rivera' });
+    asIdentity(['*'], <UserManagementPanel />);
+    await userEvent.click(await screen.findByRole('button', { name: 'New user' }));
+
+    const dialog = within(document.querySelector('.editdlg') as HTMLElement);
+    // Nothing typed yet, so there is nothing to create.
+    expect(dialog.getByRole('button', { name: 'Create user' })).toBeDisabled();
+    await userEvent.type(dialog.getByLabelText(/Display name/), 'Sam Rivera');
+    await userEvent.type(dialog.getByLabelText(/Username/), 'srivera');
+    await userEvent.type(dialog.getByLabelText(/^PIN/), '7788');
+    await userEvent.click(dialog.getByRole('button', { name: 'Create user' }));
+
+    expect(api.createUser).toHaveBeenCalledWith(expect.objectContaining({
+      displayName: 'Sam Rivera', username: 'srivera', pin: '7788',
+    }));
+    expect(await screen.findByText('Created Sam Rivera.')).toBeInTheDocument();
+  });
+
+  it('creates a group through the same dialog that edits one', async () => {
+    api.createGroup.mockResolvedValue({ id: 'g2', name: 'Camera Operators', permissions: ['shows.operate'] });
+    api.getUserDirectory.mockResolvedValue({
+      users: [],
+      groups: [],
+      permissions: [{ id: 'shows.operate', label: 'Operate shows', description: 'Start and end shows.' }],
+    });
+    asIdentity(['*'], <UserManagementPanel />);
+    await userEvent.click(await screen.findByRole('button', { name: 'New permission group' }));
+
+    const dialog = within(document.querySelector('.editdlg') as HTMLElement);
+    await userEvent.type(dialog.getByLabelText(/Group name/), 'Camera Operators');
+    await userEvent.click(dialog.getByLabelText(/Operate shows/));
+    // Creating says "Create group"; editing the same dialog says "Save".
+    await userEvent.click(dialog.getByRole('button', { name: 'Create group' }));
+
+    expect(api.createGroup).toHaveBeenCalledWith('Camera Operators', ['shows.operate']);
+    expect(api.updateGroup).not.toHaveBeenCalled();
+  });
+
+  it('edits a group behind one Save, not a live write per checkbox', async () => {
+    // Each intermediate state on the way to what somebody meant would be a
+    // real grant — written, audited, and live for whoever is signed in.
+    api.getUserDirectory.mockResolvedValue({
+      users: [],
+      groups: [
+        { id: 'g1', name: 'Booth Operators', permissions: ['rooms.mode.change'] },
+        { id: 'admins', name: 'Administrators', systemKey: 'admin', permissions: ['*'] },
+      ],
+      permissions: [
+        { id: 'rooms.mode.change', label: 'Change room modes', description: 'Change the mode.' },
+        { id: 'shows.operate', label: 'Operate shows', description: 'Start and end shows.' },
+      ],
+    });
+    api.updateGroup.mockResolvedValue({ id: 'g1', name: 'Booth Operators', permissions: ['rooms.mode.change', 'shows.operate'] });
+    asIdentity(['*'], <UserManagementPanel />);
+
+    await screen.findByText('Booth Operators');
+    // Administrators is assignable to a user but has nothing to EDIT — its '*'
+    // is computed from system_key rather than stored, so it gets no row here.
+    const groupRows = document.querySelectorAll('.users__row--group');
+    expect(groupRows).toHaveLength(1);
+    expect(groupRows[0].textContent).toContain('Booth Operators');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    // Scoped to the dialog rather than the document, so this keeps asserting
+    // about the dialog if the page ever lists permissions again.
+    const dialog = within(document.querySelector('.editdlg') as HTMLElement);
+    await userEvent.click(dialog.getByLabelText(/Operate shows/));
+    expect(api.updateGroup).not.toHaveBeenCalled();
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Save' }));
+    expect(api.updateGroup).toHaveBeenCalledWith('g1', {
+      name: 'Booth Operators',
+      permissions: ['rooms.mode.change', 'shows.operate'],
+    });
+  });
+
+  it('the PIN reset dialog can be left with Escape, not only the close button', async () => {
+    // It declares aria-modal, so the keyboard needs a way out. The first
+    // version had neither Escape nor a scrim click — only an X.
+    asIdentity(['*'], <UserManagementPanel />);
+    const row = (await screen.findByText('Photo User')).closest('.users__row') as HTMLElement;
+    await userEvent.click(within(row).getByRole('button', { name: 'Reset PIN' }));
+    expect(screen.getByText(/Set a new PIN for Photo User/)).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByText(/Set a new PIN for Photo User/)).toBeNull();
+  });
+
+  it('revokes access without deleting the account, and says so on the row', async () => {
+    api.setUserActive.mockResolvedValue({});
+    asIdentity(['*'], <UserManagementPanel />);
+    const row = (await screen.findByText('Photo User')).closest('.users__row') as HTMLElement;
+    await userEvent.click(within(row).getByRole('button', { name: 'Revoke access' }));
+    expect(api.setUserActive).toHaveBeenCalledWith('with-photo', false);
+  });
+
+  it('explains a refused group change instead of silently springing back', async () => {
+    // The checkbox reverts on refresh either way; without a message that reads
+    // as the click not registering rather than as a rule.
+    api.setUserGroups.mockRejectedValue(new Error('cannot_grant_unheld_permissions'));
+    api.getUserDirectory.mockResolvedValue({
+      users: [{
+        id: 'u1', username: 'vol', displayName: 'Volunteer', planningCenterPersonId: null,
+        avatarUrl: null, active: true, groups: [], permissions: [],
+      }],
+      groups: [{ id: 'g1', name: 'Admins', permissions: ['*'] }],
+      permissions: [],
+    });
+    asIdentity(['users.manage'], <UserManagementPanel />);
+    const row = (await screen.findByText('Volunteer')).closest('.users__row') as HTMLElement;
+    await userEvent.click(within(row).getByLabelText('Admins'));
+    expect(await screen.findByText(/only grant permissions you hold yourself/i)).toBeInTheDocument();
   });
 
   it('shows a Planning Center photo or the standard placeholder for every user', async () => {

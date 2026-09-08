@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { CircleUser, X } from 'lucide-react';
 import { searchPlanningCenterPeople, type PlanningCenterPerson } from '../api';
 import { HelpTip } from './HelpTip';
@@ -32,6 +33,8 @@ export function PersonPicker({ value, onChange }: { value: string; onChange: (pe
   const [focused, setFocused] = useState(false);
   const seq = useRef(0);
   const listId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [anchor, setAnchor] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
 
   // Whether search exists at all decides which control this is, so it can't
   // wait for the first keystroke. Any failure — no token, no permission, no
@@ -43,6 +46,42 @@ export function PersonPicker({ value, onChange }: { value: string; onChange: (pe
       .catch(() => { if (!cancelled) setConfigured(false); });
     return () => { cancelled = true; };
   }, []);
+
+  // Computed up here with the other hooks, because the anchoring effect below
+  // needs it and hooks cannot sit after this component's early returns.
+  const open = focused && query.trim().length >= MIN_QUERY;
+
+  /**
+   * Keep the floating list glued to the input.
+   *
+   * `scroll` is captured rather than bubbled: the thing that moves the input is
+   * usually an ancestor scrolling — a dialog body — and scroll events do not
+   * bubble to window from those. Without capture the list stays where it was
+   * while the field slides away underneath it.
+   *
+   * The height is whatever is left below the input, so a list near the bottom
+   * of a short window scrolls itself instead of running off the screen.
+   */
+  useLayoutEffect(() => {
+    if (!open) { setAnchor(null); return; }
+    const place = () => {
+      const r = inputRef.current?.getBoundingClientRect();
+      if (!r) return;
+      setAnchor({
+        top: r.bottom + 4,
+        left: r.left,
+        width: r.width,
+        maxHeight: Math.max(96, Math.min(244, window.innerHeight - r.bottom - 16)),
+      });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open]);
 
   // The parent clears the field after it creates a user.
   useEffect(() => { if (!value) setPicked(null); }, [value]);
@@ -152,12 +191,13 @@ export function PersonPicker({ value, onChange }: { value: string; onChange: (pe
     );
   }
 
-  const open = focused && query.trim().length >= MIN_QUERY;
+
 
   return (
     <div className="personpicker">
       {label}
       <input
+        ref={inputRef}
         className="field"
         placeholder={configured === null ? 'Loading…' : 'Search by name (optional)'}
         disabled={configured === null}
@@ -173,10 +213,18 @@ export function PersonPicker({ value, onChange }: { value: string; onChange: (pe
         onBlur={() => setFocused(false)}
         onKeyDown={onKeyDown}
       />
-      {open && (
+      {open && anchor && createPortal(
+        // Rendered into <body> rather than beside the input, and positioned
+        // against the input's own rect. Inside a dialog the picker sits in a
+        // scroll container, which clips an absolutely-positioned child at its
+        // edge — the list came out cut in half. Putting it in the flow instead
+        // fixed the clipping and made the dialog grow every time somebody
+        // typed, which is worse. A select menu floats; so does this.
+        //
         // mousedown default is what blurs the input, and blur closes this list
         // before a click can land on the row underneath.
-        <ul className="personpicker__results" id={listId} role="listbox"
+        <ul className="personpicker__results personpicker__results--floating" id={listId} role="listbox"
+          style={{ top: anchor.top, left: anchor.left, width: anchor.width, maxHeight: anchor.maxHeight }}
           onMouseDown={(event) => event.preventDefault()}>
           {status === 'searching' && <li className="personpicker__note" role="presentation">Searching…</li>}
           {status === 'error' && (
@@ -203,7 +251,8 @@ export function PersonPicker({ value, onChange }: { value: string; onChange: (pe
               </span>
             </li>
           ))}
-        </ul>
+        </ul>,
+        document.body,
       )}
     </div>
   );

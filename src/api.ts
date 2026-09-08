@@ -407,6 +407,49 @@ export async function setUserGroups(userId: string, groupIds: string[]): Promise
   return ((await res.json()) as { user: ManagedUser }).user;
 }
 
+/** Change your own PIN. Needs the current one — a session only proves somebody
+ *  is at a browser that was signed in. Every session ends, this one included. */
+export async function changeOwnPin(currentPin: string, newPin: string): Promise<void> {
+  const res = await fetch('/api/auth/pin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...requestHeaders() },
+    body: JSON.stringify({ currentPin, newPin }),
+  });
+  await requireOk(res);
+}
+
+/** Reset somebody else's PIN. Full administrators only — see the route. */
+export async function resetUserPin(userId: string, pin: string): Promise<ManagedUser> {
+  const res = await fetch(`/api/users/${encodeURIComponent(userId)}/pin`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...requestHeaders() },
+    body: JSON.stringify({ pin }),
+  });
+  await requireOk(res);
+  return ((await res.json()) as { user: ManagedUser }).user;
+}
+
+/** Revoke or restore access. Not a delete: the audit trail points at the row. */
+export async function setUserActive(userId: string, active: boolean): Promise<ManagedUser> {
+  const res = await fetch(`/api/users/${encodeURIComponent(userId)}/active`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...requestHeaders() },
+    body: JSON.stringify({ active }),
+  });
+  await requireOk(res);
+  return ((await res.json()) as { user: ManagedUser }).user;
+}
+
+export async function updateGroup(groupId: string, input: { name?: string; permissions?: string[] }): Promise<PermissionGroup> {
+  const res = await fetch(`/api/groups/${encodeURIComponent(groupId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...requestHeaders() },
+    body: JSON.stringify(input),
+  });
+  await requireOk(res);
+  return ((await res.json()) as { group: PermissionGroup }).group;
+}
+
 export async function createGroup(name: string, permissions: string[]): Promise<PermissionGroup> {
   const res = await fetch('/api/groups', {
     method: 'POST',

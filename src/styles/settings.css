@@ -131,7 +131,10 @@
 
 .users__row {
   display: grid;
-  grid-template-columns: minmax(160px, 0.6fr) 1fr;
+  /* Identity, groups, then the actions that change access. The third column is
+     sized to its content so a row with no actions (@admin) does not leave a
+     hole where the buttons would be. */
+  grid-template-columns: minmax(160px, 0.6fr) 1fr auto;
   align-items: center;
   gap: 14px;
   padding: 10px 12px;
@@ -172,6 +175,52 @@
   font-size: 0.75rem;
 }
 
+.users__actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.users__toolbar {
+  display: flex;
+  gap: 8px;
+}
+
+/* A group row answers "what does this let someone do" in one line, and opens a
+   dialog to change it — the permission set is edited behind one Save, so the
+   row itself needs no controls beyond Edit. */
+.users__row--group {
+  grid-template-columns: minmax(160px, 0.5fr) 1fr auto;
+}
+
+.users__summary {
+  margin: 0;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+/* A revoked account stays listed — the audit trail points at it — so it reads
+   as present but inert rather than disappearing and leaving its history
+   attached to a name nobody can find. */
+.users__row--revoked {
+  opacity: 0.55;
+}
+
+.users__row--revoked .users__identity strong {
+  text-decoration: line-through;
+}
+
+.btn--danger {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  color: var(--danger);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
 /* ── Planning Center person picker (Users → Create user) ─────────────────── */
 .personpicker {
   position: relative;
@@ -209,6 +258,17 @@
   border-radius: var(--radius);
   background: var(--bg-raised);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+}
+
+/* Portalled to <body> and positioned against the input, so no ancestor can
+   clip it. Above `.confirm` (z-index 100) because it has to float over the
+   dialog it was opened from. Its top/left/width/max-height are set inline from
+   the input's rect — see PersonPicker. */
+.personpicker__results--floating {
+  position: fixed;
+  right: auto;
+  z-index: 300;
+  margin: 0;
 }
 
 .personpicker__option,
@@ -304,6 +364,7 @@
   .users__grid { grid-template-columns: 1fr; }
   .users__row { grid-template-columns: 1fr; }
   .users__groups { justify-content: flex-start; }
+  .users__actions { justify-content: flex-start; }
 }
 
 /* Registered stations */
@@ -1463,9 +1524,11 @@
   min-height: 0;
   overflow: auto;
   /* Focus rings and the colour swatch's shadow must not be clipped by the
-     scroll container. */
-  padding: 2px;
-  margin: -2px;
+     scroll container. A focused field draws `outline: 2px` at
+     `outline-offset: 2px`, so it reaches 4px beyond its own box — at 2px the
+     glow came out shaved down both sides of the dialog. */
+  padding: 5px;
+  margin: -5px;
 }
 
 .editdlg__body > .btn { align-self: flex-start; }

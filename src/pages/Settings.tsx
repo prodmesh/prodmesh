@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDown, ArrowUp, CircleUser, MonitorCog, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, CircleUser, MonitorCog, Trash2, X } from 'lucide-react';
 import { Checkbox } from '../components/Checkbox';
 import { HelpTip } from '../components/HelpTip';
+import { EditDialog } from '../components/form/EditDialog';
+import { Field } from '../components/form/Field';
+import { FormRow } from '../components/form/FormRow';
+import { useDraft } from '../components/form/useDraft';
+import { useCan } from '../lib/identity';
 import { PersonPicker } from '../components/PersonPicker';
 import { PasswordInput } from '../components/PasswordInput';
 import { SelectField } from '../components/SelectField';
@@ -27,7 +32,10 @@ import {
   getUserDirectory,
   createUser,
   createGroup,
+  updateGroup,
   setUserGroups,
+  setUserActive,
+  resetUserPin,
   getStations,
   updateStation,
   revokeStation,
@@ -43,6 +51,8 @@ import {
   type ChecklistTemplatesInfo,
   type TemplateItem,
   type UserDirectory,
+  type ManagedUser,
+  type PermissionGroup,
   type ManagedStation,
   logoSrc,
   uploadLogo,
@@ -178,45 +188,44 @@ function AdminPanels({ section }: { section: AdminSection }) {
 // ── Save/action feedback ─────────────────────────────────────────────────────
 //  Success is green, errors are red — a panel must never announce a failure in
 //  the success color, so panels carry the kind alongside the text.
+const toggle = (values: string[], value: string) =>
+  values.includes(value) ? values.filter((x) => x !== value) : [...values, value];
+
+/** The users screen refuses in ways that need explaining rather than echoing:
+ *  each is a deliberate guard, and a bare "403" tells nobody what to do next. */
+function guardError(err: unknown, who: string): Feedback {
+  const code = String((err as Error)?.message ?? err);
+  if (code.includes('cannot_change_own_groups')) {
+    return { kind: 'err', text: 'You cannot change your own groups. Ask another administrator.' };
+  }
+  if (code.includes('cannot_grant_unheld_permissions')) {
+    return { kind: 'err', text: `You can only grant permissions you hold yourself, so ${who}'s access was not changed.` };
+  }
+  if (code.includes('cannot_manage_higher_privilege')) {
+    return { kind: 'err', text: `${who} holds permissions you do not, so only a full administrator can change their access.` };
+  }
+  if (code.includes('cannot_deactivate_yourself')) {
+    return { kind: 'err', text: 'You cannot revoke your own access — nobody could undo it but you.' };
+  }
+  return fail(err);
+}
+
 export function UserManagementPanel() {
   const [directory, setDirectory] = useState<UserDirectory | null>(null);
-  const [user, setUser] = useState({ displayName: '', username: '', pin: '', planningCenterPersonId: '' });
-  const [userGroups, setUserGroupsDraft] = useState<string[]>([]);
-  const [groupName, setGroupName] = useState('');
-  const [groupPermissions, setGroupPermissions] = useState<string[]>([]);
+  const [resetting, setResetting] = useState<ManagedUser | null>(null);
+  const [editingGroup, setEditingGroup] = useState<PermissionGroup | null>(null);
+  // Only a full administrator may reset somebody else's PIN — see the route.
+  // Guidance, not enforcement: an identity that has not loaded yet answers yes
+  // (see lib/identity), so this hides the button from someone known to lack
+  // '*' and leaves the server to refuse everyone else.
+  const isFullAdmin = useCan('*');
+  const [creating, setCreating] = useState<'user' | 'group' | null>(null);
   const [msg, setMsg] = useState<Feedback>(null);
 
   const refresh = () => getUserDirectory().then(setDirectory).catch((err) => setMsg(fail(err)));
   useEffect(() => { refresh(); }, []);
 
   if (!directory) return null;
-
-  const addUser = async () => {
-    setMsg(null);
-    try {
-      await createUser({
-        ...user,
-        planningCenterPersonId: user.planningCenterPersonId || null,
-        groupIds: userGroups,
-      });
-      setUser({ displayName: '', username: '', pin: '', planningCenterPersonId: '' });
-      setUserGroupsDraft([]);
-      setMsg(ok('User created.'));
-      refresh();
-    } catch (err) { setMsg(fail(err)); }
-  };
-
-  const addGroup = async () => {
-    setMsg(null);
-    try {
-      await createGroup(groupName, groupPermissions);
-      setGroupName(''); setGroupPermissions([]); setMsg(ok('Permission group created.'));
-      refresh();
-    } catch (err) { setMsg(fail(err)); }
-  };
-
-  const toggle = (values: string[], value: string) =>
-    values.includes(value) ? values.filter((x) => x !== value) : [...values, value];
 
   return (
     <section className="panel users">
@@ -227,31 +236,50 @@ export function UserManagementPanel() {
         </h2>
       </div>
 
-      <div className="users__grid">
-        <div className="users__editor">
-          <h3>Create user</h3>
-          <input className="field" placeholder="Display name" value={user.displayName} onChange={(e) => setUser({ ...user, displayName: e.target.value })} />
-          <input className="field" placeholder="Username" autoCapitalize="none" value={user.username} onChange={(e) => setUser({ ...user, username: e.target.value })} />
-          <PasswordInput className="field" placeholder="PIN" inputMode="numeric" value={user.pin} onChange={(e) => setUser({ ...user, pin: e.target.value })} />
-          <PersonPicker value={user.planningCenterPersonId} onChange={(personId) => setUser({ ...user, planningCenterPersonId: personId })} />
-          <div className="users__checks">
-            {directory.groups.map((group) => (
-              <Checkbox key={group.id} label={group.name} checked={userGroups.includes(group.id)} onChange={() => setUserGroupsDraft(toggle(userGroups, group.id))} />
-            ))}
-          </div>
-          <button className="btn btn--primary" disabled={!user.displayName || !user.username || user.pin.length < 4} onClick={addUser}>Create user</button>
-        </div>
+      {/* Both creators were forms sitting open on the page, which is what the
+          room page looked like before #23: every editor visible at once, each
+          with its own button. Making something is now a dialog like changing
+          it, so the page reads as the two lists it is. */}
+      <div className="users__toolbar">
+        <button className="btn btn--primary" onClick={() => setCreating('user')}>New user</button>
+        <button className="btn" onClick={() => setCreating('group')}>New permission group</button>
+      </div>
 
-        <div className="users__editor">
-          <h3>Create permission group</h3>
-          <input className="field" placeholder="Group name" value={groupName} onChange={(e) => setGroupName(e.target.value)} />
-          <div className="users__checks users__checks--permissions">
-            {directory.permissions.map((permission) => (
-              <Checkbox key={permission.id} label={<><strong>{permission.label}</strong><small>{permission.id}</small></>} checked={groupPermissions.includes(permission.id)} onChange={() => setGroupPermissions(toggle(groupPermissions, permission.id))} />
-            ))}
+      {/* Groups were create-only, so a permission set was fixed the moment it
+          was made and the way to change one was to make another. A summary row
+          that opens a dialog, following the room cards (#23): seventeen
+          checkboxes per group inline turned this list into a wall of them, and
+          the answer a reader wants from a row is "what does this group do",
+          not "which of seventeen boxes are ticked".
+
+          Administrators is not here — its every-permission is computed from
+          system_key rather than stored, so there is nothing to edit. */}
+      <div className="users__list">
+        <h3>Permission groups</h3>
+        {directory.groups.filter((group) => group.permissions?.[0] !== '*').map((group) => (
+          <div className="users__row users__row--group" key={group.id}>
+            <div className="users__identity">
+              <span><strong>{group.name}</strong><small>
+                {group.permissions.length
+                  ? `${group.permissions.length} permission${group.permissions.length === 1 ? '' : 's'}`
+                  : 'No permissions — members get read-only access'}
+              </small></span>
+            </div>
+            {/* The labels, not the ids: this line is the answer to "what does
+                this group let someone do". */}
+            <p className="users__summary">
+              {group.permissions.length
+                ? directory.permissions
+                  .filter((permission) => group.permissions.includes(permission.id))
+                  .map((permission) => permission.label)
+                  .join(' · ')
+                : '—'}
+            </p>
+            <div className="users__actions">
+              <button className="btn btn--sm" onClick={() => setEditingGroup(group)}>Edit</button>
+            </div>
           </div>
-          <button className="btn btn--primary" disabled={groupName.trim().length < 2} onClick={addGroup}>Create group</button>
-        </div>
+        ))}
       </div>
 
       <div className="users__list">
@@ -262,31 +290,280 @@ export function UserManagementPanel() {
           <p className="settings__muted">No named users yet — only the built-in @admin. Add people so the audit log records who did what.</p>
         )}
         {directory.users.map((entry) => (
-          <div className="users__row" key={entry.id}>
+          <div className={`users__row${entry.active ? '' : ' users__row--revoked'}`} key={entry.id}>
             <div className="users__identity">
               <span className="users__avatar" role="img" aria-label={`${entry.displayName} avatar`}>
                 {entry.avatarUrl
                   ? <img src={entry.avatarUrl} alt="" />
                   : <CircleUser size={28} />}
               </span>
-              <span><strong>{entry.displayName}</strong><small>@{entry.username}{entry.planningCenterPersonId ? ` · PCO ${entry.planningCenterPersonId}` : ''}</small></span>
+              <span><strong>{entry.displayName}</strong><small>@{entry.username}{entry.planningCenterPersonId ? ` · PCO ${entry.planningCenterPersonId}` : ''}{entry.active ? '' : ' · access revoked'}</small></span>
             </div>
             <div className="users__groups">
               {directory.groups.map((group) => {
                 const checked = entry.groups.some((g) => g.id === group.id);
-                return <Checkbox key={group.id} label={group.name} checked={checked} onChange={async () => {
+                return <Checkbox key={group.id} label={group.name} checked={checked} disabled={!entry.active} onChange={async () => {
                   const next = toggle(entry.groups.map((g) => g.id), group.id);
-                  await setUserGroups(entry.id, next);
+                  // The server refuses self-promotion and granting authority
+                  // you do not hold. Those refusals are the screen's job to
+                  // explain — an unhandled throw here just made the checkbox
+                  // silently spring back.
+                  try {
+                    await setUserGroups(entry.id, next);
+                    setMsg(ok(`Updated ${entry.displayName}'s groups.`));
+                  } catch (err) {
+                    setMsg(guardError(err, entry.displayName));
+                  }
                   refresh();
                 }} />;
               })}
+            </div>
+            <div className="users__actions">
+              {/* @admin's PIN lives in Admin → General and its access cannot be
+                  revoked — it is the way back into a box in a building. */}
+              {entry.username !== 'admin' && (
+                <>
+                  {isFullAdmin && (
+                    <button className="btn btn--sm" onClick={() => setResetting(entry)}>Reset PIN</button>
+                  )}
+                  <button
+                    className={`btn btn--sm${entry.active ? ' btn--danger' : ''}`}
+                    onClick={async () => {
+                      try {
+                        await setUserActive(entry.id, !entry.active);
+                        setMsg(ok(entry.active
+                          ? `${entry.displayName} can no longer sign in.`
+                          : `${entry.displayName} can sign in again.`));
+                      } catch (err) {
+                        setMsg(guardError(err, entry.displayName));
+                      }
+                      refresh();
+                    }}
+                  >
+                    {entry.active ? 'Revoke access' : 'Restore access'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         ))}
       </div>
       <Msg msg={msg} />
+      {creating === 'user' && (
+        <CreateUserDialog
+          groups={directory.groups}
+          onClose={() => setCreating(null)}
+          onCreated={(name) => { setCreating(null); setMsg(ok(`Created ${name}.`)); refresh(); }}
+        />
+      )}
+      {creating === 'group' && (
+        <GroupDialog
+          permissions={directory.permissions}
+          onClose={() => setCreating(null)}
+          onSaved={(text) => { setCreating(null); setMsg(ok(text)); refresh(); }}
+        />
+      )}
+      {editingGroup && (
+        <GroupDialog
+          group={editingGroup}
+          permissions={directory.permissions}
+          onClose={() => setEditingGroup(null)}
+          onSaved={(text) => { setEditingGroup(null); setMsg(ok(text)); refresh(); }}
+        />
+      )}
+      {resetting && (
+        <ResetPinDialog
+          user={resetting}
+          onClose={() => setResetting(null)}
+          onDone={(text) => { setResetting(null); setMsg(ok(text)); refresh(); }}
+        />
+      )}
     </section>
   );
+}
+
+/** Create a person's account.
+ *
+ *  A PIN is set here and never shown again — the same rule the reset dialog
+ *  states — so the field says what to do with it rather than leaving somebody
+ *  to discover later that it cannot be looked up.
+ */
+function CreateUserDialog({ groups, onClose, onCreated }: {
+  groups: PermissionGroup[];
+  onClose: () => void;
+  onCreated: (name: string) => void;
+}) {
+  const f = useDraft(
+    { displayName: '', username: '', pin: '', planningCenterPersonId: '', groupIds: [] as string[] },
+    async (draft) => {
+      const stored = await createUser({
+        displayName: draft.displayName.trim(),
+        username: draft.username.trim(),
+        pin: draft.pin,
+        planningCenterPersonId: draft.planningCenterPersonId || null,
+        groupIds: draft.groupIds,
+      });
+      onCreated(stored.displayName);
+      return draft;
+    },
+  );
+  const { draft } = f;
+
+  return (
+    <EditDialog
+      title="New user"
+      help="Access is the union of the groups you tick. Someone in no group can still sign in — they just cannot do anything an unauthenticated station could not."
+      form={f}
+      onClose={onClose}
+      saveLabel="Create user"
+    >
+      <FormRow>
+        <Field label="Display name" width="grow">
+          <input className="field" autoFocus placeholder="e.g. Sam Rivera"
+            value={draft.displayName} onChange={(e) => f.patch({ displayName: e.target.value })} />
+        </Field>
+      </FormRow>
+      <FormRow>
+        <Field label="Username" width="grow">
+          <input className="field" autoCapitalize="none" placeholder="e.g. srivera"
+            value={draft.username} onChange={(e) => f.patch({ username: e.target.value })} />
+        </Field>
+        <Field label="PIN" width="sm">
+          <PasswordInput className="field mono" inputMode="numeric"
+            value={draft.pin} onChange={(e) => f.patch({ pin: e.target.value })} />
+        </Field>
+      </FormRow>
+      {/* Said out loud rather than behind a tooltip: it is the one thing about
+          this form somebody has to act on before closing it. */}
+      <p className="settings__muted">
+        They sign in with this PIN. Tell it to them yourself — it cannot be read
+        back later, only reset.
+      </p>
+      <PersonPicker
+        value={draft.planningCenterPersonId}
+        onChange={(personId) => f.patch({ planningCenterPersonId: personId })}
+      />
+      <div className="users__checks">
+        {groups.map((group) => (
+          <Checkbox key={group.id} label={group.name}
+            checked={draft.groupIds.includes(group.id)}
+            onChange={() => f.patch({ groupIds: toggle(draft.groupIds, group.id) })} />
+        ))}
+      </div>
+    </EditDialog>
+  );
+}
+
+/** Edit one group's permissions behind a single Save.
+ *
+ *  Deliberately not save-per-checkbox like the user rows above. Those toggle
+ *  one membership; this is a permission SET, where the intermediate states on
+ *  the way to what somebody meant are real grants — each one written, audited,
+ *  and live for whoever is signed in at the time. One Save keeps the
+ *  half-finished thought out of the database.
+ */
+function GroupDialog({ group, permissions, onClose, onSaved }: {
+  /** Absent means this is creating one. The two differ only in which call the
+   *  draft is saved with, so they share a dialog rather than a near-copy. */
+  group?: PermissionGroup;
+  permissions: { id: string; label: string; description: string }[];
+  onClose: () => void;
+  onSaved: (message: string) => void;
+}) {
+  const f = useDraft({ name: group?.name ?? '', permissions: group?.permissions ?? [] }, async (draft) => {
+    const name = draft.name.trim();
+    const stored = group
+      ? await updateGroup(group.id, { name, permissions: draft.permissions })
+      : await createGroup(name, draft.permissions);
+    onSaved(group ? `Updated ${stored.name}.` : `Created ${stored.name}.`);
+    return { name: stored.name, permissions: stored.permissions };
+  });
+  const { draft } = f;
+
+  return (
+    <EditDialog
+      title={group ? `Edit ${group.name}` : 'New permission group'}
+      help="A member's access is the union of every group they are in. Removing a permission here removes it from everyone in this group."
+      form={f}
+      onClose={onClose}
+      saveLabel={group ? 'Save' : 'Create group'}
+      wide
+    >
+      <FormRow>
+        <Field label="Group name" width="grow">
+          <input className="field" autoFocus={!group} placeholder="e.g. Booth Operators"
+            value={draft.name} onChange={(e) => f.patch({ name: e.target.value })} />
+        </Field>
+      </FormRow>
+      {draft.name.trim().length < 2 && (
+        <p className="settings__muted">A group needs a name before it can be saved.</p>
+      )}
+      <div className="users__checks users__checks--permissions">
+        {permissions.map((permission) => (
+          <Checkbox
+            key={permission.id}
+            label={<><strong>{permission.label}</strong><small>{permission.description}</small></>}
+            checked={draft.permissions.includes(permission.id)}
+            onChange={() => f.patch({ permissions: toggle(draft.permissions, permission.id) })}
+          />
+        ))}
+      </div>
+    </EditDialog>
+  );
+}
+
+/** Give somebody a new PIN when they have forgotten theirs. Their sessions end
+ *  with the old credential, so this is a reset and not a peek: nobody, this
+ *  screen included, can read what the PIN used to be. */
+function ResetPinDialog({ user, onClose, onDone }: {
+  user: ManagedUser; onClose: () => void; onDone: (text: string) => void;
+}) {
+  const [pin, setPin] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  // Escape closes it. A dialog that declares aria-modal and then offers only a
+  // close button leaves keyboard users hunting for the one way out.
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', escape);
+    return () => document.removeEventListener('keydown', escape);
+  }, [onClose]);
+
+  return (
+    <div className="identity" role="dialog" aria-modal="true" aria-labelledby="resetpin-title">
+      <div className="identity__card">
+        <button className="identity__close" onClick={onClose} aria-label="Close"><X size={17} /></button>
+        <p className="eyebrow">@{user.username}</p>
+        <h2 id="resetpin-title">Set a new PIN for {user.displayName}</h2>
+        <p className="identity__hint">
+          They are signed out everywhere as soon as it changes. Tell them the new
+          PIN yourself — it cannot be read back afterwards.
+        </p>
+        <label className="identity__field">
+          <span>New PIN</span>
+          <PasswordInput className="field mono" inputMode="numeric" autoComplete="new-password"
+            value={pin} onChange={(e) => setPin(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && pin.length >= 4 && submit()} />
+        </label>
+        <button className="btn btn--primary identity__submit" disabled={busy || pin.length < 4} onClick={submit}>
+          Set PIN
+        </button>
+        {error && <p className="identity__error">{error}</p>}
+      </div>
+    </div>
+  );
+
+  async function submit() {
+    setBusy(true); setError('');
+    try {
+      await resetUserPin(user.id, pin);
+      onDone(`${user.displayName}'s PIN is set. They are signed out everywhere.`);
+    } catch (err) {
+      setError(String((err as Error).message ?? err));
+      setBusy(false);
+    }
+  }
 }
 
 // ── Registered browser stations ─────────────────────────────────────────────
