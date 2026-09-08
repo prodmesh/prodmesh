@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { listenOnLoopback } from './testServer.js';
 
 process.env.PRODMESH_DATA_DIR = mkdtempSync(join(tmpdir(), 'prodmesh-roomsdb-'));
 const { app } = await import('./index.js');
@@ -24,8 +25,7 @@ let server;
 let adminToken;
 let operatorToken;
 before(async () => {
-  server = app.listen(0);
-  base = `http://127.0.0.1:${server.address().port}`;
+  ({ server, base } = await listenOnLoopback(app));
   adminToken = (await (await post('/api/auth/admin', { pin: 'admin1234' })).json()).token;
   const login = await post('/api/auth/login', { username: 'operator', pin: '2468' }, null, station.token);
   operatorToken = (await login.json()).token;

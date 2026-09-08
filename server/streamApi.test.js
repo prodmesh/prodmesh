@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { listenOnLoopback } from './testServer.js';
 
 process.env.PRODMESH_DATA_DIR = mkdtempSync(join(tmpdir(), 'prodmesh-streamapi-'));
 const hub = await import('./streamHub.js');
@@ -21,9 +22,7 @@ const ROOM = 'north-youth';
 let server;
 let base;
 before(async () => {
-  server = app.listen(0);
-  await new Promise((r) => server.once('listening', r));
-  base = `http://127.0.0.1:${server.address().port}`;
+  ({ server, base } = await listenOnLoopback(app));
 });
 after(() => {
   server.closeAllConnections?.();

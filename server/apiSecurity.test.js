@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { listenOnLoopback } from './testServer.js';
 
 process.env.PRODMESH_DATA_DIR = mkdtempSync(join(tmpdir(), 'prodmesh-sec-'));
 const { app } = await import('./index.js');
@@ -31,8 +32,7 @@ let operatorToken;
 let checkerToken;
 let runnerToken;
 before(async () => {
-  server = app.listen(0);
-  base = `http://127.0.0.1:${server.address().port}`;
+  ({ server, base } = await listenOnLoopback(app));
   const login = async (username, pin) => {
     const res = await post('/api/auth/login', { username, pin }, null, station.token);
     return (await res.json()).token;

@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { listenOnLoopback } from './testServer.js';
 
 process.env.PRODMESH_DATA_DIR = mkdtempSync(join(tmpdir(), 'prodmesh-viewsapi-'));
 const { app } = await import('./index.js');
@@ -27,8 +28,7 @@ let editorToken;
 let viewerToken;
 
 before(async () => {
-  server = app.listen(0);
-  base = `http://127.0.0.1:${server.address().port}`;
+  ({ server, base } = await listenOnLoopback(app));
   const login = async (username, pin) =>
     (await (await send('POST', '/api/auth/login', { username, pin }, null)).json()).token;
   editorToken = await login('editor', '1234');

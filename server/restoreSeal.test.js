@@ -10,6 +10,7 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
+import { listenOnLoopback } from './testServer.js';
 
 const DIR = mkdtempSync(join(tmpdir(), 'prodmesh-seal-'));
 process.env.PRODMESH_DATA_DIR = DIR;
@@ -37,9 +38,8 @@ function onDisk() {
 
 let base;
 let server;
-before(() => {
-  server = app.listen(0);
-  base = `http://127.0.0.1:${server.address().port}`;
+before(async () => {
+  ({ server, base } = await listenOnLoopback(app));
 });
 after(() => server.close());
 
