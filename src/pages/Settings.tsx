@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowDown, ArrowUp, CircleUser, MonitorCog, Trash2 } from 'lucide-react';
 import { Checkbox } from '../components/Checkbox';
 import { HelpTip } from '../components/HelpTip';
+import { useCan } from '../lib/identity';
 import { PersonPicker } from '../components/PersonPicker';
 import { PasswordInput } from '../components/PasswordInput';
 import { SelectField } from '../components/SelectField';
@@ -27,7 +28,10 @@ import {
   getUserDirectory,
   createUser,
   createGroup,
+  updateGroup,
   setUserGroups,
+  setUserActive,
+  resetUserPin,
   getStations,
   updateStation,
   revokeStation,
@@ -43,6 +47,7 @@ import {
   type ChecklistTemplatesInfo,
   type TemplateItem,
   type UserDirectory,
+  type ManagedUser,
   type ManagedStation,
   logoSrc,
   uploadLogo,
@@ -178,8 +183,33 @@ function AdminPanels({ section }: { section: AdminSection }) {
 // ── Save/action feedback ─────────────────────────────────────────────────────
 //  Success is green, errors are red — a panel must never announce a failure in
 //  the success color, so panels carry the kind alongside the text.
+/** The users screen refuses in ways that need explaining rather than echoing:
+ *  each is a deliberate guard, and a bare "403" tells nobody what to do next. */
+function guardError(err: unknown, who: string): Feedback {
+  const code = String((err as Error)?.message ?? err);
+  if (code.includes('cannot_change_own_groups')) {
+    return { kind: 'err', text: 'You cannot change your own groups. Ask another administrator.' };
+  }
+  if (code.includes('cannot_grant_unheld_permissions')) {
+    return { kind: 'err', text: `You can only grant permissions you hold yourself, so ${who}'s access was not changed.` };
+  }
+  if (code.includes('cannot_manage_higher_privilege')) {
+    return { kind: 'err', text: `${who} holds permissions you do not, so only a full administrator can change their access.` };
+  }
+  if (code.includes('cannot_deactivate_yourself')) {
+    return { kind: 'err', text: 'You cannot revoke your own access — nobody could undo it but you.' };
+  }
+  return fail(err);
+}
+
 export function UserManagementPanel() {
   const [directory, setDirectory] = useState<UserDirectory | null>(null);
+  const [resetting, setResetting] = useState<ManagedUser | null>(null);
+  // Only a full administrator may reset somebody else's PIN — see the route.
+  // Guidance, not enforcement: an identity that has not loaded yet answers yes
+  // (see lib/identity), so this hides the button from someone known to lack
+  // '*' and leaves the server to refuse everyone else.
+  const isFullAdmin = useCan('*');
   const [user, setUser] = useState({ displayName: '', username: '', pin: '', planningCenterPersonId: '' });
   const [userGroups, setUserGroupsDraft] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
@@ -254,6 +284,42 @@ export function UserManagementPanel() {
         </div>
       </div>
 
+      {/* Groups were create-only, so a permission set was fixed the moment it
+          was made and the way to change one was to make another. Administrators
+          is not here: its every-permission is computed rather than stored. */}
+      <div className="users__list">
+        <h3>Permission groups</h3>
+        {directory.groups.filter((group) => group.permissions?.[0] !== '*').map((group) => (
+          <div className="users__row" key={group.id}>
+            <div className="users__identity">
+              <span><strong>{group.name}</strong><small>
+                {group.permissions.length
+                  ? `${group.permissions.length} permission${group.permissions.length === 1 ? '' : 's'}`
+                  : 'No permissions — members get read-only access'}
+              </small></span>
+            </div>
+            <div className="users__checks users__checks--permissions">
+              {directory.permissions.map((permission) => (
+                <Checkbox
+                  key={permission.id}
+                  label={<><strong>{permission.label}</strong><small>{permission.id}</small></>}
+                  checked={group.permissions.includes(permission.id)}
+                  onChange={async () => {
+                    try {
+                      await updateGroup(group.id, { permissions: toggle(group.permissions, permission.id) });
+                      setMsg(ok(`Updated ${group.name}.`));
+                    } catch (err) {
+                      setMsg(guardError(err, group.name));
+                    }
+                    refresh();
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
       <div className="users__list">
         <h3>Current users</h3>
         {/* @admin is always here now (ADR 0012), so an empty list is no longer
@@ -262,31 +328,118 @@ export function UserManagementPanel() {
           <p className="settings__muted">No named users yet — only the built-in @admin. Add people so the audit log records who did what.</p>
         )}
         {directory.users.map((entry) => (
-          <div className="users__row" key={entry.id}>
+          <div className={`users__row${entry.active ? '' : ' users__row--revoked'}`} key={entry.id}>
             <div className="users__identity">
               <span className="users__avatar" role="img" aria-label={`${entry.displayName} avatar`}>
                 {entry.avatarUrl
                   ? <img src={entry.avatarUrl} alt="" />
                   : <CircleUser size={28} />}
               </span>
-              <span><strong>{entry.displayName}</strong><small>@{entry.username}{entry.planningCenterPersonId ? ` · PCO ${entry.planningCenterPersonId}` : ''}</small></span>
+              <span><strong>{entry.displayName}</strong><small>@{entry.username}{entry.planningCenterPersonId ? ` · PCO ${entry.planningCenterPersonId}` : ''}{entry.active ? '' : ' · access revoked'}</small></span>
             </div>
             <div className="users__groups">
               {directory.groups.map((group) => {
                 const checked = entry.groups.some((g) => g.id === group.id);
-                return <Checkbox key={group.id} label={group.name} checked={checked} onChange={async () => {
+                return <Checkbox key={group.id} label={group.name} checked={checked} disabled={!entry.active} onChange={async () => {
                   const next = toggle(entry.groups.map((g) => g.id), group.id);
-                  await setUserGroups(entry.id, next);
+                  // The server refuses self-promotion and granting authority
+                  // you do not hold. Those refusals are the screen's job to
+                  // explain — an unhandled throw here just made the checkbox
+                  // silently spring back.
+                  try {
+                    await setUserGroups(entry.id, next);
+                    setMsg(ok(`Updated ${entry.displayName}'s groups.`));
+                  } catch (err) {
+                    setMsg(guardError(err, entry.displayName));
+                  }
                   refresh();
                 }} />;
               })}
+            </div>
+            <div className="users__actions">
+              {/* @admin's PIN lives in Admin → General and its access cannot be
+                  revoked — it is the way back into a box in a building. */}
+              {entry.username !== 'admin' && (
+                <>
+                  {isFullAdmin && (
+                    <button className="btn btn--sm" onClick={() => setResetting(entry)}>Reset PIN</button>
+                  )}
+                  <button
+                    className={`btn btn--sm${entry.active ? ' btn--danger' : ''}`}
+                    onClick={async () => {
+                      try {
+                        await setUserActive(entry.id, !entry.active);
+                        setMsg(ok(entry.active
+                          ? `${entry.displayName} can no longer sign in.`
+                          : `${entry.displayName} can sign in again.`));
+                      } catch (err) {
+                        setMsg(guardError(err, entry.displayName));
+                      }
+                      refresh();
+                    }}
+                  >
+                    {entry.active ? 'Revoke access' : 'Restore access'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         ))}
       </div>
       <Msg msg={msg} />
+      {resetting && (
+        <ResetPinDialog
+          user={resetting}
+          onClose={() => setResetting(null)}
+          onDone={(text) => { setResetting(null); setMsg(ok(text)); refresh(); }}
+        />
+      )}
     </section>
   );
+}
+
+/** Give somebody a new PIN when they have forgotten theirs. Their sessions end
+ *  with the old credential, so this is a reset and not a peek: nobody, this
+ *  screen included, can read what the PIN used to be. */
+function ResetPinDialog({ user, onClose, onDone }: {
+  user: ManagedUser; onClose: () => void; onDone: (text: string) => void;
+}) {
+  const [pin, setPin] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  return (
+    <div className="identity__scrim" role="presentation" onClick={onClose}>
+      <div className="identity" role="dialog" aria-modal="true" aria-labelledby="resetpin-title" onClick={(e) => e.stopPropagation()}>
+        <p className="eyebrow">@{user.username}</p>
+        <h2 id="resetpin-title">Set a new PIN for {user.displayName}</h2>
+        <p className="identity__hint">
+          They are signed out everywhere as soon as it changes. Tell them the new
+          PIN yourself — it cannot be read back afterwards.
+        </p>
+        <label className="identity__field">
+          <span>New PIN</span>
+          <PasswordInput className="field mono" inputMode="numeric" autoComplete="new-password"
+            value={pin} onChange={(e) => setPin(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && pin.length >= 4 && submit()} />
+        </label>
+        <button className="btn btn--primary identity__submit" disabled={busy || pin.length < 4} onClick={submit}>
+          Set PIN
+        </button>
+        {error && <p className="identity__error">{error}</p>}
+      </div>
+    </div>
+  );
+
+  async function submit() {
+    setBusy(true); setError('');
+    try {
+      await resetUserPin(user.id, pin);
+      onDone(`${user.displayName}'s PIN is set. They are signed out everywhere.`);
+    } catch (err) {
+      setError(String((err as Error).message ?? err));
+      setBusy(false);
+    }
+  }
 }
 
 // ── Registered browser stations ─────────────────────────────────────────────

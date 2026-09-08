@@ -11,6 +11,7 @@ import {
   CircleUser,
   ClipboardList,
   MonitorCog,
+  KeyRound,
   LockKeyhole,
   ScrollText,
   Settings2,
@@ -21,10 +22,11 @@ import {
   PanelLeftOpen,
   Wrench,
 } from 'lucide-react';
-import { getAuthStatus, getConfig, logoSrc, logoutAdmin, type AuthStatus, type Station } from '../api';
+import { clearToken, getAuthStatus, getConfig, logoSrc, logoutAdmin, type AuthStatus, type Station } from '../api';
 import { HelpDrawer } from '../components/HelpDrawer';
 import { AssistanceBar } from '../components/AssistanceBar';
 import { AssistanceDialog } from '../components/AssistanceDialog';
+import { ChangePinDialog } from '../components/ChangePinDialog';
 import { ALL_CAMPUSES, CampusContext } from './campus';
 import { ChurchContext, EMPTY_CHURCH } from './church';
 import { IdentityContext } from '../lib/identity';
@@ -73,6 +75,7 @@ export function AppShell() {
   // in — which reads as "your session broke", the wrong diagnosis entirely.
   const [denied, setDenied] = useState<{ permission: string; label: string } | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [pinOpen, setPinOpen] = useState(false);
   const [confirmLock, setConfirmLock] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [railLabelsDismissed, setRailLabelsDismissed] = useState(false);
@@ -401,6 +404,7 @@ export function AppShell() {
                     {identity.user?.avatarUrl ? <img src={identity.user.avatarUrl} alt="" /> : <CircleUser size={28} />}
                     <span><strong>{operatorName}</strong><small>@{identity.user?.username} · {stationName}</small></span>
                   </div>
+                  <button onClick={() => { setAccountOpen(false); setPinOpen(true); }}><KeyRound size={14} /> Change my PIN</button>
                   <button onClick={() => setConfirmLock(true)}><LockKeyhole size={14} /> Lock station</button>
                 </div>
               )}
@@ -422,6 +426,19 @@ export function AppShell() {
           {offLimits ? <Navigate to={lockedPrefix!} replace /> : <Outlet />}
         </main>
         {assistOpen && <AssistanceDialog onClose={() => setAssistOpen(false)} />}
+        {pinOpen && (
+          <ChangePinDialog
+            onClose={() => setPinOpen(false)}
+            // The PIN moved, so every session went with it — including this
+            // one. Clearing the token locally means the shell shows read-only
+            // immediately rather than after the next 401.
+            onChanged={async () => {
+              setPinOpen(false);
+              clearToken();
+              setIdentity(await getAuthStatus());
+            }}
+          />
+        )}
         {identityOpen && (
           <IdentityDialog
             stationRequired={!identity?.station}

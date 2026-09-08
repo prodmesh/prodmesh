@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { IdentityContext } from '../lib/identity';
 import { CampusesPanel, LogsPanel, RoomConfigPanel, StationsPanel, SystemPanel, UserManagementPanel } from './Settings';
 
 const api = vi.hoisted(() => ({
@@ -11,6 +12,9 @@ const api = vi.hoisted(() => ({
   createUser: vi.fn(),
   createGroup: vi.fn(),
   setUserGroups: vi.fn(),
+  setUserActive: vi.fn(),
+  resetUserPin: vi.fn(),
+  updateGroup: vi.fn(),
   getStations: vi.fn(),
   getRooms: vi.fn(),
   getViews: vi.fn(),
@@ -52,6 +56,50 @@ describe('Users & access', () => {
       groups: [],
       permissions: [],
     });
+  });
+
+  const asIdentity = (permissions: string[], ui: React.ReactElement) => render(
+    <IdentityContext.Provider value={{
+      authenticated: true, station: null, permissions,
+      user: { id: 'me', username: 'me', displayName: 'Me', avatarUrl: null, planningCenterPersonId: null },
+    } as never}>{ui}</IdentityContext.Provider>,
+  );
+
+  it('offers a PIN reset only to a full administrator', async () => {
+    // Taking over an account is not something users.manage may do — see the
+    // route. The button is guidance; the refusal is the server's.
+    asIdentity(['users.manage'], <UserManagementPanel />);
+    await screen.findByText('Photo User');
+    expect(screen.queryByRole('button', { name: 'Reset PIN' })).toBeNull();
+
+    asIdentity(['*'], <UserManagementPanel />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Reset PIN' }).length).toBeGreaterThan(0));
+  });
+
+  it('revokes access without deleting the account, and says so on the row', async () => {
+    api.setUserActive.mockResolvedValue({});
+    asIdentity(['*'], <UserManagementPanel />);
+    const row = (await screen.findByText('Photo User')).closest('.users__row') as HTMLElement;
+    await userEvent.click(within(row).getByRole('button', { name: 'Revoke access' }));
+    expect(api.setUserActive).toHaveBeenCalledWith('with-photo', false);
+  });
+
+  it('explains a refused group change instead of silently springing back', async () => {
+    // The checkbox reverts on refresh either way; without a message that reads
+    // as the click not registering rather than as a rule.
+    api.setUserGroups.mockRejectedValue(new Error('cannot_grant_unheld_permissions'));
+    api.getUserDirectory.mockResolvedValue({
+      users: [{
+        id: 'u1', username: 'vol', displayName: 'Volunteer', planningCenterPersonId: null,
+        avatarUrl: null, active: true, groups: [], permissions: [],
+      }],
+      groups: [{ id: 'g1', name: 'Admins', permissions: ['*'] }],
+      permissions: [],
+    });
+    asIdentity(['users.manage'], <UserManagementPanel />);
+    const row = (await screen.findByText('Volunteer')).closest('.users__row') as HTMLElement;
+    await userEvent.click(within(row).getByLabelText('Admins'));
+    expect(await screen.findByText(/only grant permissions you hold yourself/i)).toBeInTheDocument();
   });
 
   it('shows a Planning Center photo or the standard placeholder for every user', async () => {
