@@ -64,12 +64,19 @@ function publishIfChanged(id, value) {
 }
 
 async function watch(id, producer, signal) {
+  let stoppedForDisabled = false;
   while (!signal.aborted) {
     if (settings.getIntegrationSettings()[id] === false) {
+      // A websocket-backed producer can otherwise remain connected after the
+      // integration is disabled. Close it once, while still leaving this loop
+      // alive so that enabling the integration recovers without a restart.
+      if (!stoppedForDisabled) producer.stop?.();
+      stoppedForDisabled = true;
       publishIfChanged(id, { connected: false, disabled: true });
       await wait(DISABLED_POLL_MS, signal);
       continue;
     }
+    stoppedForDisabled = false;
     // A producer read must never end the loop: this is the only thing keeping
     // the topic alive for every subscriber, and one bad response is not an
     // outage worth dropping them for.
@@ -92,6 +99,7 @@ function stop(id) {
   watchers.get(id)?.abort();
   watchers.delete(id);
   states.delete(id);
+  PRODUCERS.get(id)?.stop?.();
 }
 
 hub.registerTopic('integration:*', {

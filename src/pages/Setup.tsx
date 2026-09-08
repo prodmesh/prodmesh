@@ -618,7 +618,7 @@ const SETUP_INTEGRATION_GROUPS: Array<{ label: string; integrations: Integration
   { label: 'Planning & scheduling', integrations: ['planning-center'] },
   { label: 'Presentation & show control', integrations: ['propresenter', 'companion'] },
   { label: 'Audio', integrations: ['open-sound-meter', 'smaart', 'prodmesh-rta'] },
-  { label: 'Video & streaming', integrations: ['youtube', 'restream', 'resi'] },
+  { label: 'Video & streaming', integrations: ['youtube', 'restream', 'resi', 'obs'] },
   { label: 'Communication', integrations: ['slack', 'captions', 'prodcom'] },
 ];
 
@@ -726,6 +726,7 @@ function IntegrationsStep({ onBack, onNext }: { onBack: () => void; onNext: () =
         </div>
       </> : <>
       {groups === null && <p className="settings__muted">Loading credentials…</p>}
+      {selected.obs && <p className="setup__lede">OBS Studio is configured per room after setup: enable its WebSocket server in OBS, then add that room’s host, port, and password in Admin → Campuses → Connectivity.</p>}
       {selectedCredentialGroups.length === 0 && groups !== null && (
         <p className="setup__lede">None of your selected integrations need credentials during setup. Continue when you are ready; campus-specific services can be configured from Admin later.</p>
       )}

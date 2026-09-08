@@ -11,18 +11,40 @@ calls you configure to Planning Center.
 
 ## Install
 
+Three ways in. All three end up at the same place: open
+`http://<this-host-ip>:8080` and a setup wizard asks who you are, creates the
+first admin, and starts with an empty building for you to describe.
+
+### Desktop app — easiest
+
+A tray app that runs the server for you. Download it from the
+[latest release](https://github.com/prodmesh/prodmesh/releases/latest):
+
+| | |
+|---|---|
+| **macOS**, Apple silicon (M1 and later) | `ProdMesh-mac-arm64.dmg` |
+| **macOS**, Intel | `ProdMesh-mac-x64.dmg` |
+| **Windows** | `ProdMesh-windows-x64.exe` |
+
+Not sure which Mac you have? Apple menu → About This Mac: "Apple M1/M2/M3…" is
+Apple silicon, "Intel" is Intel.
+
+Other screens in the building open the same address over your network, so this
+machine needs to stay on and awake.
+
+### Docker
+
 ```bash
-curl -O https://raw.githubusercontent.com/jbeale/prodmesh/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/prodmesh/prodmesh/main/docker-compose.yml
 docker compose up -d
 ```
 
-Open `http://<this-host-ip>:8080` and a setup wizard takes it from there — it
-asks who you are, creates the first admin, and starts with an empty building for
-you to describe. Images are published for amd64 and arm64.
+Images are published for amd64 and arm64.
 
-Prefer a git checkout with auto-start via launchd or systemd? See
-[`deploy/README.md`](deploy/README.md), which covers both paths, updates and
-backups.
+### Git checkout
+
+With auto-start via launchd or systemd. See
+[`deploy/README.md`](deploy/README.md), which covers updates and backups too.
 
 ## What it does
 
@@ -85,7 +107,7 @@ environment variables. They are write-only in the UI and never read back out.
 ```bash
 npm install
 npm run dev      # Vite (5173) + API (3001), with /api proxied
-npm test         # 247 server tests (node --test) + 100 UI tests (vitest)
+npm test         # server tests (node --test) + UI tests (vitest)
 npm run build    # → dist/
 npm start        # built app + API on one port (default 8080)
 ```

@@ -122,3 +122,29 @@ test('a show left running for days can still be aggregated and ended', () => {
   assert.equal(st.peak, 81.6);
   assert.equal(st.caMax, 5);
 });
+
+test('peak survives aggregation, and pre-aggregation rows still report one', () => {
+  // A row used to be one instantaneous reading. Fast analyzers turned it into
+  // a second of energy-averaged samples, so the loudest moment inside that
+  // second needs its own column or a transient averages away.
+  const inst = 'peaks__t';
+  // Two aggregated seconds: a quiet one, then one holding a 105 dB transient
+  // whose Leq is only 93.4 — the number the report used to quote as the peak.
+  spl.record('r1', inst, 1000, 88, null, 88);
+  spl.record('r1', inst, 2000, 93.4, null, 105);
+
+  const agg = spl.aggregate(inst);
+  assert.equal(agg.peak, 105, 'the loudest sample, not the loudest bucket average');
+  assert.ok(agg.leq > 91 && agg.leq < 92, `Leq stays built from bucket energy, got ${agg.leq}`);
+  assert.equal(spl.runningStats(inst).peak, 105);
+  assert.equal(spl.aggregateRange(inst, 1500, 2500).peak, 105, 'and per-item too');
+
+  // Rows written before the column exists: spl IS the instantaneous peak, so
+  // reading them must not report a null or skip them.
+  const legacy = 'legacy__t';
+  getDb()
+    .prepare('INSERT INTO spl_samples (room_id, instance_id, ts, spl, ca) VALUES (?,?,?,?,?)')
+    .run('r1', legacy, 1000, 97.5, null);
+  assert.equal(spl.aggregate(legacy).peak, 97.5);
+  assert.equal(spl.runningStats(legacy).peak, 97.5);
+});

@@ -1,4 +1,4 @@
-# Public documentation site → https://jbeale.github.io/prodmesh/
+# Public documentation site → https://prodmesh.github.io/prodmesh/
 #
 # Deliberately NOT a GitHub wiki. A wiki is a separate git repository, which
 # means docs cannot be reviewed with the code that changed and drift silently
@@ -16,9 +16,9 @@
 
 site_name: prodmesh
 site_description: Production dashboard for churches — room control, run of show, and service data on one LAN box.
-site_url: https://jbeale.github.io/prodmesh/
-repo_url: https://github.com/jbeale/prodmesh
-repo_name: jbeale/prodmesh
+site_url: https://prodmesh.github.io/prodmesh/
+repo_url: https://github.com/prodmesh/prodmesh
+repo_name: prodmesh/prodmesh
 edit_uri: edit/main/docs/wiki/
 
 # The user guide only. ARCHITECTURE, STATE and the ADRs stay in the repo for
@@ -86,4 +86,4 @@ plugins:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/jbeale/prodmesh
+      link: https://github.com/prodmesh/prodmesh

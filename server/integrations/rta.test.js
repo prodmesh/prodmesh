@@ -70,6 +70,8 @@ test('streams slow_db samples from /api/stream', async () => {
       assert.ok(Number.isFinite(s.ts));
       assert.equal(s.ca, 8.3);
       assert.deepEqual(s.caBand, { lo: 8, hi: 12 });
+      assert.deepEqual(s.spectrum, [{ hz: 1000, db: 60.1 }]);
+      assert.deepEqual(s.spectrumMeta, { fast: 86.2, slow: 85.34, leq: 84.1, weighting: 'A', mode: 'acoustic', calibration: 100 });
     }
   } finally {
     await srv.close();
@@ -81,6 +83,46 @@ test('cfg.metric picks from the metrics map', async () => {
   try {
     const [s] = await collect({ host: '127.0.0.1', port: srv.port(), metric: 'leqS' }, 1);
     assert.equal(s.spl, 84.9);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('publishes all concurrent RTA readings without changing the primary SPL', async () => {
+  const srv = fakeRta({ frame: { spl: {
+    A: { fast_db: 90.12, slow_db: 89.34 },
+    B: { fast_db: 91.23, slow_db: 90.45 },
+    C: { fast_db: 94.56, slow_db: 93.67 },
+    Z: { fast_db: 96.78, slow_db: 95.89 },
+  } } });
+  try {
+    const [sample] = await collect({ host: '127.0.0.1', port: srv.port() }, 1);
+    assert.equal(sample.spl, 89.3, 'the existing room headline remains A Slow');
+    assert.deepEqual(sample.readings, {
+      'SPL A Fast': 90.1, 'SPL A Slow': 89.3,
+      'SPL B Fast': 91.2, 'SPL B Slow': 90.5,
+      'SPL C Fast': 94.6, 'SPL C Slow': 93.7,
+      'SPL Z Fast': 96.8, 'SPL Z Slow': 95.9,
+    });
+  } finally {
+    await srv.close();
+  }
+});
+
+test('accepts the earlier response-grouped concurrent RTA payload', async () => {
+  const srv = fakeRta({ frame: { spl: {
+    fast_db: { a: 81.1, b: 82.2, c: 83.3, z: 84.4 },
+    slow_db: { a: 85.5, b: 86.6, c: 87.7, z: 88.8 },
+  } } });
+  try {
+    const [sample] = await collect({ host: '127.0.0.1', port: srv.port() }, 1);
+    assert.equal(sample.spl, 85.5);
+    assert.deepEqual(sample.readings, {
+      'SPL A Fast': 81.1, 'SPL A Slow': 85.5,
+      'SPL B Fast': 82.2, 'SPL B Slow': 86.6,
+      'SPL C Fast': 83.3, 'SPL C Slow': 87.7,
+      'SPL Z Fast': 84.4, 'SPL Z Slow': 88.8,
+    });
   } finally {
     await srv.close();
   }
@@ -124,6 +166,22 @@ test('throttles a fast stream down to the sampling interval', async () => {
     ctl.abort();
     await done;
     assert.ok(samples.length >= 2 && samples.length <= 6, `got ${samples.length}`);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('program mode is carried through with the ceiling the analyzer reports', async () => {
+  // Broadcast-loudness mode measures LUFS/dBFS against digital full scale, so
+  // the app zeroes its calibration and leaves the bands negative. Consumers
+  // have to switch on `mode` to label the units — and a cal of 0 is a real
+  // ceiling, not a missing one, so it must survive as 0 rather than default.
+  const srv = fakeRta({ frame: { mode: 'program', cal_db: 0, bands_db: [-32.5] } });
+  try {
+    const [s] = await collect({ host: '127.0.0.1', port: srv.port() }, 1);
+    assert.equal(s.spectrumMeta.mode, 'program');
+    assert.equal(s.spectrumMeta.calibration, 0);
+    assert.deepEqual(s.spectrum, [{ hz: 1000, db: -32.5 }]);
   } finally {
     await srv.close();
   }

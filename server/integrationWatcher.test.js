@@ -23,6 +23,7 @@ test('integration topics are valid without a room id, and only for known produce
   // carry no room, which is the whole reason this file exists.
   assert.equal(hub.isValidTopic('integration:resi'), true);
   assert.equal(hub.isValidTopic('integration:restream'), true);
+  assert.equal(hub.isValidTopic('integration:obs'), false);
   assert.equal(hub.isValidTopic('integration:nope'), false);
   // Subscribing starts work, so an unknown id must not be able to start any.
   assert.equal(hub.isValidTopic('integration:resi:extra'), false);

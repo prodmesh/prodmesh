@@ -207,6 +207,83 @@ span.ros-track__status {
 .restream__channels a { display: grid; color: var(--text-dim); }
 .restream__channels a:hover { color: var(--accent); }
 
+/* OBS is a compact read-only health card. The rows deliberately use the same
+   tile language as Run of Show so "warning" reads without becoming a second
+   control surface. */
+.obs-health { gap: 9px; container-type: size; container-name: obs-health; }
+.obs-health__state { display: flex; justify-content: flex-end; }
+.obs-health__offline { display: grid; justify-items: start; gap: 6px; color: var(--text-dim); }
+.obs-health__offline svg { color: var(--danger); }
+.obs-health__offline strong { color: var(--text); }
+.obs-health__modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.obs-health__modes > div, .obs-health__primary > div, .obs-health__audio, .obs-health__frames { min-width: 0; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-tile); }
+.obs-health__modes > div { display: grid; grid-template-columns: auto 1fr; gap: 5px; align-items: center; padding: 6px 7px; color: var(--text-dim); font-size: .74rem; }
+.obs-health__modes strong { grid-column: 1 / -1; color: var(--text-dim); font-size: .88rem; font-variant-numeric: tabular-nums; }
+.obs-health__modes strong.obs-health__on { color: var(--ok); }
+.obs-health__preview { width: 100%; aspect-ratio: 16 / 9; display: block; object-fit: cover; border: 1px solid var(--border); border-radius: 5px; background: #000; }
+.obs-health__primary { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 5px; }
+.obs-health__primary > div { display: grid; gap: 2px; padding: 6px 7px; }
+.obs-health__primary span, .obs-health__details { color: var(--text-dim); font-size: .67rem; text-transform: uppercase; letter-spacing: .05em; }
+.obs-health__primary strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .82rem; font-variant-numeric: tabular-nums; }
+.obs-health__audio, .obs-health__frames { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 6px 7px; color: var(--text-dim); font-size: .78rem; }
+.obs-health__audio strong, .obs-health__frames strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.obs-health__audio--active svg { color: var(--ok); }
+.obs-health__audio--no-signal svg { color: var(--warn); }
+.obs-health__frames svg { color: var(--ok); }
+.obs-health__frames--warn { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }
+.obs-health__frames--warn svg, .obs-health__frames--warn strong { color: var(--warn); }
+.obs-health__telemetry { display: grid; gap: 9px; }
+.obs-health__details { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* A one-row dashboard cell has room for the operational facts, but not for
+   the spacious, stacked version above. Keep every live signal visible by
+   compacting it into three rows instead of allowing the bottom rows to be
+   clipped by the fixed canvas. Preview imagery and system details are useful
+   only once the operator has made the card tall enough to read them. */
+@container obs-health (max-height: 170px) {
+  .obs-health { position: relative; gap: 4px; }
+  .obs-health__state { position: absolute; top: 0; right: 0; }
+  .obs-health__preview, .obs-health__details { display: none; }
+  .obs-health__modes, .obs-health__primary, .obs-health__telemetry { gap: 3px; }
+  .obs-health__modes > div {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 3px;
+    padding: 3px 5px;
+    font-size: .65rem;
+  }
+  .obs-health__modes strong {
+    grid-column: auto;
+    font-size: .72rem;
+    white-space: nowrap;
+  }
+  .obs-health__primary > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px;
+    padding: 3px 5px;
+  }
+  .obs-health__primary span { font-size: .55rem; }
+  .obs-health__primary strong { font-size: .68rem; }
+  .obs-health__telemetry { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .obs-health__audio, .obs-health__frames {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 3px;
+    padding: 3px 5px;
+    font-size: .62rem;
+  }
+  .obs-health__audio svg, .obs-health__frames svg { width: 12px; height: 12px; }
+  .obs-health__audio span, .obs-health__frames span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .obs-health__audio strong, .obs-health__frames strong {
+    font-size: .62rem;
+    white-space: nowrap;
+  }
+}
+
 /* Live SPL meter. The card, the header row and the big number all come from
    .wgt now; what is left here is the meter itself. */
 .ros-spl__bar {

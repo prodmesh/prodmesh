@@ -24,6 +24,7 @@ import {
   saveAnalysis,
   saveCaptions,
   saveCompanion,
+  saveObs,
   savePcServiceTypes,
   saveProPresenter,
   saveSchedules,
@@ -32,6 +33,7 @@ import {
   type AnalysisConfig,
   type CaptionsConfig,
   type CompanionConfig,
+  type ObsConfig,
   type IntegrationStatus,
   type ModeConfig,
   type PcServiceType,
@@ -65,7 +67,7 @@ import { DAY_LABELS, TILE_ICONS, TILE_TYPE_LABELS, moveIn, useChurchDraft } from
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Editing =
-  | 'tiles' | 'companion' | 'planning-center' | 'analysis' | 'youtube' | 'captions' | 'propresenter' | 'schedules'
+  | 'tiles' | 'companion' | 'planning-center' | 'analysis' | 'youtube' | 'captions' | 'propresenter' | 'obs' | 'schedules'
   | null;
 
 export function RoomConfigPanel() {
@@ -278,6 +280,15 @@ function ConnectivityCards({ roomId, tiles, editing, onEdit, onClose, saveTiles,
                 onOpen={() => onEdit('propresenter')}
               />
             )}
+            {enabled('obs') && (
+              <ConfigCard
+                title="OBS Studio"
+                integration="obs"
+                status={<StatusChip status={status?.obs} />}
+                lines={conn.obs?.host ? [hostPort(conn.obs.host, conn.obs.port), conn.obs.hasPassword ? 'WebSocket password set' : 'No WebSocket password'] : ['Not in this room.']}
+                onOpen={() => onEdit('obs')}
+              />
+            )}
             {enabled('youtube') && (
               <ConfigCard
                 title="YouTube Live"
@@ -317,6 +328,9 @@ function ConnectivityCards({ roomId, tiles, editing, onEdit, onClose, saveTiles,
       )}
       {editing === 'propresenter' && conn && (
         <ProPresenterDialog roomId={roomId} initial={conn.proPresenter} onSaved={stored('proPresenter')} onClose={onClose} />
+      )}
+      {editing === 'obs' && conn && (
+        <ObsDialog roomId={roomId} initial={conn.obs} onSaved={stored('obs')} onClose={onClose} />
       )}
       {editing === 'youtube' && conn && (
         <YouTubeDialog roomId={roomId} initial={conn.youtube} onSaved={stored('youtube')} onClose={onClose} />
@@ -746,6 +760,30 @@ function YouTubeDialog({ roomId, initial, onSaved, onClose }: {
         on the channel at the time — pick a specific broadcast on an event’s page
         only when that needs overriding.
       </p>
+    </EditDialog>
+  );
+}
+
+interface ObsDraft { host: string; port: string; password: string; hasPassword: boolean; }
+const toObsDraft = (cfg: ObsConfig | null): ObsDraft => ({ host: cfg?.host ?? '', port: cfg?.port != null ? String(cfg.port) : '4455', password: '', hasPassword: Boolean(cfg?.hasPassword) });
+
+function ObsDialog({ roomId, initial, onSaved, onClose }: {
+  roomId: string; initial: ObsConfig | null; onSaved: (cfg: ObsConfig | null) => void; onClose: () => void;
+}) {
+  const f = useDraft(toObsDraft(initial), async (d) => {
+    const stored = await saveObs(roomId, d.host.trim() ? {
+      host: d.host.trim(), port: Number(d.port || 4455), ...(d.password ? { password: d.password } : {}),
+    } : null);
+    onSaved(stored);
+    return toObsDraft(stored);
+  });
+  return (
+    <EditDialog title="OBS Studio" help="In OBS Studio, open Tools → WebSocket Server Settings, enable the server, set a password, and use port 4455 (the default). ProdMesh monitors stream, recording, scene, audio, and frame health; it never controls OBS." form={f} onClose={onClose}>
+      <FormRow>
+        <Field label="Host or IP" width="grow"><input className="field" placeholder="e.g. 192.168.1.50" value={f.draft.host} onChange={(e) => f.patch({ host: e.target.value })} /></Field>
+        <Field label="WebSocket port"><input className="field" inputMode="numeric" value={f.draft.port} onChange={(e) => f.patch({ port: e.target.value })} /></Field>
+        <Field label={f.draft.hasPassword ? 'Password (set)' : 'Password'}><PasswordInput className="field" autoComplete="new-password" placeholder={f.draft.hasPassword ? 'unchanged' : 'OBS WebSocket password'} value={f.draft.password} onChange={(e) => f.patch({ password: e.target.value })} /></Field>
+      </FormRow>
     </EditDialog>
   );
 }

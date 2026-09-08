@@ -29,6 +29,7 @@ import './videoWatcher.js'; // registers the room:*:video topic
 import './captionWatcher.js'; // registers the room:*:captions topic
 import './lyricsWatcher.js'; // registers the room:*:lyrics topic
 import './proPresenterWatcher.js'; // registers compact/rich ProPresenter console state
+import './obsWatcher.js'; // registers per-room OBS Studio health
 import './integrationWatcher.js'; // registers the org-level integration:* topics
 import roomsRouter from './routes/rooms.js';
 import showsRouter from './routes/shows.js';

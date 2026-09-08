@@ -7,10 +7,11 @@ import restreamLogo from '../assets/integrations/restream.png';
 import resiLogo from '../assets/integrations/resi.svg';
 import companionLogo from '../assets/integrations/companion.png';
 import prodMeshLogo from '../assets/prodmesh-logo.svg';
-import prodMeshRtaLogo from '../assets/integrations/prodmesh-rta.svg';
+import prodMeshRtaLogo from '../assets/integrations/prodmesh-rta.png';
 import smaartLogo from '../assets/integrations/smaart.png';
 import openSoundMeterLogo from '../assets/integrations/open-sound-meter.png';
 import prodComLogo from '../assets/integrations/prodcom.png';
+import obsLogo from '../assets/integrations/obs.png';
 
 /** The integrations shown in Settings and in the widget picker. Keeping their
  * identity here means a widget and its configuration card always use the same
@@ -18,7 +19,7 @@ import prodComLogo from '../assets/integrations/prodcom.png';
 export type IntegrationId =
   | 'prodmesh' | 'propresenter' | 'planning-center' | 'restream' | 'resi'
   | 'youtube' | 'slack' | 'companion' | 'analysis' | 'captions'
-  | 'prodmesh-rta' | 'smaart' | 'open-sound-meter' | 'prodcom';
+  | 'prodmesh-rta' | 'smaart' | 'open-sound-meter' | 'prodcom' | 'obs';
 
 export const integrationInfo: Record<IntegrationId, { name: string; mark: string; logo?: string; beta?: boolean }> = {
   prodmesh: { name: 'ProdMesh', mark: 'PM', logo: prodMeshLogo },
@@ -26,6 +27,7 @@ export const integrationInfo: Record<IntegrationId, { name: string; mark: string
   'planning-center': { name: 'Planning Center', mark: 'PC', logo: planningCenterLogo },
   restream: { name: 'Restream', mark: 'R', logo: restreamLogo },
   resi: { name: 'Resi', mark: 'R', logo: resiLogo, beta: true },
+  obs: { name: 'OBS Studio', mark: 'OBS', logo: obsLogo },
   youtube: { name: 'YouTube', mark: '▶', logo: youTubeLogo },
   slack: { name: 'Slack', mark: 'S', logo: slackLogo },
   companion: { name: 'Bitfocus Companion', mark: 'C', logo: companionLogo },

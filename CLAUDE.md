@@ -116,7 +116,21 @@ having run it in the building:
    truthfully claim to be 1.0.
 2. Update `docs/STATE.md` — what shipped, what is still mock.
 3. Commit (`Release vX.Y.Z`), tag `vX.Y.Z` **on that commit**, push both.
-4. Bump `package.json` to the next `-dev` so main is never mistaken for a
+4. Once the tag's Docker build finishes, mirror `:latest` onto the
+   pre-transfer image name, so installs predating the org move keep updating:
+
+   ```bash
+   docker buildx imagetools create \
+     --tag ghcr.io/jbeale/prodmesh:latest ghcr.io/prodmesh/prodmesh:latest
+   ```
+
+   No rebuild — the same digest gains a second name. It is manual because a
+   user-owned package can only grant Actions access to that user's own
+   repositories, so CI cannot write there without a standing `write:packages`
+   token for a name we are trying to retire. Needs `docker login ghcr.io` as
+   jbeale with a `write:packages` PAT. Drop this step, and `deploy/README.md`'s
+   migration note, once the compose files in the wild have moved on.
+5. Bump `package.json` to the next `-dev` so main is never mistaken for a
    release.
 
 Tag per phase, not per merge. Between releases main carries `-dev`, which is

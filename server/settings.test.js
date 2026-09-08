@@ -83,6 +83,7 @@ test('locks are not enforced without an override PIN', () => {
 
 test('integrations are enabled by default and can be disabled individually', () => {
   assert.equal(settings.getIntegrationSettings().resi, true);
+  assert.equal(settings.getIntegrationSettings().obs, true);
   const updated = settings.setIntegrationEnabled('resi', false);
   assert.equal(updated.resi, false);
   assert.equal(settings.getPublicSettings().integrations.resi, false);

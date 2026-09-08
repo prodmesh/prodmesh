@@ -200,6 +200,33 @@ export async function checkResiConnection() {
   return body!;
 }
 
+export interface ObsStatus {
+  configured: boolean;
+  connected: boolean;
+  streaming: boolean;
+  streamReconnecting?: boolean;
+  recording: boolean;
+  recordingPaused: boolean;
+  streamDurationMs: number;
+  recordDurationMs: number;
+  activeFps: number | null;
+  bitrateKbps: number | null;
+  droppedFrames: number;
+  droppedFramesPercent: number;
+  droppedFramesWarning?: number;
+  programScene: string | null;
+  programSources: string[];
+  audioDb: number | null;
+  audioStatus: 'active' | 'no-signal';
+  primaryAudioInput: string | null;
+  sourceOptions: string[];
+  cpuUsage: number | null;
+  diskFreeGb: number | null;
+  previewImageUrl: string | null;
+  error?: string;
+  disabled?: boolean;
+}
+
 export interface Station {
   id: string;
   name: string;
@@ -681,6 +708,15 @@ export interface CaptionsConfig {
   hasKey?: boolean;
   channels?: string[];
 }
+export interface ObsConfig {
+  host: string;
+  port?: number;
+  password?: string;
+  hasPassword?: boolean;
+  primaryAudioInput?: string;
+  droppedFramesWarning?: number;
+  previewImageUrl?: string;
+}
 
 export interface RoomConnectivity {
   hasServerRoom: boolean;
@@ -690,6 +726,7 @@ export interface RoomConnectivity {
   proPresenter: ProPresenterConfig | null;
   companion: CompanionConfig | null;
   youtube: YouTubeConfig | null;
+  obs: ObsConfig | null;
 }
 
 export const getRoomConnectivity = (roomId: string) =>
@@ -710,6 +747,7 @@ export interface RoomConnectivityStatus {
   proPresenter: IntegrationStatus | null;
   companion: IntegrationStatus | null;
   analysis: IntegrationStatus | null;
+  obs?: IntegrationStatus | null;
 }
 
 export const getRoomConnectivityStatus = (roomId: string) =>
@@ -807,6 +845,14 @@ export async function saveCompanion(
   });
   await requireOk(res);
   return (await res.json()).companion;
+}
+
+export async function saveObs(roomId: string, obs: ObsConfig | null): Promise<ObsConfig | null> {
+  const res = await fetch(`/api/config/rooms/${roomId}/connectivity/obs`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', ...requestHeaders() }, body: JSON.stringify({ obs }),
+  });
+  await requireOk(res);
+  return (await res.json()).obs;
 }
 
 export interface ServerLogTail {
@@ -1091,6 +1137,17 @@ export interface SplState {
   ca?: CaState | null;
 }
 
+/** Live normalized spectrum from an analysis provider. This is intentionally
+ * transient: RTA history belongs to the analyzer, not the show report. */
+export interface RtaState {
+  provider: 'prodmesh-rta' | 'smaart' | 'open-sound-meter';
+  source: string;
+  connected: boolean;
+  points: Array<{ hz: number; db: number; peak?: number }>;
+  metrics: { fast: number | null; slow: number | null; leq: number | null; weighting: string | null; mode?: 'acoustic' | 'program'; calibration: number | null } | null;
+  updatedAt: number;
+}
+
 /** Live YouTube viewers. `current` is null when nothing is broadcasting or the
  *  broadcaster hid the counter — never 0, which would be a number people read. */
 export interface StreamState {
@@ -1319,11 +1376,14 @@ export interface WidgetConfigJson {
   metric?: string;
   weighting?: 'A' | 'B' | 'C' | 'Z';
   response?: 'Fast' | 'Slow';
+  sourceRoomId?: string;
   autoplay?: boolean;
   muted?: boolean;
   playerControls?: boolean;
   destinationLinks?: boolean;
   videoPreview?: boolean;
+  obsPreview?: boolean;
+  obsDetails?: boolean;
   aspectRatio?: '16:9' | '4:3' | '1:1';
 }
 

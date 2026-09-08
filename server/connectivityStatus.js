@@ -13,6 +13,7 @@ import * as smaart from './integrations/smaart.js';
 import * as rta from './integrations/rta.js';
 import * as openSoundMeter from './integrations/openSoundMeter.js';
 import * as companion from './companion.js';
+import * as obs from './integrations/obs.js';
 import { snapshot } from './health.js';
 
 const errText = (err) => String(err?.message ?? err);
@@ -72,6 +73,12 @@ async function analysisStatus(cfg) {
   return { ok: true, detail: `${label} port answering` };
 }
 
+async function obsStatus(room) {
+  if (!room.obs?.host) return null;
+  const state = await obs.status(room.id, { force: true });
+  return { ok: state.connected, detail: state.connected ? 'Connected to OBS Studio' : state.error ?? 'OBS Studio could not be reached' };
+}
+
 // Planning Center is cloud + shared credentials — no per-room device to poke,
 // so this reads the health registry (fed by every real PCO request).
 function planningCenterStatus(pcCfg) {
@@ -86,10 +93,11 @@ function planningCenterStatus(pcCfg) {
 /** Probe every configured integration of one server room, concurrently. */
 export async function roomStatus(room) {
   const at = Date.now();
-  const [proPresenter, comp, analysis] = await Promise.all([
+  const [proPresenter, comp, analysis, obsState] = await Promise.all([
     proPresenterStatus(room.proPresenter),
     companionStatus(room.companion),
     analysisStatus(room.analysis),
+    obsStatus(room),
   ]);
   const stamp = (s) => (s ? { at, ...s } : null);
   return {
@@ -97,5 +105,6 @@ export async function roomStatus(room) {
     proPresenter: stamp(proPresenter),
     companion: stamp(comp),
     analysis: stamp(analysis),
+    obs: stamp(obsState),
   };
 }

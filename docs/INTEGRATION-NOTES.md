@@ -492,6 +492,37 @@ production VLAN.
 
 ---
 
+## ProdMesh RTA — read from the analyzer's source 2026-09-07
+
+WebSocket at `ws://host:PORT/api/stream`, plus `GET /api/rta` for one snapshot.
+A `levels` frame carries 31 third-octave bands (20 Hz–20 kHz) in `bands_db`
+with their centres in `centers_hz`.
+
+**`cal_db` is the SPL at 0 dBFS, so it doubles as the top of the plot.** The
+app adds `cal` to every band before publishing (`main.cpp`, `b += cal`), so
+`bands_db` is already calibrated dB SPL — verified live: the 31 bands sum to
+50.1 dB against a reported LAF of 50.3. The analyzer's own web UI plots
+`cal_db - 80 … cal_db`, and the widget matches it.
+
+**Switch on `mode` before interpreting anything.** The app's API header says so
+outright. `acoustic` is dB SPL against the calibration offset; `program` is
+broadcast loudness in LUFS/dBFS against digital full scale, and there the app
+sets `cal` to **0** (`main.cpp`: `const double cal = program ? 0.0 : …`) and
+leaves the bands negative. That is why the same `cal_db … cal_db - 80`
+expression lands on a correct −80…0 dBFS window without a second branch — and
+why the ceiling must be read with `??` and never `||`: 0 is a real ceiling.
+Only the unit label needs the branch.
+
+**`peaks_db` is `null` unless peak hold is switched on** in the app, so the
+per-band peak overlay is usually absent rather than empty. Treat a non-array
+as "no peak data", not as a malformed frame.
+
+**Sampling is 20 Hz.** That is a live-display rate, not a recording rate — see
+the `spl-samples-peak` migration for what persisting every frame would cost and
+why a row carries a Leq and a peak separately.
+
+---
+
 ## Smaart
 
 API v4 is a WebSocket at `ws://host:26000/api/v4/`. Smaart v8 (8.5.2.2) accepts

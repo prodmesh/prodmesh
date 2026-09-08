@@ -53,7 +53,7 @@ const DEFAULTS = {
 };
 
 export const INTEGRATION_IDS = [
-  'planning-center', 'propresenter', 'restream', 'resi', 'youtube', 'slack',
+  'planning-center', 'propresenter', 'restream', 'resi', 'obs', 'youtube', 'slack',
   'companion', 'prodmesh-rta', 'smaart', 'open-sound-meter', 'captions', 'prodcom',
 ];
 

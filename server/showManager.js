@@ -37,6 +37,7 @@ const shows = new Map(); // roomId -> runtime show (only while active)
 const timers = new Map(); // roomId -> published PP timer state (or null)
 const timerWatchers = new Map(); // roomId -> AbortController (runs while subscribed)
 const spls = new Map(); // roomId -> published SPL state (or null)
+const rtas = new Map(); // roomId -> live spectrum only; never persisted
 const splWatchers = new Map(); // roomId -> AbortController (runs while subscribed)
 const streams = new Map(); // roomId -> published YouTube viewer state (or null)
 const streamWatchers = new Map(); // roomId -> AbortController
@@ -48,6 +49,7 @@ const streamWatchers = new Map(); // roomId -> AbortController
 export const showTopic = (roomId) => `room:${roomId}:show`;
 export const timerTopic = (roomId) => `room:${roomId}:timer`;
 export const splTopic = (roomId) => `room:${roomId}:spl`;
+export const rtaTopic = (roomId) => `room:${roomId}:rta`;
 export const streamTopic = (roomId) => `room:${roomId}:youtube`;
 
 const instanceId = (show) => `${show.planId}__${show.timeId}`;
@@ -88,6 +90,7 @@ export function getState(roomId) {
 const publishShow = (roomId) => hub.publish(showTopic(roomId), showState(roomId));
 const publishTimer = (roomId) => hub.publish(timerTopic(roomId), timers.get(roomId) ?? null);
 const publishSpl = (roomId) => hub.publish(splTopic(roomId), spls.get(roomId) ?? null);
+const publishRta = (roomId) => hub.publish(rtaTopic(roomId), rtas.get(roomId) ?? null);
 const publishStream = (roomId) => hub.publish(streamTopic(roomId), streams.get(roomId) ?? null);
 
 // The show topic's producer is the show itself, which runs whether or not a
@@ -112,6 +115,12 @@ hub.registerTopic('room:*:spl', {
   stop: stopSplWatcher,
   snapshot: (roomId) => spls.get(roomId) ?? null,
 });
+hub.registerTopic('room:*:rta', {
+  valid: (roomId) => Boolean(rooms[roomId]),
+  start: startSplWatcher,
+  stop: stopSplWatcher,
+  snapshot: (roomId) => rtas.get(roomId) ?? null,
+});
 hub.registerTopic('room:*:youtube', {
   valid: (roomId) => Boolean(rooms[roomId]),
   start: startStreamWatcher,
@@ -120,7 +129,7 @@ hub.registerTopic('room:*:youtube', {
 });
 
 /** Topics the legacy combined `state` event is assembled from. */
-export const roomTopics = (roomId) => [showTopic(roomId), timerTopic(roomId), splTopic(roomId)];
+export const roomTopics = (roomId) => [showTopic(roomId), timerTopic(roomId), splTopic(roomId), rtaTopic(roomId)];
 
 // ── PP timer watcher ─────────────────────────────────────────────────────────
 //  The room's "Service Start Timer" counts down BETWEEN services (a Message
@@ -160,9 +169,12 @@ function timerSleep(ms, signal) {
 //  Unlike the (display-only) timer watcher, SPL feeds the Show Report — so it
 //  runs while the room has subscribers OR an active show. Samples persist to
 //  SQLite only while a show is live; the live meter is broadcast either way.
+//  Fast RTA frames are aggregated into one energy-equivalent row per second
+//  before persistence, keeping the live spectrum smooth without multiplying
+//  report data.
 
 function splNeeded(roomId) {
-  return hub.subscriberCount(splTopic(roomId)) > 0 || shows.has(roomId);
+  return hub.subscriberCount(splTopic(roomId)) > 0 || hub.subscriberCount(rtaTopic(roomId)) > 0 || shows.has(roomId);
 }
 
 function startSplWatcher(roomId) {
@@ -175,6 +187,8 @@ function startSplWatcher(roomId) {
     if (!ctl.signal.aborted) {
       spls.set(roomId, null);
       publishSpl(roomId);
+      rtas.set(roomId, null);
+      publishRta(roomId);
     }
   });
 }
@@ -184,6 +198,8 @@ function stopSplWatcher(roomId) {
   splWatchers.get(roomId)?.abort();
   splWatchers.delete(roomId);
   spls.delete(roomId);
+  rtas.delete(roomId);
+  publishRta(roomId);
 }
 
 // ── YouTube Live watcher ─────────────────────────────────────────────────────
@@ -372,6 +388,8 @@ function restartSplWatcher(roomId) {
   }
   if (splNeeded(roomId)) startSplWatcher(roomId);
   publishSpl(roomId);
+  rtas.delete(roomId);
+  publishRta(roomId);
 }
 
 function restartTimerWatcher(roomId) {
@@ -438,21 +456,26 @@ function onSpl(roomId, sample) {
   let caAvg = null;
   let caMax = null;
   if (show && show.splStats) {
-    splStore.record(roomId, instanceId(show), sample.ts, sample.spl, sample.ca ?? null);
     const st = show.splStats;
-    st.n += 1;
-    st.sumEnergy += 10 ** (sample.spl / 10);
-    st.peak = st.peak == null ? sample.spl : Math.max(st.peak, sample.spl);
-    avg = splStore.round1(10 * Math.log10(st.sumEnergy / st.n));
-    peak = splStore.round1(st.peak);
-    if (sample.ca != null) {
-      st.caN = (st.caN ?? 0) + 1;
-      st.caSum = (st.caSum ?? 0) + sample.ca;
-      st.caMax = st.caMax == null ? sample.ca : Math.max(st.caMax, sample.ca);
+    if (st.bucketAt == null || sample.ts >= st.bucketAt + 1000) {
+      flushSplBucket(roomId, show);
+      resetSplBucket(st, sample.ts);
     }
-    if (st.caN) {
-      caAvg = splStore.round1(st.caSum / st.caN);
-      caMax = splStore.round1(st.caMax);
+    st.bucketEnergy += 10 ** (sample.spl / 10);
+    st.bucketN += 1;
+    st.bucketPeak = st.bucketPeak == null ? sample.spl : Math.max(st.bucketPeak, sample.spl);
+    if (sample.ca != null) {
+      st.bucketCaSum += sample.ca;
+      st.bucketCaN += 1;
+      st.bucketCaMax = st.bucketCaMax == null ? sample.ca : Math.max(st.bucketCaMax, sample.ca);
+    }
+    const totalN = st.n + st.bucketN;
+    avg = totalN ? splStore.round1(10 * Math.log10((st.sumEnergy + st.bucketEnergy) / totalN)) : null;
+    peak = totalN ? splStore.round1(Math.max(st.peak ?? -Infinity, st.bucketPeak)) : null;
+    const totalCaN = (st.caN ?? 0) + st.bucketCaN;
+    if (totalCaN) {
+      caAvg = splStore.round1(((st.caSum ?? 0) + st.bucketCaSum) / totalCaN);
+      caMax = splStore.round1(Math.max(st.caMax ?? -Infinity, st.bucketCaMax ?? -Infinity));
     }
   }
   spls.set(roomId, {
@@ -476,6 +499,65 @@ function onSpl(roomId, sample) {
         : null,
   });
   publishSpl(roomId);
+  const provider = cfg.source === 'rta' ? 'prodmesh-rta' : cfg.source ?? 'smaart';
+  if (sample.spectrum) {
+    rtas.set(roomId, {
+      provider,
+      source: `${cfg.host}:${cfg.port ?? 8517}`,
+      connected: true,
+      points: sample.spectrum,
+      metrics: sample.spectrumMeta ?? null,
+      updatedAt: sample.ts,
+    });
+  } else {
+    rtas.set(roomId, {
+      provider,
+      source: cfg.source === 'open-sound-meter' ? 'Open Sound Meter multicast' : `${cfg.host}:${cfg.port ?? 8517}`,
+      connected: true,
+      points: [],
+      metrics: null,
+      updatedAt: sample.ts,
+    });
+  }
+  publishRta(roomId);
+}
+
+/** Write the open bucket as one row and fold it into the running stats.
+ *
+ *  Leq and peak part company here. The row's `spl` is the bucket's energy
+ *  average, which is what a loudness average must be built from; its `peak` is
+ *  the loudest single sample inside it. Folding the AVERAGE into `st.peak`
+ *  instead — as this did when it was written — buries transients: 19 frames of
+ *  88 dB plus one at 105 reports 93.4, and the live meter visibly falls back
+ *  from 105 as the flush lands, so a peak-hold appears to un-hold. */
+function flushSplBucket(roomId, show) {
+  const st = show?.splStats;
+  if (!st || !st.bucketN) return;
+  const spl = 10 * Math.log10(st.bucketEnergy / st.bucketN);
+  const peak = st.bucketPeak ?? spl;
+  const ca = st.bucketCaN ? st.bucketCaSum / st.bucketCaN : null;
+  splStore.record(roomId, instanceId(show), st.bucketAt, spl, ca, peak);
+  st.n += 1;
+  st.sumEnergy += 10 ** (spl / 10);
+  st.peak = st.peak == null ? peak : Math.max(st.peak, peak);
+  if (ca != null) {
+    st.caN = (st.caN ?? 0) + 1;
+    st.caSum = (st.caSum ?? 0) + ca;
+    st.caMax = st.caMax == null ? ca : Math.max(st.caMax, ca);
+  }
+  resetSplBucket(st, null);
+}
+
+/** Clear the open bucket. One writer, because the two callers used to zero
+ *  different subsets of these fields and only agreed by accident. */
+function resetSplBucket(st, bucketAt) {
+  st.bucketAt = bucketAt;
+  st.bucketEnergy = 0;
+  st.bucketN = 0;
+  st.bucketPeak = null;
+  st.bucketCaSum = 0;
+  st.bucketCaN = 0;
+  st.bucketCaMax = null;
 }
 
 async function watchTimers(roomId, pp, signal) {
@@ -635,6 +717,7 @@ export function endShow(roomId) {
     throw err;
   }
   show.abort.abort();
+  flushSplBucket(roomId, show);
   timeline.finalize(instanceId(show));
   // Freeze a loudness summary for each item before raw SPL retention can prune
   // the samples. This is intentionally independent of which live widget was

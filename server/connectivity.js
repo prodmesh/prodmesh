@@ -35,7 +35,8 @@ const PP = 'proPresenter';
 const COMPANION = 'companion';
 const YOUTUBE = 'youtube';
 const CAPTIONS = 'captions';
-const INTEGRATIONS = [PC, ANALYSIS, PP, COMPANION, YOUTUBE, CAPTIONS];
+const OBS = 'obs';
+const INTEGRATIONS = [PC, ANALYSIS, PP, COMPANION, YOUTUBE, CAPTIONS, OBS];
 
 // Long-lived per-room work (the show manager's watchers) registers here to be
 // restarted when a room's config changes — applyConnectivity() alone can't
@@ -237,6 +238,47 @@ export function setAnalysis(roomId, config) {
   else writeRow(roomId, ANALYSIS, clean);
   applyConnectivity();
   notifyChange(roomId, ANALYSIS);
+  return clean;
+}
+
+// OBS WebSocket is deliberately room-scoped: a campus can have a dedicated
+// control-room OBS instance for every auditorium. The password is write-only
+// at the route boundary, exactly like Smaart and ProdCom credentials.
+export function validateObs(input) {
+  if (input === null) return null;
+  if (typeof input !== 'object' || Array.isArray(input)) throw new Error('obs must be an object');
+  const out = { host: validateHost(input.host, 'OBS Studio needs a host') };
+  const port = input.port === '' || input.port == null ? 4455 : Number(input.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('OBS WebSocket port must be 1–65535');
+  out.port = port;
+  const password = String(input.password ?? '');
+  if (password) {
+    if (password.length > 200) throw new Error('OBS password must be at most 200 characters');
+    out.password = password;
+  }
+  for (const key of ['primaryAudioInput', 'previewImageUrl']) {
+    const value = String(input[key] ?? '').trim();
+    if (value) {
+      if (value.length > 500) throw new Error(`${key} is too long`);
+      out[key] = value;
+    }
+  }
+  const warning = input.droppedFramesWarning === '' || input.droppedFramesWarning == null ? null : Number(input.droppedFramesWarning);
+  if (warning != null) {
+    if (!Number.isFinite(warning) || warning < 0 || warning > 100) throw new Error('Dropped-frame warning must be 0–100%');
+    out.droppedFramesWarning = warning;
+  }
+  return out;
+}
+
+export function getObs(roomId) { return readRow(roomId, OBS); }
+export function setObs(roomId, config) {
+  if (!rooms[roomId]) throw new Error(`Unknown room "${roomId}"`);
+  const clean = validateObs(config);
+  if (clean === null) deleteRow(roomId, OBS);
+  else writeRow(roomId, OBS, clean);
+  applyConnectivity();
+  notifyChange(roomId, OBS);
   return clean;
 }
 
@@ -479,6 +521,7 @@ function seedIfEmpty() {
     // being anything but a fresh-install seed. Seeding still runs so the marker
     // is set and the database owns it from boot one.
     [CAPTIONS]: (room) => room.captions ?? null,
+    [OBS]: (room) => room.obs ?? null,
   };
   for (const integration of INTEGRATIONS) {
     const key = `connectivity_seeded:${integration}`;

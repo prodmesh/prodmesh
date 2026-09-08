@@ -325,6 +325,11 @@ function redactCaptions(cfg) {
   const { key, ...rest } = cfg;
   return { ...rest, hasKey: Boolean(key) };
 }
+function redactObs(cfg) {
+  if (!cfg) return null;
+  const { password, ...rest } = cfg;
+  return { ...rest, hasPassword: Boolean(password) };
+}
 
 // Behind config.manage: this is the room-configuration editor's own read, and
 // it returns the production network map — ProPresenter/Companion/analysis
@@ -335,7 +340,7 @@ router.get('/api/config/rooms/:roomId/connectivity', requirePermission('config.m
   if (!rooms[req.params.roomId]) {
     return res.json({
       hasServerRoom: false, planningCenter: null, analysis: null, proPresenter: null,
-      companion: null, youtube: null,
+      companion: null, youtube: null, obs: null,
     });
   }
   res.json({
@@ -345,6 +350,7 @@ router.get('/api/config/rooms/:roomId/connectivity', requirePermission('config.m
     captions: redactCaptions(connectivity.getCaptions(req.params.roomId)),
     proPresenter: connectivity.getProPresenter(req.params.roomId),
     youtube: connectivity.getYouTube(req.params.roomId),
+    obs: redactObs(connectivity.getObs(req.params.roomId)),
     // A room with no stored row yet (created in Admin → Campuses) shows its
     // live defaults so the editor opens pre-filled rather than unsavable.
     companion:
@@ -455,6 +461,24 @@ router.put('/api/config/rooms/:roomId/connectivity/analysis', requirePermission(
       details: { integration: 'analysis', source: clean?.source ?? null },
     });
     res.json({ analysis: redactAnalysis(clean) });
+  } catch (err) {
+    res.status(rooms[req.params.roomId] ? 400 : 404).json({ error: String(err.message ?? err) });
+  }
+});
+
+router.put('/api/config/rooms/:roomId/connectivity/obs', requirePermission('config.manage'), (req, res) => {
+  try {
+    let input = req.body?.obs ?? null;
+    if (input && input.password === undefined) {
+      const stored = connectivity.getObs(req.params.roomId);
+      if (stored?.password) input = { ...input, password: stored.password };
+    }
+    const clean = connectivity.setObs(req.params.roomId, input);
+    auditSuccess(req, 'config.manage', {
+      resourceType: 'room-connectivity', resourceId: req.params.roomId, roomId: req.params.roomId,
+      details: { integration: 'obs', host: clean?.host ?? null },
+    });
+    res.json({ obs: redactObs(clean) });
   } catch (err) {
     res.status(rooms[req.params.roomId] ? 400 : 404).json({ error: String(err.message ?? err) });
   }

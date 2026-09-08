@@ -26,6 +26,12 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/prodmesh
+  # The pre-transfer name, ghcr.io/jbeale/prodmesh, is mirrored BY HAND at
+  # release time — see "Cutting a release" in CLAUDE.md. It cannot be done
+  # here: that package belongs to a personal account, and a user-owned
+  # package can only grant Actions access to repositories the same user owns,
+  # which prodmesh/prodmesh is not. Automating it would mean a standing
+  # write:packages token in CI for a name we are trying to retire.
 
 jobs:
   image:

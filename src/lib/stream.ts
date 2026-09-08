@@ -126,6 +126,7 @@ export const roomTopic = {
   show: (roomId: string) => `room:${roomId}:show`,
   timer: (roomId: string) => `room:${roomId}:timer`,
   spl: (roomId: string) => `room:${roomId}:spl`,
+  rta: (roomId: string) => `room:${roomId}:rta`,
   mode: (roomId: string) => `room:${roomId}:mode`,
   /** One Companion variable, addressed as Companion addresses it: label:name,
    *  which is two topic segments because the hub's `*` captures exactly one. */
@@ -137,6 +138,7 @@ export const roomTopic = {
   captions: (roomId: string) => `room:${roomId}:captions`,
   lyrics: (roomId: string) => `room:${roomId}:lyrics`,
   proPresenter: (roomId: string) => `room:${roomId}:propresenter`,
+  obs: (roomId: string) => `room:${roomId}:obs`,
 };
 
 /**

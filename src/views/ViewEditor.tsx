@@ -3,9 +3,9 @@ import { GripVertical, X } from 'lucide-react';
 import { ViewCanvas } from './ViewCanvas';
 import { WidgetPalette, paletteFor } from './WidgetPalette';
 import { useGridDrag, type Cell } from './useGridDrag';
-import { findFirstFit, isFree, occupancy, rowCount, type Grid } from '../lib/gridLayout';
+import { findBestFit, isFree, occupancy, rowCount, type Grid } from '../lib/gridLayout';
 import { widgetRegistry, isWidgetType } from '../widgets/registry';
-import { widgetMax, widgetMin, widgetResizable, type CompanionVariableRow, type WidgetSize } from '../widgets/types';
+import { widgetMax, widgetMin, widgetPlacementMin, widgetResizable, type CompanionVariableRow, type WidgetSize } from '../widgets/types';
 import { IntegrationBeta, IntegrationBrand } from '../components/IntegrationBrand';
 import { HelpTip } from '../components/HelpTip';
 import { getEnabledIntegrations, getRoom, getRoomConnectivity, type View, type ViewPlacement } from '../api';
@@ -65,12 +65,14 @@ export function ViewEditor({
     grid.maxRows ?? Math.max(rowCount(grid, placements) + 1, grid.defaultRows ?? 1);
   const palette = useMemo(() => paletteFor(view.kind, grid, placements, analysisSource, captionSource, enabledIntegrations), [view.kind, grid, placements, analysisSource, captionSource, enabledIntegrations]);
 
-  const place = (type: string, at: Cell) => {
+  // `size` overrides the widget's authored footprint when placement had to
+  // shrink it to fit; without one a widget arrives at the size it asked for.
+  const place = (type: string, at: Cell, size?: WidgetSize) => {
     const def = isWidgetType(type) ? widgetRegistry[type] : null;
     if (!def) return;
     onChange([
       ...placements,
-      { id: `new-${type}-${placements.length}`, type, ...at, ...def.size, config: {} },
+      { id: `new-${type}-${placements.length}`, type, ...at, ...(size ?? def.size), config: {} },
     ]);
   };
 
@@ -105,12 +107,24 @@ export function ViewEditor({
     onResize: resizeTo,
   });
 
+  // The drag needs the same floor the button's placement search uses, so a
+  // widget dropped into a tight corner shrinks exactly as far as it claims to.
+  const dragFromPalette = (type: string, size: WidgetSize) => {
+    const def = isWidgetType(type) ? widgetRegistry[type] : null;
+    return addHandlers(type, size, def ? widgetPlacementMin(def) : size);
+  };
+
   const addFromPalette = (type: string) => {
     const def = isWidgetType(type) ? widgetRegistry[type] : null;
-    const at = def && findFirstFit(grid, placements, def.size);
+    // Shrink toward the widget's declared minimum rather than refusing outright
+    // when its authored size has nowhere to go — see findBestFit.
+    const at = def && findBestFit(grid, placements, def.size, widgetPlacementMin(def));
     if (!at || !def) return;
-    place(type, at);
-    setAnnounce(`${def.title} added at column ${at.x + 1}, row ${at.y + 1}.`);
+    place(type, at, { w: at.w, h: at.h });
+    // Say the size too when it is not the one the widget asked for, so a
+    // smaller-than-usual arrival reads as deliberate rather than broken.
+    const sized = at.w !== def.size.w || at.h !== def.size.h ? ` at ${at.w}×${at.h}` : '';
+    setAnnounce(`${def.title} added${sized} at column ${at.x + 1}, row ${at.y + 1}.`);
   };
 
   const titleOf = (type: string) =>
@@ -193,8 +207,12 @@ export function ViewEditor({
           }}
         >
           <GripVertical size={14} aria-hidden />
-          {def && <IntegrationBrand integration={integrationOf(placement.type)} />}
-          <span className="viewcell__name">{title}</span>{def && <IntegrationBeta integration={integrationOf(placement.type)} />}
+          {/* A widget drawing its own header would otherwise be named twice,
+              a foot apart. Only the VISIBLE name goes — the grip and remove
+              buttons keep `title` in their accessible names, so a screen
+              reader still hears which widget it is holding. */}
+          {def && !def.ownHeader && <IntegrationBrand integration={integrationOf(placement.type)} />}
+          {!def?.ownHeader && <span className="viewcell__name">{title}</span>}{def && <IntegrationBeta integration={integrationOf(placement.type)} />}
         </button>
         <button
           type="button"
@@ -234,7 +252,7 @@ export function ViewEditor({
 
   return (
     <div className="vieweditor">
-      <WidgetPalette entries={palette} onAdd={addFromPalette} dragHandlers={addHandlers} />
+      <WidgetPalette entries={palette} onAdd={addFromPalette} dragHandlers={dragFromPalette} />
 
       <div className="vieweditor__canvas">
         {view.kind === 'display' ? (
@@ -279,8 +297,10 @@ export function ViewEditor({
 function WidgetInspector({ placement, onChange }: { placement: ViewPlacement | null; onChange: (id: string, patch: Record<string, unknown>) => void }) {
   const pp = placement && (placement.type === 'propresenter-playlist' || placement.type === 'propresenter-controls');
   const loudness = placement && (placement.type === 'loudness' || placement.type === 'loudness-trend');
+  const rta = placement?.type === 'rta';
   const resiPlayer = placement && (placement.type === 'resi-stream' || placement.type === 'resi-broadcast');
   const restream = placement?.type === 'restream';
+  const obs = placement?.type === 'obs-health';
   const companion = placement?.type === 'companion-variables';
   const title = placement?.type === 'propresenter-playlist' ? 'ProPresenter Playlist' : placement?.type === 'propresenter-controls' ? 'ProPresenter Controls' : 'Decibel Meter';
   if (!placement) {
@@ -290,7 +310,7 @@ function WidgetInspector({ placement, onChange }: { placement: ViewPlacement | n
   // (below, per type), and how any widget SITS on the canvas (the appearance
   // block). The second half is why the panel no longer has a "this widget has
   // no settings" state — every widget has at least its header.
-  const specific = companion ? <CompanionRows rows={placement.config.rows ?? []} onChange={(rows) => onChange(placement.id, { rows })} /> : loudness ? <><p className="widgetinspector__name">{title}</p><label>Target dB<input type="number" min="40" max="130" placeholder="Optional" value={placement.config.target ?? ''} onChange={(e) => onChange(placement.id, { target: e.target.value === '' ? undefined : Number(e.target.value) })} /></label><label>Limit dB<input type="number" min="40" max="130" placeholder="Optional" value={placement.config.limit ?? ''} onChange={(e) => onChange(placement.id, { limit: e.target.value === '' ? undefined : Number(e.target.value) })} /></label><label>Weighting<select value={placement.config.weighting ?? 'A'} onChange={(e) => onChange(placement.id, { weighting: e.target.value })}><option value="A">A-weighted</option><option value="B">B-weighted</option><option value="C">C-weighted</option><option value="Z">Z-weighted</option></select></label><label>Response<select value={placement.config.response ?? 'Slow'} onChange={(e) => onChange(placement.id, { response: e.target.value })}><option value="Fast">Fast</option><option value="Slow">Slow</option></select></label></> : restream ? <><p className="widgetinspector__name">Restream</p><label className="widgetinspector__check"><input type="checkbox" checked={Boolean(placement.config.videoPreview)} onChange={(e) => onChange(placement.id, { videoPreview: e.target.checked })} /> Show YouTube video preview</label><small>Shows the active YouTube destination inside this widget.</small><label className="widgetinspector__check"><input type="checkbox" checked={Boolean(placement.config.destinationLinks)} onChange={(e) => onChange(placement.id, { destinationLinks: e.target.checked })} /> Show destination links</label><small>Opens each active destination in a new tab.</small></> : resiPlayer ? <><p className="widgetinspector__name">{placement.type === 'resi-stream' ? 'Resi Stream' : 'Resi Broadcast Monitor'}</p><label>Player aspect ratio<select value={placement.config.aspectRatio ?? '16:9'} onChange={(e) => onChange(placement.id, { aspectRatio: e.target.value })}><option value="16:9">16:9 widescreen</option><option value="4:3">4:3 standard</option><option value="1:1">Square</option></select></label><label className="widgetinspector__check"><input type="checkbox" checked={Boolean(placement.config.autoplay)} onChange={(e) => onChange(placement.id, { autoplay: e.target.checked })} /> Autoplay when allowed</label><label className="widgetinspector__check"><input type="checkbox" checked={placement.config.muted ?? true} onChange={(e) => onChange(placement.id, { muted: e.target.checked })} /> Muted by default</label><label className="widgetinspector__check"><input type="checkbox" checked={placement.config.playerControls ?? true} onChange={(e) => onChange(placement.id, { playerControls: e.target.checked })} /> Show player controls</label></> : !pp ? <p className="widgetinspector__name">{isWidgetType(placement.type) ? widgetRegistry[placement.type].title : placement.type}</p> : <><p className="widgetinspector__name">{title}</p><label className="widgetinspector__check"><input type="checkbox" checked={Boolean(placement.config.slideControls)} onChange={(event) => onChange(placement.id, { slideControls: event.target.checked })} /> Enable slide controls</label>{placement.type === 'propresenter-playlist' && <><label className="widgetinspector__check"><input type="checkbox" checked={Boolean(placement.config.keyboardControls)} onChange={(event) => onChange(placement.id, { keyboardControls: event.target.checked })} /> Enable arrow keys and spacebar</label><label className="widgetinspector__check"><input type="checkbox" checked={Boolean(placement.config.followActive)} onChange={(event) => onChange(placement.id, { followActive: event.target.checked })} /> Follow active cue</label><label>Slide display<select value={placement.config.slideMode ?? 'image'} onChange={(event) => onChange(placement.id, { slideMode: event.target.value })}><option value="image">Rendered previews</option><option value="text">Slide text</option></select></label><label>Slide width (px)<input type="number" min="0" max="200" step="1" value={placement.config.slideSize ?? 60} onChange={(event) => onChange(placement.id, { slideSize: Number(event.target.value) })} /><small>0–200 px. Lower values fit more cues across; 0 uses a safe 32 px rendering floor.</small></label></>}</>;
+  const specific = obs ? <ObsHealthInspector placement={placement} onChange={onChange} /> : companion ? <CompanionRows rows={placement.config.rows ?? []} onChange={(rows) => onChange(placement.id, { rows })} /> : rta ? <><p className="widgetinspector__name">ProdMesh RTA</p><label>Source room<input placeholder="This room" value={placement.config.sourceRoomId ?? ''} onChange={(e) => onChange(placement.id, { sourceRoomId: e.target.value || undefined })} /></label><small>Leave blank to use this room’s ProdMesh RTA. Enter another room ID to monitor its analyzer independently.</small></> : loudness ? <><p className="widgetinspector__name">{title}</p><label>Target dB<input type="number" min="40" max="130" placeholder="Optional" value={placement.config.target ?? ''} onChange={(e) => onChange(placement.id, { target: e.target.value === '' ? undefined : Number(e.target.value) })} /></label><label>Limit dB<input type="number" min="40" max="130" placeholder="Optional" value={placement.config.limit ?? ''} onChange={(e) => onChange(placement.id, { limit: e.target.value === '' ? undefined : Number(e.target.value) })} /></label><label>Weighting<select value={placement.config.weighting ?? 'A'} onChange={(e) => onChange(placement.id, { weighting: e.target.value })}><option value="A">A-weighted</option><option value="B">B-weighted</option><option value="C">C-weighted</option><option value="Z">Z-weighted</option></select></label><label>Response<select value={placement.config.response ?? 'Slow'} onChange={(e) => onChange(placement.id, { response: e.target.value })}><option value="Fast">Fast</option><option value="Slow">Slow</option></select></label></> : restream ? <><p className="widgetinspector__name">Restream</p><label className="widgetinspector__check"><input type="checkbox" checked={Boolean(placement.config.videoPreview)} onChange={(e) => onChange(placement.id, { videoPreview: e.target.checked })} /> Show YouTube video preview</label><small>Shows the active YouTube destination inside this widget.</small><label className="widgetinspector__check"><input type="checkbox" checked={Boolean(placement.config.destinationLinks)} onChange={(e) => onChange(placement.id, { destinationLinks: e.target.checked })} /> Show destination links</label><small>Opens each active destination in a new tab.</small></> : resiPlayer ? <><p className="widgetinspector__name">{placement.type === 'resi-stream' ? 'Resi Stream' : 'Resi Broadcast Monitor'}</p><label>Player aspect ratio<select value={placement.config.aspectRatio ?? '16:9'} onChange={(e) => onChange(placement.id, { aspectRatio: e.target.value })}><option value="16:9">16:9 widescreen</option><option value="4:3">4:3 standard</option><option value="1:1">Square</option></select></label><label className="widgetinspector__check"><input type="checkbox" checked={Boolean(placement.config.autoplay)} onChange={(e) => onChange(placement.id, { autoplay: e.target.checked })} /> Autoplay when allowed</label><label className="widgetinspector__check"><input type="checkbox" checked={placement.config.muted ?? true} onChange={(e) => onChange(placement.id, { muted: e.target.checked })} /> Muted by default</label><label className="widgetinspector__check"><input type="checkbox" checked={placement.config.playerControls ?? true} onChange={(e) => onChange(placement.id, { playerControls: e.target.checked })} /> Show player controls</label></> : !pp ? <p className="widgetinspector__name">{isWidgetType(placement.type) ? widgetRegistry[placement.type].title : placement.type}</p> : <><p className="widgetinspector__name">{title}</p><label className="widgetinspector__check"><input type="checkbox" checked={Boolean(placement.config.slideControls)} onChange={(event) => onChange(placement.id, { slideControls: event.target.checked })} /> Enable slide controls</label>{placement.type === 'propresenter-playlist' && <><label className="widgetinspector__check"><input type="checkbox" checked={Boolean(placement.config.keyboardControls)} onChange={(event) => onChange(placement.id, { keyboardControls: event.target.checked })} /> Enable arrow keys and spacebar</label><label className="widgetinspector__check"><input type="checkbox" checked={Boolean(placement.config.followActive)} onChange={(event) => onChange(placement.id, { followActive: event.target.checked })} /> Follow active cue</label><label>Slide display<select value={placement.config.slideMode ?? 'image'} onChange={(event) => onChange(placement.id, { slideMode: event.target.value })}><option value="image">Rendered previews</option><option value="text">Slide text</option></select></label><label>Slide width (px)<input type="number" min="0" max="200" step="1" value={placement.config.slideSize ?? 60} onChange={(event) => onChange(placement.id, { slideSize: Number(event.target.value) })} /><small>0–200 px. Lower values fit more cues across; 0 uses a safe 32 px rendering floor.</small></label></>}</>;
 
   return (
     <aside className="widgetinspector">
@@ -310,6 +330,15 @@ function WidgetInspector({ placement, onChange }: { placement: ViewPlacement | n
       </label>
     </aside>
   );
+}
+
+function ObsHealthInspector({ placement, onChange }: { placement: ViewPlacement; onChange: (id: string, patch: Record<string, unknown>) => void }) {
+  return <>
+    <p className="widgetinspector__name">OBS Studio Health</p>
+    <label className="widgetinspector__check"><input type="checkbox" checked={placement.config.obsPreview ?? true} onChange={(event) => onChange(placement.id, { obsPreview: event.target.checked })} /> Show program preview</label>
+    <small>Uses the optional preview image URL configured for this room in Campus setup.</small>
+    <label className="widgetinspector__check"><input type="checkbox" checked={Boolean(placement.config.obsDetails)} onChange={(event) => onChange(placement.id, { obsDetails: event.target.checked })} /> Show system details</label>
+  </>;
 }
 
 /**

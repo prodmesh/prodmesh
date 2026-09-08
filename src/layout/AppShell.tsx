@@ -75,6 +75,7 @@ export function AppShell() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [confirmLock, setConfirmLock] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [railLabelsDismissed, setRailLabelsDismissed] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false); // the documentation drawer
   const [assistOpen, setAssistOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
@@ -255,7 +256,13 @@ export function AppShell() {
     <IdentityContext.Provider value={identity}>
     <CampusContext.Provider value={campus}>
       <div className={`shell${collapsed ? ' shell--rail' : ''}`}>
-        <aside className="sidebar">
+        <aside
+          className="sidebar"
+          data-labels-dismissed={railLabelsDismissed || undefined}
+          onPointerOver={() => setRailLabelsDismissed(false)}
+          onFocusCapture={() => setRailLabelsDismissed(false)}
+          onKeyDown={(event) => { if (event.key === 'Escape') setRailLabelsDismissed(true); }}
+        >
           <div className="sidebar__brand">
             {/* The church's own mark when they've uploaded one; the bundled
                 ProdMesh logo otherwise. The endpoint 404s when unset, so a
@@ -293,7 +300,8 @@ export function AppShell() {
             {lockedPrefix ? (
               <NavLink
                 to={lockedPrefix}
-                title={lockedRoomName ?? undefined}
+                aria-label={lockedRoomName ?? undefined}
+                data-rail-label={lockedRoomName ?? undefined}
                 className={({ isActive }) => `sidebar__item${isActive ? ' sidebar__item--active' : ''}`}
               >
                 <HomeIcon size={19} className="sidebar__icon" />
@@ -306,7 +314,8 @@ export function AppShell() {
                   <NavLink
                     to={to}
                     end={end}
-                    title={label}
+                    aria-label={label}
+                    data-rail-label={label}
                     className={({ isActive }) => `sidebar__item${isActive || adminActive ? ' sidebar__item--active' : ''}`}
                   >
                     <Icon size={19} className="sidebar__icon" />
@@ -331,7 +340,8 @@ export function AppShell() {
             <div className="sidebar__help" ref={helpRef}>
               <button
                 className="sidebar__toggle"
-                title="Help"
+                aria-label="Help"
+                data-rail-label="Help"
                 onClick={() => setHelpOpen((open) => !open)}
                 aria-expanded={helpOpen}
               >
@@ -370,7 +380,9 @@ export function AppShell() {
             <div className="sidebar__account" ref={accountRef}>
               <button
                 className="sidebar__user"
-                title={identity?.authenticated ? `Account: ${operatorName}` : 'Log in'}
+                aria-label={`${identity?.authenticated ? `Account: ${operatorName}` : 'Read-only: Log in'} · ${stationName}`}
+                aria-expanded={identity?.authenticated ? accountOpen : undefined}
+                data-rail-label={identity?.authenticated ? `Account: ${operatorName}` : 'Log in'}
                 onClick={identity?.authenticated ? () => setAccountOpen((open) => !open) : () => setIdentityOpen(true)}
               >
                 {identity?.user?.avatarUrl ? (
@@ -396,7 +408,7 @@ export function AppShell() {
             <button
               className="sidebar__toggle"
               onClick={toggle}
-              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              data-rail-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
               {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}

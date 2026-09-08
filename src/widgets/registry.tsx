@@ -21,9 +21,11 @@ import { LyricsWidget } from './LyricsWidget';
 import { SlidesLeftWidget } from './SlidesLeftWidget';
 import { LoudnessWidget } from './LoudnessWidget';
 import { LoudnessTrendWidget } from './LoudnessTrendWidget';
+import { RtaWidget } from './RtaWidget';
 import { ViewersWidget } from './ViewersWidget';
 import { RestreamWidget } from './RestreamWidget';
 import { ResiBroadcastWidget, ResiHealthWidget, ResiStreamWidget, ResiViewersWidget } from './ResiWidgets';
+import { ObsHealthWidget } from './ObsHealthWidget';
 import { ProPresenterControls, ProPresenterPlaylist, ProPresenterSlides, ProPresenterTimers, SlideNotes } from './ProPresenterWidgets';
 import { PlanningCenterSchedule, PlanningCenterService, PlanningCenterTeams, PlanningCenterTimers } from './PlanningCenterWidgets';
 import type { WidgetDef, WidgetType } from './types';
@@ -57,6 +59,17 @@ export const widgetRegistry: Record<WidgetType, WidgetDef> = {
     defaultSpan: 'third',
   },
 
+  rta: {
+    title: 'ProdMesh RTA',
+    description: 'Live 1/3-octave spectrum from the selected ProdMesh RTA room.',
+    integration: 'prodmesh-rta',
+    component: RtaWidget,
+    size: { w: 3, h: 2 },
+    ownHeader: true,
+    unique: false,
+    defaultSpan: 'two-thirds',
+  },
+
   viewers: {
     title: 'YouTube Live Viewers',
     description: 'Concurrent YouTube viewers while the room is streaming.',
@@ -69,6 +82,7 @@ export const widgetRegistry: Record<WidgetType, WidgetDef> = {
     defaultSpan: 'third',
   },
   restream: { title: 'Restream', description: 'Restream broadcast state and connected destinations.', integration: 'restream', component: RestreamWidget, size: { w: 2, h: 2 }, defaultSpan: 'third' },
+  'obs-health': { title: 'OBS Studio Health', description: 'Read-only stream, record, audio, frame, and program-scene health from OBS Studio.', integration: 'obs', component: ObsHealthWidget, size: { w: 3, h: 3 }, defaultSpan: 'third' },
   'resi-stream': { title: 'Resi Stream', description: 'Official Resi player with live and offline state.', integration: 'resi', component: ResiStreamWidget, size: { w: 3, h: 2 }, defaultSpan: 'third' },
   'resi-health': { title: 'Resi Stream Health', description: 'Normalized Resi encoder, stream, and destination health.', integration: 'resi', component: ResiHealthWidget, size: { w: 2, h: 2 }, defaultSpan: 'third' },
   'resi-viewers': { title: 'Resi Viewers', description: 'Live audience count and available Resi analytics.', integration: 'resi', component: ResiViewersWidget, size: { w: 1, h: 1 }, defaultSpan: 'third' },
