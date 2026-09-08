@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
 import { WebSocketServer } from 'ws';
 import { setLogging, watchSpl } from './smaart.js';
 
 // A fake Smaart API v4 server: password auth on the RPC socket, one device
 // with two logging inputs, a metric stream that respects targetFPS, and the
 // keypress command handler that toggles SPL logging (like Suite 9.6.4).
-function fakeSmaart({ requireAuth = true, logging = true, hasToggleCommand = true } = {}) {
-  const wss = new WebSocketServer({ port: 0 });
+async function fakeSmaart({ requireAuth = true, logging = true, hasToggleCommand = true } = {}) {
+  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   const seen = { authed: false, targetFPS: null, streamPath: null, logging, toggles: 0 };
 
   wss.on('connection', (ws, req) => {
@@ -75,6 +76,8 @@ function fakeSmaart({ requireAuth = true, logging = true, hasToggleCommand = tru
     ws.on('close', () => clearInterval(iv));
   });
 
+  // Binding a host makes listen() asynchronous, so address() is null until now.
+  await once(wss, 'listening');
   return {
     wss,
     seen,
@@ -86,8 +89,8 @@ function fakeSmaart({ requireAuth = true, logging = true, hasToggleCommand = tru
 // A fake Smaart v8 (as observed live on 8.5.2.2 at a church FOH):
 // /api/v4/ accepts the WebSocket but never answers RPCs; the real API is the
 // same dialect at /api/v3/.
-function fakeSmaartV8() {
-  const wss = new WebSocketServer({ port: 0 });
+async function fakeSmaartV8() {
+  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   const seen = { v4Messages: 0, streamPath: null };
 
   wss.on('connection', (ws, req) => {
@@ -124,6 +127,8 @@ function fakeSmaartV8() {
     ws.on('close', () => clearInterval(iv));
   });
 
+  // Binding a host makes listen() asynchronous, so address() is null until now.
+  await once(wss, 'listening');
   return { seen, port: () => wss.address().port, close: () => new Promise((r) => wss.close(r)) };
 }
 
@@ -138,7 +143,7 @@ function collectSamples(cfg, count) {
 }
 
 test('real transport: auth → pick channel → stream samples', async () => {
-  const srv = fakeSmaart();
+  const srv = await fakeSmaart();
   try {
     const samples = await collectSamples(
       { host: '127.0.0.1', port: srv.port(), password: 'hunter2', channel: 'FOH Mic' },
@@ -156,7 +161,7 @@ test('real transport: auth → pick channel → stream samples', async () => {
 });
 
 test('real transport: no password needed when auth is off; default channel is the first', async () => {
-  const srv = fakeSmaart({ requireAuth: false });
+  const srv = await fakeSmaart({ requireAuth: false });
   try {
     const samples = await collectSamples({ host: '127.0.0.1', port: srv.port() }, 1);
     assert.equal(samples[0].spl, 85.3);
@@ -167,7 +172,7 @@ test('real transport: no password needed when auth is off; default channel is th
 });
 
 test('real transport: unknown metric falls back to an SPL/Leq meter, never dBFS', async () => {
-  const srv = fakeSmaart({ requireAuth: false });
+  const srv = await fakeSmaart({ requireAuth: false });
   try {
     const samples = await collectSamples(
       { host: '127.0.0.1', port: srv.port(), metric: 'SPL C Slow' }, // not in frames
@@ -180,7 +185,7 @@ test('real transport: unknown metric falls back to an SPL/Leq meter, never dBFS'
 });
 
 test('real transport: falls back to API v3 when the v4 socket is silent (Smaart v8)', async () => {
-  const srv = fakeSmaartV8();
+  const srv = await fakeSmaartV8();
   try {
     const samples = await collectSamples({ host: '127.0.0.1', port: srv.port(), helloMs: 200 }, 2);
     assert.equal(samples[0].spl, 91.2);
@@ -198,7 +203,7 @@ test('mock transport still works (rooms without Smaart hardware)', async () => {
 });
 
 test('setLogging: toggles on via the command handler and verifies the flip', async () => {
-  const srv = fakeSmaart({ requireAuth: false, logging: false });
+  const srv = await fakeSmaart({ requireAuth: false, logging: false });
   try {
     const r = await setLogging({ host: '127.0.0.1', port: srv.port() }, true);
     assert.deepEqual(r, { changed: true, logging: true });
@@ -210,7 +215,7 @@ test('setLogging: toggles on via the command handler and verifies the flip', asy
 });
 
 test('setLogging: no-op when the state already matches (toggle never fired)', async () => {
-  const srv = fakeSmaart({ requireAuth: false, logging: true });
+  const srv = await fakeSmaart({ requireAuth: false, logging: true });
   try {
     const r = await setLogging({ host: '127.0.0.1', port: srv.port() }, true);
     assert.deepEqual(r, { changed: false, logging: true });
@@ -221,7 +226,7 @@ test('setLogging: no-op when the state already matches (toggle never fired)', as
 });
 
 test('setLogging: turns off, and authenticates first when required', async () => {
-  const srv = fakeSmaart({ requireAuth: true, logging: true });
+  const srv = await fakeSmaart({ requireAuth: true, logging: true });
   try {
     const r = await setLogging({ host: '127.0.0.1', port: srv.port(), password: 'hunter2' }, false);
     assert.deepEqual(r, { changed: true, logging: false });
@@ -232,7 +237,7 @@ test('setLogging: turns off, and authenticates first when required', async () =>
 });
 
 test('setLogging: throws when Smaart exposes no toggle command', async () => {
-  const srv = fakeSmaart({ requireAuth: false, logging: false, hasToggleCommand: false });
+  const srv = await fakeSmaart({ requireAuth: false, logging: false, hasToggleCommand: false });
   try {
     await assert.rejects(
       setLogging({ host: '127.0.0.1', port: srv.port() }, true),
