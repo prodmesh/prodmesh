@@ -76,6 +76,45 @@ describe('Users & access', () => {
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Reset PIN' }).length).toBeGreaterThan(0));
   });
 
+  it('creates a user from a dialog, not a form parked on the page', async () => {
+    api.createUser.mockResolvedValue({ id: 'new', displayName: 'Sam Rivera' });
+    asIdentity(['*'], <UserManagementPanel />);
+    await userEvent.click(await screen.findByRole('button', { name: 'New user' }));
+
+    const dialog = within(document.querySelector('.editdlg') as HTMLElement);
+    // Nothing typed yet, so there is nothing to create.
+    expect(dialog.getByRole('button', { name: 'Create user' })).toBeDisabled();
+    await userEvent.type(dialog.getByLabelText(/Display name/), 'Sam Rivera');
+    await userEvent.type(dialog.getByLabelText(/Username/), 'srivera');
+    await userEvent.type(dialog.getByLabelText(/^PIN/), '7788');
+    await userEvent.click(dialog.getByRole('button', { name: 'Create user' }));
+
+    expect(api.createUser).toHaveBeenCalledWith(expect.objectContaining({
+      displayName: 'Sam Rivera', username: 'srivera', pin: '7788',
+    }));
+    expect(await screen.findByText('Created Sam Rivera.')).toBeInTheDocument();
+  });
+
+  it('creates a group through the same dialog that edits one', async () => {
+    api.createGroup.mockResolvedValue({ id: 'g2', name: 'Camera Operators', permissions: ['shows.operate'] });
+    api.getUserDirectory.mockResolvedValue({
+      users: [],
+      groups: [],
+      permissions: [{ id: 'shows.operate', label: 'Operate shows', description: 'Start and end shows.' }],
+    });
+    asIdentity(['*'], <UserManagementPanel />);
+    await userEvent.click(await screen.findByRole('button', { name: 'New permission group' }));
+
+    const dialog = within(document.querySelector('.editdlg') as HTMLElement);
+    await userEvent.type(dialog.getByLabelText(/Group name/), 'Camera Operators');
+    await userEvent.click(dialog.getByLabelText(/Operate shows/));
+    // Creating says "Create group"; editing the same dialog says "Save".
+    await userEvent.click(dialog.getByRole('button', { name: 'Create group' }));
+
+    expect(api.createGroup).toHaveBeenCalledWith('Camera Operators', ['shows.operate']);
+    expect(api.updateGroup).not.toHaveBeenCalled();
+  });
+
   it('edits a group behind one Save, not a live write per checkbox', async () => {
     // Each intermediate state on the way to what somebody meant would be a
     // real grant — written, audited, and live for whoever is signed in.
@@ -93,7 +132,7 @@ describe('Users & access', () => {
     api.updateGroup.mockResolvedValue({ id: 'g1', name: 'Booth Operators', permissions: ['rooms.mode.change', 'shows.operate'] });
     asIdentity(['*'], <UserManagementPanel />);
 
-    await screen.findAllByText('Booth Operators'); // also a checkbox in Create user
+    await screen.findByText('Booth Operators');
     // Administrators is assignable to a user but has nothing to EDIT — its '*'
     // is computed from system_key rather than stored, so it gets no row here.
     const groupRows = document.querySelectorAll('.users__row--group');
@@ -101,7 +140,8 @@ describe('Users & access', () => {
     expect(groupRows[0].textContent).toContain('Booth Operators');
 
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    // Scoped to the dialog: the create-group form lists the same permissions.
+    // Scoped to the dialog rather than the document, so this keeps asserting
+    // about the dialog if the page ever lists permissions again.
     const dialog = within(document.querySelector('.editdlg') as HTMLElement);
     await userEvent.click(dialog.getByLabelText(/Operate shows/));
     expect(api.updateGroup).not.toHaveBeenCalled();

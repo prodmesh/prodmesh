@@ -181,6 +181,11 @@
   justify-content: flex-end;
 }
 
+.users__toolbar {
+  display: flex;
+  gap: 8px;
+}
+
 /* A group row answers "what does this let someone do" in one line, and opens a
    dialog to change it — the permission set is edited behind one Save, so the
    row itself needs no controls beyond Edit. */

@@ -219,40 +219,13 @@ export function UserManagementPanel() {
   // (see lib/identity), so this hides the button from someone known to lack
   // '*' and leaves the server to refuse everyone else.
   const isFullAdmin = useCan('*');
-  const [user, setUser] = useState({ displayName: '', username: '', pin: '', planningCenterPersonId: '' });
-  const [userGroups, setUserGroupsDraft] = useState<string[]>([]);
-  const [groupName, setGroupName] = useState('');
-  const [groupPermissions, setGroupPermissions] = useState<string[]>([]);
+  const [creating, setCreating] = useState<'user' | 'group' | null>(null);
   const [msg, setMsg] = useState<Feedback>(null);
 
   const refresh = () => getUserDirectory().then(setDirectory).catch((err) => setMsg(fail(err)));
   useEffect(() => { refresh(); }, []);
 
   if (!directory) return null;
-
-  const addUser = async () => {
-    setMsg(null);
-    try {
-      await createUser({
-        ...user,
-        planningCenterPersonId: user.planningCenterPersonId || null,
-        groupIds: userGroups,
-      });
-      setUser({ displayName: '', username: '', pin: '', planningCenterPersonId: '' });
-      setUserGroupsDraft([]);
-      setMsg(ok('User created.'));
-      refresh();
-    } catch (err) { setMsg(fail(err)); }
-  };
-
-  const addGroup = async () => {
-    setMsg(null);
-    try {
-      await createGroup(groupName, groupPermissions);
-      setGroupName(''); setGroupPermissions([]); setMsg(ok('Permission group created.'));
-      refresh();
-    } catch (err) { setMsg(fail(err)); }
-  };
 
   return (
     <section className="panel users">
@@ -263,31 +236,13 @@ export function UserManagementPanel() {
         </h2>
       </div>
 
-      <div className="users__grid">
-        <div className="users__editor">
-          <h3>Create user</h3>
-          <input className="field" placeholder="Display name" value={user.displayName} onChange={(e) => setUser({ ...user, displayName: e.target.value })} />
-          <input className="field" placeholder="Username" autoCapitalize="none" value={user.username} onChange={(e) => setUser({ ...user, username: e.target.value })} />
-          <PasswordInput className="field" placeholder="PIN" inputMode="numeric" value={user.pin} onChange={(e) => setUser({ ...user, pin: e.target.value })} />
-          <PersonPicker value={user.planningCenterPersonId} onChange={(personId) => setUser({ ...user, planningCenterPersonId: personId })} />
-          <div className="users__checks">
-            {directory.groups.map((group) => (
-              <Checkbox key={group.id} label={group.name} checked={userGroups.includes(group.id)} onChange={() => setUserGroupsDraft(toggle(userGroups, group.id))} />
-            ))}
-          </div>
-          <button className="btn btn--primary" disabled={!user.displayName || !user.username || user.pin.length < 4} onClick={addUser}>Create user</button>
-        </div>
-
-        <div className="users__editor">
-          <h3>Create permission group</h3>
-          <input className="field" placeholder="Group name" value={groupName} onChange={(e) => setGroupName(e.target.value)} />
-          <div className="users__checks users__checks--permissions">
-            {directory.permissions.map((permission) => (
-              <Checkbox key={permission.id} label={<><strong>{permission.label}</strong><small>{permission.id}</small></>} checked={groupPermissions.includes(permission.id)} onChange={() => setGroupPermissions(toggle(groupPermissions, permission.id))} />
-            ))}
-          </div>
-          <button className="btn btn--primary" disabled={groupName.trim().length < 2} onClick={addGroup}>Create group</button>
-        </div>
+      {/* Both creators were forms sitting open on the page, which is what the
+          room page looked like before #23: every editor visible at once, each
+          with its own button. Making something is now a dialog like changing
+          it, so the page reads as the two lists it is. */}
+      <div className="users__toolbar">
+        <button className="btn btn--primary" onClick={() => setCreating('user')}>New user</button>
+        <button className="btn" onClick={() => setCreating('group')}>New permission group</button>
       </div>
 
       {/* Groups were create-only, so a permission set was fixed the moment it
@@ -394,12 +349,26 @@ export function UserManagementPanel() {
         ))}
       </div>
       <Msg msg={msg} />
+      {creating === 'user' && (
+        <CreateUserDialog
+          groups={directory.groups}
+          onClose={() => setCreating(null)}
+          onCreated={(name) => { setCreating(null); setMsg(ok(`Created ${name}.`)); refresh(); }}
+        />
+      )}
+      {creating === 'group' && (
+        <GroupDialog
+          permissions={directory.permissions}
+          onClose={() => setCreating(null)}
+          onSaved={(text) => { setCreating(null); setMsg(ok(text)); refresh(); }}
+        />
+      )}
       {editingGroup && (
         <GroupDialog
           group={editingGroup}
           permissions={directory.permissions}
           onClose={() => setEditingGroup(null)}
-          onSaved={(name) => { setEditingGroup(null); setMsg(ok(`Updated ${name}.`)); refresh(); }}
+          onSaved={(text) => { setEditingGroup(null); setMsg(ok(text)); refresh(); }}
         />
       )}
       {resetting && (
@@ -413,6 +382,78 @@ export function UserManagementPanel() {
   );
 }
 
+/** Create a person's account.
+ *
+ *  A PIN is set here and never shown again — the same rule the reset dialog
+ *  states — so the field says what to do with it rather than leaving somebody
+ *  to discover later that it cannot be looked up.
+ */
+function CreateUserDialog({ groups, onClose, onCreated }: {
+  groups: PermissionGroup[];
+  onClose: () => void;
+  onCreated: (name: string) => void;
+}) {
+  const f = useDraft(
+    { displayName: '', username: '', pin: '', planningCenterPersonId: '', groupIds: [] as string[] },
+    async (draft) => {
+      const stored = await createUser({
+        displayName: draft.displayName.trim(),
+        username: draft.username.trim(),
+        pin: draft.pin,
+        planningCenterPersonId: draft.planningCenterPersonId || null,
+        groupIds: draft.groupIds,
+      });
+      onCreated(stored.displayName);
+      return draft;
+    },
+  );
+  const { draft } = f;
+
+  return (
+    <EditDialog
+      title="New user"
+      help="Access is the union of the groups you tick. Someone in no group can still sign in — they just cannot do anything an unauthenticated station could not."
+      form={f}
+      onClose={onClose}
+      saveLabel="Create user"
+    >
+      <FormRow>
+        <Field label="Display name" width="grow">
+          <input className="field" autoFocus placeholder="e.g. Sam Rivera"
+            value={draft.displayName} onChange={(e) => f.patch({ displayName: e.target.value })} />
+        </Field>
+      </FormRow>
+      <FormRow>
+        <Field label="Username" width="grow">
+          <input className="field" autoCapitalize="none" placeholder="e.g. srivera"
+            value={draft.username} onChange={(e) => f.patch({ username: e.target.value })} />
+        </Field>
+        <Field label="PIN" width="sm">
+          <PasswordInput className="field mono" inputMode="numeric"
+            value={draft.pin} onChange={(e) => f.patch({ pin: e.target.value })} />
+        </Field>
+      </FormRow>
+      {/* Said out loud rather than behind a tooltip: it is the one thing about
+          this form somebody has to act on before closing it. */}
+      <p className="settings__muted">
+        They sign in with this PIN. Tell it to them yourself — it cannot be read
+        back later, only reset.
+      </p>
+      <PersonPicker
+        value={draft.planningCenterPersonId}
+        onChange={(personId) => f.patch({ planningCenterPersonId: personId })}
+      />
+      <div className="users__checks">
+        {groups.map((group) => (
+          <Checkbox key={group.id} label={group.name}
+            checked={draft.groupIds.includes(group.id)}
+            onChange={() => f.patch({ groupIds: toggle(draft.groupIds, group.id) })} />
+        ))}
+      </div>
+    </EditDialog>
+  );
+}
+
 /** Edit one group's permissions behind a single Save.
  *
  *  Deliberately not save-per-checkbox like the user rows above. Those toggle
@@ -422,31 +463,41 @@ export function UserManagementPanel() {
  *  half-finished thought out of the database.
  */
 function GroupDialog({ group, permissions, onClose, onSaved }: {
-  group: PermissionGroup;
+  /** Absent means this is creating one. The two differ only in which call the
+   *  draft is saved with, so they share a dialog rather than a near-copy. */
+  group?: PermissionGroup;
   permissions: { id: string; label: string; description: string }[];
   onClose: () => void;
-  onSaved: (name: string) => void;
+  onSaved: (message: string) => void;
 }) {
-  const f = useDraft({ name: group.name, permissions: group.permissions }, async (draft) => {
-    const stored = await updateGroup(group.id, { name: draft.name, permissions: draft.permissions });
-    onSaved(stored.name);
+  const f = useDraft({ name: group?.name ?? '', permissions: group?.permissions ?? [] }, async (draft) => {
+    const name = draft.name.trim();
+    const stored = group
+      ? await updateGroup(group.id, { name, permissions: draft.permissions })
+      : await createGroup(name, draft.permissions);
+    onSaved(group ? `Updated ${stored.name}.` : `Created ${stored.name}.`);
     return { name: stored.name, permissions: stored.permissions };
   });
   const { draft } = f;
 
   return (
     <EditDialog
-      title={`Edit ${group.name}`}
+      title={group ? `Edit ${group.name}` : 'New permission group'}
       help="A member's access is the union of every group they are in. Removing a permission here removes it from everyone in this group."
       form={f}
       onClose={onClose}
+      saveLabel={group ? 'Save' : 'Create group'}
       wide
     >
       <FormRow>
         <Field label="Group name" width="grow">
-          <input className="field" value={draft.name} onChange={(e) => f.patch({ name: e.target.value })} />
+          <input className="field" autoFocus={!group} placeholder="e.g. Booth Operators"
+            value={draft.name} onChange={(e) => f.patch({ name: e.target.value })} />
         </Field>
       </FormRow>
+      {draft.name.trim().length < 2 && (
+        <p className="settings__muted">A group needs a name before it can be saved.</p>
+      )}
       <div className="users__checks users__checks--permissions">
         {permissions.map((permission) => (
           <Checkbox

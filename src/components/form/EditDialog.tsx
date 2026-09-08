@@ -22,11 +22,13 @@ export interface DialogForm {
   submit: () => Promise<boolean>;
 }
 
-export function EditDialog({ title, help, form, onClose, wide = false, children }: {
+export function EditDialog({ title, help, form, onClose, saveLabel = 'Save', wide = false, children }: {
   title: ReactNode;
   help?: string;
   form: DialogForm;
   onClose: () => void;
+  /** "Create" reads better than "Save" on a dialog that is making something. */
+  saveLabel?: string;
   /** Rows of many fields (Companion's modes) need the room. */
   wide?: boolean;
   children: ReactNode;
@@ -67,7 +69,7 @@ export function EditDialog({ title, help, form, onClose, wide = false, children 
             {form.dirty ? 'Discard changes' : 'Close'}
           </button>
           <button type="button" className="btn btn--primary" onClick={save} disabled={!form.dirty || form.busy}>
-            {form.busy ? 'Saving…' : 'Save'}
+            {form.busy ? 'Saving…' : saveLabel}
           </button>
         </div>
       </div>
