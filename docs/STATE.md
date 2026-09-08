@@ -3,7 +3,64 @@
 A living snapshot of what's live vs mock and what's next. Update this as things
 change — it's the fastest way for a cold context to know where the project stands.
 The long-term destination lives in [VISION.md](./VISION.md).
-Last updated: 2026-09-01 (v1.4.0-dev in progress).
+Last updated: 2026-09-08 (v1.4.0-dev in progress).
+
+## v1.4.0-dev at a glance (unreleased)
+
+Analyzer depth, Companion depth, and the editor learning to place things.
+Outside contributions again from
+[@WorshipWarehouse](https://github.com/WorshipWarehouse) (#17, #32, #33, #35,
+#40), reviewed and merged here — three of them reworked on the contributor's
+own branch rather than sent back, where settling them needed hardware only the
+maintainer has.
+
+| | |
+|---|---|
+| **ProdMesh RTA** | A live 1/3-octave spectrum widget reading the analyzer's own bands, plus concurrent A/B/C/Z Fast and Slow readings. Fast frames now aggregate to one energy-equivalent row per second — a service records ~5,400 rows rather than one per frame — and a row carries a `peak` beside its Leq, because averaging a second of samples buried transients by ~12 dB |
+| **OBS Studio** | Per-room host/port/password and a read-only health widget: stream, recording, audio, frames, scene, bitrate. Read-only by design; it cannot control OBS. **Not verified against a real OBS — see below** |
+| **Bitfocus Companion** | Companion variables on a dashboard; an emulator-surface picker read from Companion's tRPC API; and Room Mode is now optional per room, so a church can run our mode model, Companion's own surface, both, or neither |
+| **Widget placement** | Shrink-to-fit — the editor walks candidate sizes biggest-first instead of refusing a half-empty grid. `minSize` is a *claim* that a widget renders acceptably that small, not a layout hint, so a widget that has not been designed small does not declare one |
+| **One admin identity** (ADR 0012) | The admin PIN is the `admin` account's PIN rather than a second bypass beside the account system |
+| **Room configuration** | Read-only cards that open dialogs, instead of one long form |
+| **Third-party embeds** | Fenced behind `src/lib/embed.ts`: `safeEmbedUrl()` (https only — `new URL()` is a parser, not a check) and a shared sandbox. Closes the v1.3.0 gap below |
+| **Org migration** | The repo is `prodmesh/prodmesh`. `ghcr.io/jbeale/prodmesh:latest` is mirrored by hand at release time so installs predating the move keep updating |
+| **Desktop app** | Version-free artifact names, and a README download table |
+
+### Verified how
+
+- **ProdMesh RTA** — probed live against a running analyzer on 2026-09-07/08:
+  the frame contract, the calibrated band scale, and the widget drawing real
+  signal on the maintainer's instance. Written up in
+  [INTEGRATION-NOTES.md](./INTEGRATION-NOTES.md). **Not yet run in a building
+  during a service.**
+- **Companion emulator surface** — probed live against Companion 4 on
+  2026-09-08, including the tRPC subscription shape, and both switch positions
+  exercised by the maintainer. Also in INTEGRATION-NOTES. **Not yet run against
+  the building's Companion.**
+- **Peak/Leq aggregation** — tests only, but they replay real analyzer frames
+  and the peak test fails at exactly the wrong value (93.4 dB for a 105 dB
+  transient) without the fix.
+- **OBS — NOT verified against a real OBS instance by anyone.** The
+  contribution's own validation was a build and the UI suite; neither the
+  maintainer nor the contributor ran it against OBS. Every OBS widget is
+  exercised only against its unconfigured and error paths.
+
+### Known gaps
+
+- **OBS is not labelled Beta**, though by the rule above it should be — Resi is
+  the only integration currently carrying the mark. Either OBS gets the label
+  before v1.4.0 is tagged, or somebody points it at a real OBS and records what
+  they saw.
+- **The Companion emulator surface has no lockout, PIN or audit trail.** That
+  is inherent, not a defect: the browser talks straight to Companion, which has
+  no auth of its own, so a press there skips the `rooms.mode.change`
+  permission, the schedule lockout and the audit row a Room Mode change writes.
+  It is off by default and a per-room switch for that reason, but a room that
+  turns it on has opted out of answering "who changed the mode at 10:42".
+- **`server/setupApi.test.js` fails intermittently** under a full-suite run —
+  three sightings across sessions, never reproduced in isolation (6+ clean runs
+  after the last one). Isolation looks correct (own temp data dir, ephemeral
+  port), so the suspicion is timing under concurrent load.
 
 ## v1.3.0 at a glance
 
@@ -102,7 +159,9 @@ Notes:
 
 | Integration | Status |
 |---|---|
-| Bitfocus Companion (per room) | Live for Auditorium; Youth Room/Chapel mock pending real setup |
+| Bitfocus Companion (per room) | Live for Auditorium; Youth Room/Chapel mock pending real setup. Since 1.4.0-dev also: a variables widget, and an optional embedded **emulator surface** whose picker reads Companion's tRPC API (`surfaces.emulatorList`, probed live on Companion 4). Room Mode is optional per room. The surface is off by default because its presses skip our permission, lockout and audit path — Companion has no auth of its own |
+| **OBS Studio** (per room) | **Implemented, not verified.** Per-room host/port/password; read-only health widget over obs-websocket. Nobody here has run it against a real OBS — it is exercised only against its unconfigured and error paths, and it is *not* currently labelled Beta though the rule says it should be |
+| **ProdMesh RTA** | **Live** — the free analyzer (`github.com/prodmesh/prodmesh-rta`) as an analysis source, plus a 1/3-octave spectrum widget since 1.4.0-dev. Frame contract probed live 2026-09-07/08: bands arrive already calibrated to dB SPL (31 bands summed to 50.1 dB against a reported LAF of 50.3), `cal_db` is the SPL at 0 dBFS so it doubles as the plot ceiling, and program (loudness) mode reports `cal_db: 0` with dBFS bands. Streams at a rate configured in the app — ~5 Hz on the instance tested, not the 20 Hz the widget was designed around |
 | Planning Center **Services** | **Live** — plan display + order of service, PAT in `server/data/secrets.json` |
 | Planning Center **Calendar** | **Not started** — awaiting read-only access. High value (see below) |
 | **Comms captions** | **Live for ProdMesh Caption** (verified 2026-08-11 against a running instance: roster, partial/final folding, refcounting, heartbeat). **ProdCom is written from its published spec and NOT verified** — its OpenAPI schemas TranscriptEntry but never the frame wrapping it, so `prodcom.js` identifies an entry by shape and accepts it bare or wrapped. Two sources behind `integrations/captions.js`, the same arrangement analysis.js uses. Read-only by design on both. Refcounted `room:*:captions` topic; the Comms widget is the only surface. See INTEGRATION-NOTES for the tick/events trap. |
@@ -673,10 +732,14 @@ Notes:
 
 - Full browser end-to-end tests against a running server (critical component
   interactions are now covered in jsdom; live integration flows remain manual).
-- PIN brute-force throttling on legacy `/api/auth/admin` (named-user login is throttled).
 - Backend TypeScript (currently plain JS).
-- Legacy Admin-PIN sessions reset on server restart; named-user sessions persist
-  in SQLite and expire after eight hours.
+
+Two entries came off this list with ADR 0012, which made the admin PIN the
+`admin` account's PIN rather than a bypass beside the account system.
+`/api/auth/admin` is throttled like any other login (429 after five attempts
+from an address), and because it now authenticates a real account its session
+is a row in `user_sessions` — so it survives a restart and expires after eight
+hours, instead of being dropped on boot.
 
 ## Decisions on hold pending info
 
