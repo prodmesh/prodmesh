@@ -264,7 +264,6 @@ export function RoomStatus() {
           not one prodmesh makes for them. See validateCompanion. */}
       {companionEnabled && room.hasCompanion && room.companionSurfaceEnabled && (
         <Accordion
-          className="acc--companion"
           title={<IntegrationTitle integration="companion">Bitfocus Companion</IntegrationTitle>}
           defaultOpen
           summary={<span className="acc__chip">Live controls</span>}
