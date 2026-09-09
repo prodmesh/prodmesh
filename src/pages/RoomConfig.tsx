@@ -26,6 +26,7 @@ import {
   saveCompanion,
   saveObs,
   savePcServiceTypes,
+  getPlanningCenterServiceTypes,
   saveProPresenter,
   saveSchedules,
   saveYouTube,
@@ -683,30 +684,71 @@ function PcServiceTypesDialog({ roomId, initial, onSaved, onClose }: {
   const editType = (i: number, patch: Partial<PcServiceType>) =>
     f.setDraft((all) => all.map((x, j) => j === i ? { ...x, ...patch } : x));
 
+  // Nobody knows their service type ids — they live in a Planning Center URL.
+  // Ask Planning Center for the list instead, and fall back to typing when
+  // there is no token, no permission or no answer, the way PersonPicker does:
+  // an install without Planning Center still has to configure its rooms.
+  const query = useQuery('pc-service-types', getPlanningCenterServiceTypes, { staleMs: 60_000 });
+  const available = query.data?.serviceTypes ?? [];
+  const byHand = query.data?.configured === false || Boolean(query.error);
+
   return (
     <EditDialog
       title="Planning Center service types"
-      help="The event types this room hosts. The ID is in the Planning Center Services URL for that service type."
+      help="The event types this room hosts. Pick them from Planning Center, or enter an ID by hand if Planning Center is not connected."
       form={f}
       onClose={onClose}
     >
       {f.draft.length === 0 && <p className="settings__muted">None — this room shows no Planning Center events.</p>}
       {f.draft.map((st, i) => (
         <FormRow key={i}>
-          <Field label="Name" width="grow">
-            <input className="field" placeholder="e.g. Sunday" value={st.name}
-              onChange={(e) => editType(i, { name: e.target.value })} />
-          </Field>
-          <Field label="Service type ID">
-            <input className="field" placeholder="e.g. 500001" inputMode="numeric" value={st.id}
-              onChange={(e) => editType(i, { id: e.target.value })} />
-          </Field>
+          {byHand ? (
+            <>
+              <Field label="Name" width="grow">
+                <input className="field" placeholder="e.g. Sunday" value={st.name}
+                  onChange={(e) => editType(i, { name: e.target.value })} />
+              </Field>
+              <Field label="Service type ID">
+                <input className="field" placeholder="e.g. 500001" inputMode="numeric" value={st.id}
+                  onChange={(e) => editType(i, { id: e.target.value })} />
+              </Field>
+            </>
+          ) : (
+            <Field label="Service type" width="grow">
+              <SelectField
+                value={st.id}
+                disabled={query.loading}
+                onChange={(e) => {
+                  const picked = available.find((t) => t.id === e.target.value);
+                  // The name rides along with the id. A hand-typed label that
+                  // disagrees with Planning Center is a bug waiting to be
+                  // reported as "the wrong service is showing".
+                  editType(i, { id: e.target.value, name: picked?.name ?? '' });
+                }}
+              >
+                <option value="">{query.loading ? 'Loading…' : 'Choose a service type'}</option>
+                {/* A saved type this token cannot see stays selectable, so
+                    opening the dialog never silently drops one. */}
+                {st.id && !available.some((t) => t.id === st.id) && (
+                  <option value={st.id}>{st.name || `Service type ${st.id}`} (not in Planning Center)</option>
+                )}
+                {available
+                  .filter((t) => t.id === st.id || !f.draft.some((x) => x.id === t.id))
+                  .map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </SelectField>
+            </Field>
+          )}
           <div className="formrow__actions">
             <button className="iconbtn iconbtn--danger" title="Remove service type" aria-label="Remove service type"
               onClick={() => f.setDraft((all) => all.filter((_, j) => j !== i))}><Trash2 size={14} /></button>
           </div>
         </FormRow>
       ))}
+      {query.error && (
+        <p className="settings__muted">
+          Planning Center didn’t answer, so IDs have to be entered by hand.
+        </p>
+      )}
       <button className="btn" onClick={() => f.setDraft((all) => [...all, { id: '', name: '' }])}>
         + Add service type
       </button>

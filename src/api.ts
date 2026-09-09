@@ -374,6 +374,11 @@ export interface PlanningCenterPerson {
   inactive?: boolean;
 }
 
+/** The service types this Planning Center token can see. `configured: false`
+ *  means no token is connected, so the id has to be entered by hand. */
+export const getPlanningCenterServiceTypes = () =>
+  getJson<{ configured: boolean; serviceTypes: PcServiceType[] }>('/api/planning-center/service-types');
+
 /** Name search over Planning Center Services people. `configured: false` means
  *  no token is connected, so the person ID has to be entered by hand. */
 export const searchPlanningCenterPeople = (query: string) =>

@@ -168,6 +168,33 @@ export function pcId(value, what) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+/**
+ * Every service type this token can see, so an operator picks one instead of
+ * digging a nine-digit id out of a Planning Center URL.
+ *
+ * `per_page=100` and no paging: a church has a handful of these — Sunday,
+ * Midweek, Youth — and one that genuinely had more than a hundred would be a
+ * different problem than this dropdown. An install with no token answers with
+ * an empty list rather than throwing; it just types the id by hand, the way
+ * the person picker falls back.
+ *
+ * Sorted here rather than with `order=name`. Planning Center's ordering
+ * parameters differ per endpoint and this one is not something anybody has
+ * confirmed against a real account — `/service_types` itself is proven, since
+ * checkCredentials has always called it, so the query stays to what is known
+ * to work and the sort happens where it cannot fail.
+ */
+export function listServiceTypes() {
+  return cached('service-types', async () => {
+    if (!isConfigured()) return [];
+    const body = await pcGet('/service_types?per_page=100');
+    return (body.data ?? [])
+      .map((d) => ({ id: String(d.id), name: d.attributes?.name ?? `Service type ${d.id}` }))
+      .filter((t) => /^[0-9]+$/.test(t.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  });
+}
+
 /** Upcoming plans for a service type ({ id, name }). Summaries — times/items
  *  are hydrated separately (see getPlanTimes / getPlanItems). */
 export function getUpcomingPlans(serviceType, limit = 3) {

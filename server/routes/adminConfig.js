@@ -122,6 +122,26 @@ router.get('/api/secrets/check', requirePermission('*'), async (_req, res) => {
   }
 });
 
+/**
+ * The service types this token can see, so Admin can offer a list rather than
+ * asking somebody to find an id in a Planning Center URL.
+ *
+ * `configured: false` is a normal answer rather than an error — an install with
+ * no token still configures its rooms, it just types the id by hand. Same shape
+ * and same reasoning as the person search in routes/auth.js.
+ */
+router.get('/api/planning-center/service-types', requirePermission('config.manage'), async (_req, res) => {
+  const configured = pco.isConfigured();
+  if (!configured) return res.json({ configured, serviceTypes: [] });
+  try {
+    res.json({ configured, serviceTypes: await pco.listServiceTypes() });
+  } catch {
+    // Distinct from an empty list: "this token sees no service types" and
+    // "Planning Center didn't answer" need different words on screen.
+    res.status(502).json({ error: 'planning_center_unavailable' });
+  }
+});
+
 // Widgets read Resi over the `integration:resi` topic now, so this is a
 // maintenance route. Gated for the same reason as the ProPresenter console
 // read: it calls a third-party API on the church's own token, and nothing
