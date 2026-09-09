@@ -27,6 +27,7 @@ import {
   saveObs,
   savePcServiceTypes,
   getPlanningCenterServiceTypes,
+  type PcServiceTypeOption,
   saveProPresenter,
   saveSchedules,
   saveYouTube,
@@ -673,6 +674,14 @@ function SchedulesDialog({ roomId, initial, modes, onSaved, onClose }: {
 // stored, normalised), and returns the next draft. Nothing below changed shape
 // when it moved out of the page — only what wraps it.
 
+/** Service types in their folders, order preserved from the server (folder,
+ *  then name) so the dropdown reads the way Planning Center is organised. */
+function groupByFolder(types: PcServiceTypeOption[]): [string, PcServiceTypeOption[]][] {
+  const groups = new Map<string, PcServiceTypeOption[]>();
+  for (const t of types) groups.set(t.folder, [...(groups.get(t.folder) ?? []), t]);
+  return [...groups];
+}
+
 function PcServiceTypesDialog({ roomId, initial, onSaved, onClose }: {
   roomId: string; initial: PcServiceType[]; onSaved: (types: PcServiceType[]) => void; onClose: () => void;
 }) {
@@ -732,9 +741,17 @@ function PcServiceTypesDialog({ roomId, initial, onSaved, onClose }: {
                 {st.id && !available.some((t) => t.id === st.id) && (
                   <option value={st.id}>{st.name || `Service type ${st.id}`} (not in Planning Center)</option>
                 )}
-                {available
-                  .filter((t) => t.id === st.id || !f.draft.some((x) => x.id === t.id))
-                  .map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {/* Grouped by folder path, because a real account has five
+                    duplicated names and the path is the only thing telling
+                    "Special Events" from "Special Events". The top folder is
+                    the campus, which is exactly the distinction a multi-campus
+                    church needs to see. */}
+                {groupByFolder(available.filter((t) => t.id === st.id || !f.draft.some((x) => x.id === t.id)))
+                  .map(([folder, types]) => (
+                    <optgroup key={folder} label={folder || 'No folder'}>
+                      {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </optgroup>
+                  ))}
               </SelectField>
             </Field>
           )}

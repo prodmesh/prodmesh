@@ -359,9 +359,9 @@ describe('Campuses', () => {
     api.getPlanningCenterServiceTypes.mockResolvedValue({
       configured: true,
       serviceTypes: [
-        { id: '500001', name: 'Sunday' },
-        { id: '500002', name: 'Second Service' },
-        { id: '500005', name: 'Youth Service' },
+        { id: '500001', name: 'Sunday', folder: 'North Campus › Worship' },
+        { id: '500002', name: 'Second Service', folder: 'North Campus › Worship' },
+        { id: '500005', name: 'Youth Service', folder: 'North Campus › Students' },
       ],
     });
     api.getConfig.mockResolvedValue(structuredClone(church));
@@ -511,12 +511,40 @@ describe('Campuses', () => {
     ]));
   });
 
+  it('separates identically-named service types by their folder', async () => {
+    // Probed against a real account: 91 service types, five of the names
+    // duplicated — "Special Events" three times. A flat list of names cannot
+    // tell those apart, which would make this dropdown worse than the ID box
+    // it replaced. Folders nest, and the top one is the campus.
+    api.getPlanningCenterServiceTypes.mockResolvedValue({
+      configured: true,
+      serviceTypes: [
+        { id: '600001', name: 'Special Events', folder: 'North Campus › Worship' },
+        { id: '600002', name: 'Special Events', folder: 'South Campus › Medical' },
+      ],
+    });
+    const user = userEvent.setup();
+    roomPage();
+
+    await openCard(user, /Planning Center service types/);
+    await waitFor(() => expect(dialog().getAllByLabelText('Service type').length).toBeGreaterThan(0));
+    await user.click(dialog().getByRole('button', { name: '+ Add service type' }));
+
+    const select = dialog().getAllByLabelText('Service type').at(-1)!;
+    const groups = [...select.querySelectorAll('optgroup')].map((g) => g.label);
+    expect(groups).toEqual(['North Campus › Worship', 'South Campus › Medical']);
+    // Same name in both, told apart only by the group they sit in.
+    for (const g of select.querySelectorAll('optgroup')) {
+      expect([...g.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['Special Events']);
+    }
+  });
+
   it('keeps a saved service type selectable when Planning Center does not list it', async () => {
     // A token that cannot see the type, or one deleted in Planning Center.
     // Opening the dialog must not quietly drop the room's configuration.
     api.getPlanningCenterServiceTypes.mockResolvedValue({
       configured: true,
-      serviceTypes: [{ id: '500002', name: 'Second Service' }],
+      serviceTypes: [{ id: '500002', name: 'Second Service', folder: 'North Campus › Worship' }],
     });
     const user = userEvent.setup();
     roomPage();
