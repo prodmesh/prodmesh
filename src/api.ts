@@ -374,6 +374,19 @@ export interface PlanningCenterPerson {
   inactive?: boolean;
 }
 
+/** The service types this Planning Center token can see. `configured: false`
+ *  means no token is connected, so the id has to be entered by hand. */
+export const getPlanningCenterServiceTypes = () =>
+  getJson<{ configured: boolean; serviceTypes: PcServiceTypeOption[] }>('/api/planning-center/service-types');
+
+/** A service type as Planning Center offers it. `folder` is its path — the
+ *  campus and ministry it sits under — and is display-only: five names in a
+ *  real account are duplicated, so the path is the only thing telling them
+ *  apart. What a room STORES is still just {id, name}. */
+export interface PcServiceTypeOption extends PcServiceType {
+  folder: string;
+}
+
 /** Name search over Planning Center Services people. `configured: false` means
  *  no token is connected, so the person ID has to be entered by hand. */
 export const searchPlanningCenterPeople = (query: string) =>

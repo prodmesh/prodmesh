@@ -187,6 +187,28 @@ test('person search says so when no Planning Center token is connected', async (
   assert.deepEqual(await res.json(), { configured: false, people: [] });
 });
 
+test('the service type list says so when no Planning Center token is connected', async () => {
+  // The dropdown that #21 asked for cannot exist without a token, and an
+  // install without one still has to configure its rooms — so this is the
+  // signal the dialog falls back to typing an ID on, not an error.
+  const { token } = await (await post('/api/auth/admin', { pin: 'admin1234' })).json();
+  const res = await fetch(base + '/api/planning-center/service-types', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { configured: false, serviceTypes: [] });
+});
+
+test('the service type list is gated on config.manage', async () => {
+  // Same authority as editing the room it configures, and no wider: which
+  // services a church runs is not something a booth station needs.
+  const res = await fetch(base + '/api/planning-center/service-types', {
+    headers: { 'X-Prodmesh-Station': station.token },
+  });
+  assert.equal(res.status, 401);
+  assert.equal((await res.json()).permission, 'config.manage');
+});
+
 test('admins can rename, assign, and revoke a station', async () => {
   const managed = auth.registerStation({ name: 'Temporary Booth' });
   const { token } = await (await post('/api/auth/admin', { pin: 'admin1234' })).json();

@@ -26,6 +26,7 @@ const api = vi.hoisted(() => ({
   saveConfig: vi.fn(),
   getRoomConnectivity: vi.fn(),
   savePcServiceTypes: vi.fn(),
+  getPlanningCenterServiceTypes: vi.fn(),
   saveAnalysis: vi.fn(),
   saveProPresenter: vi.fn(),
   saveCompanion: vi.fn(),
@@ -354,6 +355,15 @@ describe('Campuses', () => {
     api.getConfig.mockReset();
     api.saveConfig.mockReset();
     api.savePcServiceTypes.mockReset();
+    // Default: Planning Center connected, so the dialog offers the list.
+    api.getPlanningCenterServiceTypes.mockResolvedValue({
+      configured: true,
+      serviceTypes: [
+        { id: '500001', name: 'Sunday', folder: 'North Campus › Worship' },
+        { id: '500002', name: 'Second Service', folder: 'North Campus › Worship' },
+        { id: '500005', name: 'Youth Service', folder: 'North Campus › Students' },
+      ],
+    });
     api.getConfig.mockResolvedValue(structuredClone(church));
     api.saveConfig.mockImplementation(async (c: unknown) => c);
     api.getRoomConnectivity.mockResolvedValue({
@@ -477,12 +487,80 @@ describe('Campuses', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('edits Planning Center service types independently of the topology save', async () => {
+  it('picks a service type from Planning Center rather than typing its ID', async () => {
+    // #21: nobody knows their service type ids — they live in a Planning
+    // Center URL. The name rides along with the id, so a hand-typed label can
+    // no longer disagree with Planning Center.
     const user = userEvent.setup();
     roomPage();
 
     await openCard(user, /Planning Center service types/);
-    expect(dialog().getByDisplayValue('Sunday')).toBeInTheDocument();
+    await waitFor(() => expect(dialog().getAllByLabelText('Service type').length).toBeGreaterThan(0));
+    await user.click(dialog().getByRole('button', { name: '+ Add service type' }));
+
+    const selects = dialog().getAllByLabelText('Service type');
+    // The type already chosen in the first row is not offered again in the second.
+    expect([...selects[selects.length - 1].querySelectorAll('option')].map((o) => o.textContent))
+      .not.toContain('Sunday');
+    await user.selectOptions(selects[selects.length - 1], '500002');
+    await user.click(dialog().getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(api.savePcServiceTypes).toHaveBeenCalledWith('north-main', [
+      { id: '500001', name: 'Sunday' },
+      { id: '500002', name: 'Second Service' },
+    ]));
+  });
+
+  it('separates identically-named service types by their folder', async () => {
+    // Probed against a real account: 91 service types, five of the names
+    // duplicated — "Special Events" three times. A flat list of names cannot
+    // tell those apart, which would make this dropdown worse than the ID box
+    // it replaced. Folders nest, and the top one is the campus.
+    api.getPlanningCenterServiceTypes.mockResolvedValue({
+      configured: true,
+      serviceTypes: [
+        { id: '600001', name: 'Special Events', folder: 'North Campus › Worship' },
+        { id: '600002', name: 'Special Events', folder: 'South Campus › Medical' },
+      ],
+    });
+    const user = userEvent.setup();
+    roomPage();
+
+    await openCard(user, /Planning Center service types/);
+    await waitFor(() => expect(dialog().getAllByLabelText('Service type').length).toBeGreaterThan(0));
+    await user.click(dialog().getByRole('button', { name: '+ Add service type' }));
+
+    const select = dialog().getAllByLabelText('Service type').at(-1)!;
+    const groups = [...select.querySelectorAll('optgroup')].map((g) => g.label);
+    expect(groups).toEqual(['North Campus › Worship', 'South Campus › Medical']);
+    // Same name in both, told apart only by the group they sit in.
+    for (const g of select.querySelectorAll('optgroup')) {
+      expect([...g.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['Special Events']);
+    }
+  });
+
+  it('keeps a saved service type selectable when Planning Center does not list it', async () => {
+    // A token that cannot see the type, or one deleted in Planning Center.
+    // Opening the dialog must not quietly drop the room's configuration.
+    api.getPlanningCenterServiceTypes.mockResolvedValue({
+      configured: true,
+      serviceTypes: [{ id: '500002', name: 'Second Service', folder: 'North Campus › Worship' }],
+    });
+    const user = userEvent.setup();
+    roomPage();
+
+    await openCard(user, /Planning Center service types/);
+    await waitFor(() => expect(dialog().getByText(/not in Planning Center/)).toBeInTheDocument());
+    expect(dialog().getAllByLabelText('Service type')[0]).toHaveValue('500001');
+  });
+
+  it('falls back to typing an ID when Planning Center is not connected', async () => {
+    api.getPlanningCenterServiceTypes.mockResolvedValue({ configured: false, serviceTypes: [] });
+    const user = userEvent.setup();
+    roomPage();
+
+    await openCard(user, /Planning Center service types/);
+    await waitFor(() => expect(dialog().getAllByLabelText('Service type ID').length).toBeGreaterThan(0));
 
     await user.click(dialog().getByRole('button', { name: '+ Add service type' }));
     const names = dialog().getAllByLabelText('Name');

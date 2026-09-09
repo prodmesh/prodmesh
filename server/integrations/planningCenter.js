@@ -168,6 +168,74 @@ export function pcId(value, what) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+/**
+ * Every page of a Services collection. Planning Center caps `per_page` at 100
+ * and reports `meta.total_count`, so anything that can exceed a hundred has to
+ * ask for the rest — a silently truncated list is worse than an error, because
+ * the missing rows look like they were never configured.
+ */
+async function pcGetAll(path) {
+  const out = [];
+  for (let offset = 0; ; offset += 100) {
+    const body = await pcGet(`${path}${path.includes('?') ? '&' : '?'}per_page=100&offset=${offset}`);
+    const page = body.data ?? [];
+    out.push(...page);
+    if (!page.length || out.length >= (body.meta?.total_count ?? out.length)) return out;
+  }
+}
+
+/**
+ * Every service type this token can see, each with the folder path it lives
+ * under, so an operator picks one instead of digging a nine-digit id out of a
+ * Planning Center URL.
+ *
+ * The path is not decoration. Probed against a real account 2026-09-09: 91
+ * service types, of which FIVE names are duplicated — "Special Events" three
+ * times, "Night of Worship" three times, and three more twice each. A flat
+ * list of names cannot tell those apart, which makes it worse than the ID box
+ * it replaces. Folders nest, and the top level is campuses ("Bothell Campus ›
+ * Worship › Sunday" against "Everett Campus › Worship › SE-Sunday"), so the
+ * path is exactly the thing that disambiguates them.
+ *
+ * Folders come from their own request because `include=parent` returns nothing
+ * on this endpoint — tried, and the `included` array came back empty.
+ *
+ * Sorted here rather than with `order=name`: Planning Center's ordering
+ * parameters differ per endpoint and that one is unconfirmed, while plain
+ * `/service_types` is proven — checkCredentials has always called it.
+ */
+export function listServiceTypes() {
+  return cached('service-types', async () => {
+    if (!isConfigured()) return [];
+    const [types, folderRows] = await Promise.all([
+      pcGetAll('/service_types'),
+      pcGetAll('/folders').catch(() => []), // a path is a nicety; a list is not
+    ]);
+    const folders = new Map(folderRows.map((f) => [
+      String(f.id),
+      { name: f.attributes?.name ?? '', parent: f.relationships?.parent?.data?.id ?? null },
+    ]));
+    // Walk to the root, with a depth cap: a folder cycle would otherwise hang
+    // the request, and nothing here can prove Planning Center never has one.
+    const pathOf = (id) => {
+      const parts = [];
+      for (let cur = id != null ? String(id) : null, hops = 0; cur && folders.has(cur) && hops < 10; hops += 1) {
+        parts.unshift(folders.get(cur).name);
+        cur = folders.get(cur).parent != null ? String(folders.get(cur).parent) : null;
+      }
+      return parts.filter(Boolean).join(' › ');
+    };
+    return types
+      .map((d) => ({
+        id: String(d.id),
+        name: d.attributes?.name ?? `Service type ${d.id}`,
+        folder: pathOf(d.relationships?.parent?.data?.id),
+      }))
+      .filter((t) => /^[0-9]+$/.test(t.id))
+      .sort((a, b) => a.folder.localeCompare(b.folder) || a.name.localeCompare(b.name));
+  });
+}
+
 /** Upcoming plans for a service type ({ id, name }). Summaries — times/items
  *  are hydrated separately (see getPlanTimes / getPlanItems). */
 export function getUpcomingPlans(serviceType, limit = 3) {
