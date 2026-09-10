@@ -50,4 +50,10 @@
   /* Layout */
   --sidebar-w: 236px;
   --sidebar-rail: 62px;
+  /* The rail's content box: --sidebar-rail less the sidebar's 10px padding and
+     1px border each side. Every sidebar icon sits in a cell this wide. */
+  --rail-cell: 40px;
+  --subpanel-w: 212px;
+  --shell-gap: 10px; /* the floating panels' inset from the window edge */
+  --radius-panel: 14px;
 }

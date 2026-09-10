@@ -2,24 +2,37 @@
    The sidebar collapses to an icon rail: `.shell--rail` (user toggle) and the
    narrow-screen media query apply the same treatment via `.rail-hide`. */
 
+/* The sidebar and Admin's section panel both float: inset from the window
+   edge, rounded, bordered all round, so they read as tools laid over the page
+   rather than a column of it. Every icon sits in a rail-wide cell
+   (.sidebar__glyph), which is what centres it in the rail and stops it
+   sliding sideways as the sidebar opens. */
+
 .shell {
   min-height: 100%;
   display: flex;
 }
 
-.sidebar {
+.sidebar,
+.subpanel {
   position: sticky;
-  top: 0;
+  top: var(--shell-gap);
   align-self: flex-start;
-  height: 100vh;
-  height: 100dvh;
-  width: var(--sidebar-w);
+  height: calc(100vh - 2 * var(--shell-gap));
+  height: calc(100dvh - 2 * var(--shell-gap));
+  margin: var(--shell-gap) 0 var(--shell-gap) var(--shell-gap);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg-sidebar);
-  border-right: 1px solid var(--border-subtle);
-  padding: 12px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+}
+
+.sidebar {
+  width: var(--sidebar-w);
+  padding: 12px 10px;
   transition: width 0.15s ease;
   z-index: 40;
 }
@@ -32,6 +45,17 @@
    the same element (e.g. the user label's flex layout). */
 .shell--rail .sidebar .rail-hide {
   display: none;
+}
+
+/* Labels fade in as the sidebar opens, rather than appearing at full strength
+   inside a sidebar still 62px wide. The animation replays each time
+   display:none lifts, which is exactly when the sidebar expands. */
+.sidebar .rail-hide {
+  animation: sidebar-label-in 0.18s ease;
+}
+
+@keyframes sidebar-label-in {
+  from { opacity: 0; }
 }
 
 @media (max-width: 860px) {
@@ -49,7 +73,9 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 4px 8px 16px;
+  /* 5px each side centres the 30px logo in the 40px rail cell, in line with
+     the icons below it whether the sidebar is open or not. */
+  padding: 4px 5px 14px;
   border-bottom: 1px solid var(--border-subtle);
   margin-bottom: 12px;
   min-width: 0;
@@ -115,68 +141,129 @@
 .sidebar__nav {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
+}
+
+/* Nav items, the footer buttons and Admin's panel share one shape: a 40px
+   row led by an icon cell exactly as wide as the rail's content box. In the
+   rail the row IS the cell, so it is square, and rounded on every corner. */
+.sidebar__item,
+.sidebar__toggle,
+.sidebar__user {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px 0 0;
+  border: 0;
+  border-radius: var(--radius-xl);
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.shell--rail .sidebar :is(.sidebar__item, .sidebar__toggle, .sidebar__user) {
+  padding-right: 0;
 }
 
 .sidebar__item {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  position: relative;
-  padding: 9px 10px;
-  border-radius: var(--radius-sm);
-  color: var(--text-dim);
-  text-decoration: none;
   font-size: 0.92rem;
   font-weight: 500;
-  white-space: nowrap;
 }
 
-.sidebar__item:hover {
+.sidebar__item:hover,
+.sidebar__toggle:hover,
+.sidebar__user:hover {
   color: var(--text);
   background: var(--bg-tile);
 }
 
-.sidebar__item--active {
+.sidebar__item--active,
+.sidebar__item--active:hover {
   color: var(--accent-text);
   background: var(--accent-soft);
 }
 
-.sidebar__item--active::before {
-  content: '';
-  position: absolute;
-  inset: 7px auto 7px -8px;
-  width: 2px;
-  background: var(--accent);
+.sidebar__glyph {
+  display: grid;
+  place-items: center;
+  flex: 0 0 var(--rail-cell);
+  height: 40px;
 }
 
 .sidebar__icon {
   flex-shrink: 0;
 }
 
-.sidebar__navgroup { display: flex; flex-direction: column; }
+/* Clipped, never wrapped: while the sidebar animates open a label is briefly
+   narrower than its text, and must not reflow onto a second line. */
+.sidebar__label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
 
-.sidebar__subnav {
+/* ── Admin's section panel ───────────────────────────────────────────────── */
+.subpanel {
+  width: var(--subpanel-w);
+  padding: 14px 10px;
+  gap: 14px;
+  z-index: 39; /* under the sidebar, so a rail label can pass over it */
+}
+
+.subpanel__title {
+  margin: 2px 6px 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.subpanel__group {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  margin: 2px 0 7px 18px;
-  padding-left: 11px;
-  border-left: 1px solid var(--border);
+  gap: 2px;
 }
 
-.sidebar__subitem {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 8px;
+.subpanel__heading {
+  margin: 0 6px 4px;
   color: var(--text-faint);
-  font-size: 0.76rem;
-  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.sidebar__subitem:hover { color: var(--text); }
-.sidebar__subitem--active { color: var(--accent-text); }
+.subpanel .sidebar__item {
+  font-size: 0.86rem;
+}
+
+/* A narrow window has no room for two labelled columns: the panel becomes a
+   second rail, labelled on hover like the first. */
+@media (max-width: 860px) {
+  .subpanel {
+    width: var(--sidebar-rail);
+  }
+
+  .subpanel__title,
+  .subpanel__heading,
+  .subpanel .sidebar__label {
+    display: none;
+  }
+
+  .subpanel .sidebar__item {
+    padding-right: 0;
+  }
+
+  .subpanel__group + .subpanel__group {
+    padding-top: 12px;
+    border-top: 1px solid var(--border-subtle);
+  }
+}
 
 /* ── Footer: clock + user + collapse ─────────────────────────────────────── */
 .sidebar__foot {
@@ -190,35 +277,18 @@
 
 .sidebar__clock {
   padding: 0 10px 4px;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .sidebar__clock .clock {
   align-items: flex-start;
 }
 
+/* Positioned so the account menu opens from its button, as Help's does. */
 .sidebar__account {
+  position: relative;
   min-width: 0;
-}
-
-.sidebar__user {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 6px 10px;
-  color: var(--text-dim);
-  min-width: 0;
-  width: 100%;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.sidebar__user:hover {
-  background: var(--bg-tile);
-  color: var(--text);
 }
 
 .sidebar__avatar {
@@ -233,9 +303,9 @@
 .accountmenu {
   position: absolute;
   z-index: 20;
-  bottom: 55px;
-  left: 8px;
-  width: calc(var(--sidebar-w) - 16px);
+  bottom: calc(100% + 6px);
+  left: 0;
+  width: 100%;
   padding: 8px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -243,8 +313,10 @@
   box-shadow: 0 14px 35px rgba(0, 0, 0, 0.4);
 }
 
+/* Beside the rail rather than over it, clear of the panel's own edge. */
 .shell--rail .accountmenu {
-  left: calc(var(--sidebar-rail) - 2px);
+  left: calc(100% + 18px);
+  bottom: 0;
   width: 220px;
 }
 
@@ -290,10 +362,6 @@
   position: relative;
 }
 
-.helpmenu {
-  bottom: calc(100% + 6px);
-}
-
 .helpmenu > button:disabled {
   opacity: 0.55;
   cursor: default;
@@ -312,7 +380,8 @@
 
 @media (max-width: 860px) {
   .accountmenu {
-    left: calc(var(--sidebar-rail) - 2px);
+    left: calc(100% + 18px);
+    bottom: 0;
     width: 220px;
   }
 }
@@ -436,6 +505,9 @@
   font-size: 0.82rem;
   font-weight: 500;
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sidebar__version {
@@ -448,23 +520,9 @@
 }
 
 .sidebar__toggle {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 7px 10px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
   color: var(--text-faint);
-  font: inherit;
   font-size: 0.82rem;
   font-weight: 600;
-  cursor: pointer;
-}
-
-.sidebar__toggle:hover {
-  color: var(--text);
-  background: var(--bg-tile);
 }
 
 /* Hide the manual toggle when the media query forces the rail anyway. */
@@ -731,40 +789,49 @@
   .help { height: 100%; border-radius: 0; border: 0; }
 }
 
-/* Labels escape the rail without shifting the page. The same rules cover the
-   manual collapse and automatic narrow-screen rail. */
-.sidebar [data-rail-label] { position: relative; }
-.sidebar [data-rail-label]::after {
+/* Rail labels. Hovering a rail button grows it into a pill carrying the
+   label: the pill starts at the button's own edge and sits behind its icon,
+   so the label reads as part of the button rather than a tooltip floating
+   near it. The same rules cover the manual collapse, the automatic
+   narrow-screen rail, and Admin's panel when it narrows to icons. */
+:is(.sidebar, .subpanel) [data-rail-label]:is(:hover, :focus-visible) {
+  z-index: 1; /* its own stacking context: the pill's -1 lands behind the icon */
+}
+:is(.sidebar, .subpanel) [data-rail-label]::after {
   content: attr(data-rail-label);
   position: absolute;
-  left: calc(100% + 12px);
-  top: 50%;
-  transform: translateY(-50%);
-  padding: 8px 11px;
+  z-index: -1;
+  top: -1px;
+  bottom: -1px;
+  left: -1px;
+  display: flex;
+  align-items: center;
   width: max-content;
-  max-width: min(260px, calc(100vw - 90px));
-  white-space: normal;
+  padding: 0 16px 0 calc(var(--rail-cell) + 4px);
+  white-space: nowrap;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
+  border-radius: var(--radius-xl);
   background: var(--bg-tile);
   color: var(--text);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-  font-size: 0.8rem;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+  font-size: 0.86rem;
   font-weight: 500;
-  line-height: 1.35;
-  text-align: left;
   visibility: hidden;
   pointer-events: none;
-  z-index: 30;
+}
+:is(.sidebar, .subpanel) .sidebar__item--active[data-rail-label]::after {
+  color: var(--accent-text);
+  background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg-tile);
 }
 .shell--rail .sidebar:not([data-labels-dismissed]) [data-rail-label]:is(:hover, :focus-visible):not([aria-expanded='true'])::after {
   visibility: visible;
 }
 @media (max-width: 860px) {
-  .sidebar:not([data-labels-dismissed]) [data-rail-label]:is(:hover, :focus-visible):not([aria-expanded='true'])::after {
+  :is(.sidebar:not([data-labels-dismissed]), .subpanel) [data-rail-label]:is(:hover, :focus-visible):not([aria-expanded='true'])::after {
     visibility: visible;
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .sidebar { transition: none; }
+  .sidebar .rail-hide { animation: none; }
 }
