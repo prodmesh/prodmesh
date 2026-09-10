@@ -6,6 +6,7 @@
 //    endItemId:   '<pc item id>' | null,  // last slide of this item → show ends
 //    map: { '<pc item id>': { ppIndex, ppName } }  // manual PC→PP overrides
 //    videos: { '<time id>': '<video id>' | null }   // per service, tri-state
+//    servicesLiveFromProPresenter: bool             // the show drives Services LIVE
 //  }
 //
 //  Keyed per (roomId, planId) — per EVENT, not per service time: the 9:00 and
@@ -33,13 +34,47 @@
 
 import { getDb } from './db.js';
 
+/**
+ * Services LIVE used to carry its own start condition — a trigger item, or a
+ * service time — separate from the item that autostarts the show. That split is
+ * gone: Services LIVE now follows the show, taking control when it starts and
+ * letting go when it ends. A config saved under the old model with a Services
+ * LIVE trigger but no autostart item would otherwise stop starting Services
+ * LIVE at all, so its trigger is promoted to the autostart item.
+ *
+ * Applied on READ as well as on save, because getConfig returns stored JSON as
+ * it is, and installs in the field hold rows written before this change that
+ * nobody will re-save until they happen to open the event.
+ *
+ * Only while "ProPresenter controls Services LIVE" is on: a trigger left behind
+ * after the box was unticked is not a request to autostart anything.
+ *
+ * A service-TIME trigger cannot be promoted — autostart is keyed on a
+ * ProPresenter item, and there is no item to promote it to. Such an event keeps
+ * the checkbox and starts Services LIVE whenever its show starts, which for it
+ * now means whenever somebody presses Start.
+ */
+export function promoteLegacyServicesLive(config) {
+  if (!config || typeof config !== 'object') return config;
+  const { servicesLiveStartMode, servicesLiveStartItemId, servicesLiveStartTimeId, ...rest } = config;
+  if (
+    !rest.startItemId
+    && rest.servicesLiveFromProPresenter
+    && servicesLiveStartMode !== 'service-time'
+    && servicesLiveStartItemId
+  ) {
+    return { ...rest, startItemId: servicesLiveStartItemId };
+  }
+  return rest;
+}
+
 export function getConfig(roomId, planId) {
   const row = getDb()
     .prepare('SELECT config FROM show_config WHERE room_id = ? AND plan_id = ?')
     .get(roomId, planId);
   if (!row) return null;
   try {
-    return JSON.parse(row.config);
+    return promoteLegacyServicesLive(JSON.parse(row.config));
   } catch {
     return null;
   }
@@ -61,8 +96,10 @@ export function clearConfig(roomId, planId) {
   getDb().prepare('DELETE FROM show_config WHERE room_id = ? AND plan_id = ?').run(roomId, planId);
 }
 
-function validate(config) {
-  if (config == null || typeof config !== 'object') throw new Error('config must be an object');
+function validate(input) {
+  if (input == null || typeof input !== 'object') throw new Error('config must be an object');
+  // An older client can still post the retired start fields.
+  const config = promoteLegacyServicesLive(input);
   const id = (v, name) => {
     if (v == null || v === '') return null;
     if (typeof v !== 'string') throw new Error(`${name} must be an item id`);
@@ -110,11 +147,9 @@ function validate(config) {
     endItemId: id(config.endItemId, 'endItemId'),
     map,
     videos,
+    // Services LIVE follows the show: control is taken when it starts and let
+    // go when it ends. It has no start condition of its own any more — see
+    // promoteLegacyServicesLive for what became of the ones stored before.
     servicesLiveFromProPresenter: Boolean(config.servicesLiveFromProPresenter),
-    // Kept separate from Run of Show's start item: Services LIVE is useful
-    // without a dashboard show, and can instead begin at a service time.
-    servicesLiveStartMode: config.servicesLiveStartMode === 'service-time' ? 'service-time' : 'item',
-    servicesLiveStartItemId: id(config.servicesLiveStartItemId, 'servicesLiveStartItemId'),
-    servicesLiveStartTimeId: id(config.servicesLiveStartTimeId, 'servicesLiveStartTimeId'),
   };
 }

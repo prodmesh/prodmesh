@@ -32,9 +32,7 @@ const AUTO = '';
 const NONE = '\u0000none';
 
 const EMPTY: ShowConfig = {
-  startItemId: null, endItemId: null, map: {}, videos: {},
-  servicesLiveFromProPresenter: false, servicesLiveStartMode: 'item',
-  servicesLiveStartItemId: null, servicesLiveStartTimeId: null,
+  startItemId: null, endItemId: null, map: {}, videos: {}, servicesLiveFromProPresenter: false,
 };
 
 // Per-event show automation (one config per event, shared by all its service
@@ -143,50 +141,22 @@ export function ShowConfigWidget({
         )
       }
     >
-      <label className="showcfg__row">
-        <span className="showcfg__label"><Radio size={13} /> ProPresenter controls Services LIVE</span>
-        <input type="checkbox" checked={Boolean(draft.servicesLiveFromProPresenter)} onChange={(e) => setDraft((d) => ({ ...d, servicesLiveFromProPresenter: e.target.checked }))} />
-      </label>
-      {draft.servicesLiveFromProPresenter && (
-        <>
-          <p className="widget__hint">ProdMesh takes Planning Center Services LIVE control and advances it as ProPresenter changes presentations. It never moves Services LIVE backward automatically, and does not require Run of Show to be started.</p>
-          <div className="showcfg__row">
-            <span className="showcfg__label"><Radio size={12} /> Start Services LIVE</span>
-            <SelectField
-              className="showcfg__select"
-              value={draft.servicesLiveStartMode ?? 'item'}
-              onChange={(e) => setDraft((d) => ({ ...d, servicesLiveStartMode: e.target.value as 'item' | 'service-time' }))}
-            >
-              <option value="item">When PP lands on an item</option>
-              <option value="service-time">At a service time</option>
-            </SelectField>
-          </div>
-          {(draft.servicesLiveStartMode ?? 'item') === 'item' ? (
-            <div className="showcfg__row">
-              <span className="showcfg__label"><Play size={12} /> Services LIVE trigger</span>
-              {itemSelect(
-                draft.servicesLiveStartItemId ?? draft.startItemId,
-                (v) => setDraft((d) => ({ ...d, servicesLiveStartItemId: v })),
-                'Choose a ProPresenter-mapped item',
-              )}
-            </div>
-          ) : (
-            <div className="showcfg__row">
-              <span className="showcfg__label"><Radio size={12} /> Service time</span>
-              <SelectField
-                className="showcfg__select"
-                value={draft.servicesLiveStartTimeId ?? ''}
-                onChange={(e) => setDraft((d) => ({ ...d, servicesLiveStartTimeId: e.target.value || null }))}
-              >
-                <option value="">Choose a service time</option>
-                {serviceTimes.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}{t.startsAt ? ` — ${new Date(t.startsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}</option>
-                ))}
-              </SelectField>
-            </div>
-          )}
-        </>
-      )}
+      {/* The show's own lifecycle first, and Services LIVE as an option on top
+          of it. It used to be the other way round: autostart could only be set
+          through a Services LIVE trigger, which left churches that do not use
+          Services LIVE with no way to autostart at all, and two dropdowns whose
+          difference nobody could see. */}
+      <p className="widget__hint">
+        The show follows the ProPresenter operator — pre-service slides can loop between services
+        without tripping anything. Applies to every service time of this event.
+      </p>
+
+      <div className="showcfg__row">
+        <span className="showcfg__label">
+          <Play size={13} /> Autostart service at
+        </span>
+        {itemSelect(draft.startItemId, (v) => setDraft((d) => ({ ...d, startItemId: v })), 'Never (start manually)')}
+      </div>
 
       <div className="showcfg__row">
         <span className="showcfg__label">
@@ -194,6 +164,18 @@ export function ShowConfigWidget({
         </span>
         {itemSelect(draft.endItemId, (v) => setDraft((d) => ({ ...d, endItemId: v })), 'Never (end manually)')}
       </div>
+
+      <label className="showcfg__row">
+        <span className="showcfg__label"><Radio size={13} /> ProPresenter controls Services LIVE</span>
+        <input type="checkbox" checked={Boolean(draft.servicesLiveFromProPresenter)} onChange={(e) => setDraft((d) => ({ ...d, servicesLiveFromProPresenter: e.target.checked }))} />
+      </label>
+      {draft.servicesLiveFromProPresenter && (
+        <p className="widget__hint">
+          Planning Center Services LIVE follows this show: ProdMesh takes control when the show
+          starts, moves it forward with each item, and lets go when the show ends. It never moves
+          Services LIVE backward, and never takes it back from someone who took over by hand.
+        </p>
+      )}
 
       {serviceTimes.length > 0 && (
         <>
