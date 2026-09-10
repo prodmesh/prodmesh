@@ -48,7 +48,7 @@
 .auditorium {
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-lg); /* a card, like .widget and .roomcard */
   padding: 12px;
   display: flex;
   flex-direction: column;
