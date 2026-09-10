@@ -48,3 +48,12 @@ test('armed inside the window (2h before 9:00 → 1h after 11:00), idle outside'
 
   showCfg.clearConfig(room.id, 'mock-st1-0');
 });
+
+test('an event set to its scheduled time arms without a start item', async () => {
+  // This room has no ProPresenter either, and a clock start needs none.
+  showCfg.setConfig(room.id, 'mock-st1-0', { startAtScheduledTime: true });
+  const armed = await nextArmedEvent(room, sundayAt(8, 30));
+  assert.equal(armed?.config.startAtScheduledTime, true);
+  assert.equal(await nextArmedEvent(room, sundayAt(14, 0)), null, 'same window as an item start');
+  showCfg.clearConfig(room.id, 'mock-st1-0');
+});

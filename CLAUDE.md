@@ -167,7 +167,7 @@ change as verified because CI is green — say which half was checked.
 |---|---|
 | `PRODMESH_DATA_DIR` | Relocate the data dir. Tests use temp dirs. |
 | `PRODMESH_LOCAL_TEST=1` | Adds the local-test dev room. Hidden in production. |
-| `PRODMESH_AUTOSTART_TEST=1` | Show autostart ignores the arm window. **Dev only.** |
+| `PRODMESH_AUTOSTART_TEST=1` | Show autostart ignores the arm window, and a scheduled-time start doesn't wait for the clock. **Dev only.** |
 | `PRODMESH_LOG_FILE` | Override the log path Admin → Logs tails. |
 | `PRODMESH_SECRET_*` | Supply secrets by env instead of `server/data/secrets.json`. |
 | `PORT` | Serve port (default 8080). |

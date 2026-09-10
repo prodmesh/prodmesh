@@ -452,6 +452,29 @@ Other Services facts:
   Fetch items with `include=item_notes`.
 - A room can host multiple service types; map rooms to an array and merge.
 
+### Services LIVE — probed against a real account 2026-09-10
+
+`/service_types/:st/plans/:plan/live` answers a `Live` resource whose actions
+are exactly `go_to_next_item`, `go_to_previous_item` and `toggle_control`, plus
+read links. **There is no way to end a Services LIVE session.** "Stop" can only
+mean releasing control.
+
+**`toggle_control` is a toggle.** From a token that does not hold control it
+TAKES control; from one that does, it releases. So releasing blindly is a bug
+waiting for the Sunday a volunteer takes Services LIVE over by hand — the
+release would snatch it straight back. Check first: the `controller`
+relationship is a `Person`, and `GET /services/v2/me` answers the token's own
+`Person`, so "we hold it" is `controller.id === me.id`.
+
+`syncServicesLive` POSTs to `/live` when a GET comes back empty. The next
+Sunday plan probed already answered a `Live` resource, with no controller.
+
+ProdMesh drives Services LIVE only while a show is running. The first mapped
+item takes control, each forward item advances it (never backward — an
+accidental ProPresenter click must not rewind it mid-service), and `endShow`
+releases it — after any in-flight sync settles, because a sync that reads
+"nobody controls this" just after the release would take control right back.
+
 ---
 
 ## Bitfocus Companion

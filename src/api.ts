@@ -1027,6 +1027,8 @@ export interface ChecklistItem {
 
 export interface ShowConfig {
   startItemId: string | null; // PP lands on this PC item → show autostarts
+  /** Each service time starts on the clock instead. Excludes startItemId. */
+  startAtScheduledTime?: boolean;
   endItemId: string | null; // last slide of this PC item → show auto-completes
   map: Record<string, { ppIndex: number; ppName: string | null } | { disabled: true } | null>;
   /** YouTube broadcast per SERVICE TIME, tri-state. Key ABSENT = auto (record
@@ -1034,11 +1036,9 @@ export interface ShowConfig {
    *  a string = pinned to that broadcast. A channel pre-creates one broadcast
    *  per service, so 8:00 and 9:30 are different videos on one plan. */
   videos: Record<string, string | null>;
+  /** The show drives Planning Center Services LIVE: control is taken when the
+   *  show starts, moved forward with each item, and released when it ends. */
   servicesLiveFromProPresenter?: boolean;
-  /** The condition that gives this event's Services LIVE bridge permission to run. */
-  servicesLiveStartMode?: 'item' | 'service-time';
-  servicesLiveStartItemId?: string | null;
-  servicesLiveStartTimeId?: string | null;
 }
 
 /** A live or scheduled broadcast on the room's channel, for the pin picker. */

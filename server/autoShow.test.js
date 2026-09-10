@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { armWindow, pickAutostartTime, shouldAutostart, shouldAutoComplete, armsAutoComplete } from './autoShow.js';
+import { armWindow, dueScheduledTime, pickAutostartTime, shouldAutostart, shouldAutoComplete, armsAutoComplete } from './autoShow.js';
 import { mapActiveToItemId } from './integrations/proPresenter.js';
 
 const T9 = '2026-07-12T16:00:00Z'; // 9:00 local
@@ -27,6 +27,21 @@ test('pickAutostartTime picks nearest service time, skipping completed ones', ()
   assert.equal(pickAutostartTime(times, at(T9, 55), (id) => id === 't9'), 't11');
   // Everything completed → never start.
   assert.equal(pickAutostartTime(times, at(T11, 30), () => true), null);
+});
+
+test('dueScheduledTime starts a service at its time, and not long after', () => {
+  const at = (iso, deltaMin) => new Date(iso).getTime() + deltaMin * 60_000;
+  const none = () => false;
+  assert.equal(dueScheduledTime(times, at(T9, -1), none), null); // 8:59 — not yet
+  assert.equal(dueScheduledTime(times, at(T9, 0), none), 't9');
+  assert.equal(dueScheduledTime(times, at(T9, 10), none), 't9'); // ProdMesh came back at 9:10
+  assert.equal(dueScheduledTime(times, at(T9, 30), none), null); // too far in to time it truthfully
+  assert.equal(dueScheduledTime(times, at(T9, 5), (id) => id === 't9'), null); // already ended
+  assert.equal(dueScheduledTime(times, at(T11, 0), none), 't11');
+  // The 7:00 rehearsal is not a service.
+  assert.equal(dueScheduledTime(times, at('2026-07-12T14:00:00Z', 1), none), null);
+  // Two due at once (a grace long enough to overlap): the later one.
+  assert.equal(dueScheduledTime(times, at(T11, 5), none, 3 * 3600_000), 't11');
 });
 
 test('shouldAutostart is edge-triggered', () => {
