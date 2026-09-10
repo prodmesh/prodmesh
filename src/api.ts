@@ -1027,6 +1027,8 @@ export interface ChecklistItem {
 
 export interface ShowConfig {
   startItemId: string | null; // PP lands on this PC item → show autostarts
+  /** Each service time starts on the clock instead. Excludes startItemId. */
+  startAtScheduledTime?: boolean;
   endItemId: string | null; // last slide of this PC item → show auto-completes
   map: Record<string, { ppIndex: number; ppName: string | null } | { disabled: true } | null>;
   /** YouTube broadcast per SERVICE TIME, tri-state. Key ABSENT = auto (record

@@ -28,7 +28,7 @@ import * as splStore from './splStore.js';
 import * as streamStore from './streamStore.js';
 import * as summaries from './showSummaries.js';
 import * as showConfig from './showConfig.js';
-import { armWindow, pickAutostartTime, shouldAutostart, shouldAutoComplete, armsAutoComplete } from './autoShow.js';
+import { armWindow, dueScheduledTime, pickAutostartTime, shouldAutostart, shouldAutoComplete, armsAutoComplete } from './autoShow.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SHOWS_DIR = join(process.env.PRODMESH_DATA_DIR ?? join(__dirname, 'data'), 'shows');
@@ -902,15 +902,19 @@ export function refreshConfig(roomId, planId) {
 
 // ── Autostart watcher ────────────────────────────────────────────────────────
 //  Per room, for the server's lifetime, with zero browsers required. Cheap
-//  when idle: once a minute it checks whether the room's next event has a
-//  startItemId configured AND the clock is inside the arm window (2h before
-//  the first service time → 1h after the last). Only then does it poll
-//  ProPresenter, and only a TRANSITION onto the start item begins the show —
-//  "Pre-Service Slides" can loop all it wants between services.
+//  when idle: once a minute it checks whether the room's next event autostarts
+//  at all AND the clock is inside the arm window (2h before the first service
+//  time → 1h after the last). Only then does it act. An item-triggered event
+//  polls ProPresenter, and only a TRANSITION onto the start item begins the
+//  show — "Pre-Service Slides" can loop all it wants between services. An
+//  event set to its scheduled time watches the clock instead, and needs no
+//  ProPresenter at all.
 
 // Dev-only: PRODMESH_AUTOSTART_TEST=1 arms configured events regardless of
-// the clock, so autostart can be exercised outside the Sunday window. Never
-// set this in production — it would let a Tuesday rehearsal start a show.
+// the clock, so autostart can be exercised outside the Sunday window, and a
+// scheduled-time event starts its nearest service time straight away rather
+// than waiting for it. Never set this in production — it would let a Tuesday
+// rehearsal start a show.
 // PRODMESH_AUTOSTART_ARM_MS / PRODMESH_AUTOSTART_POLL_MS /
 // PRODMESH_SHOW_POLL_MS override the loop cadences so tests can run in
 // milliseconds; unset (production) they default to the real values and are
@@ -932,10 +936,11 @@ export async function nextArmedEvent(room, now) {
   plans.sort((a, b) => String(a.sortDate ?? '').localeCompare(String(b.sortDate ?? '')));
   for (const plan of plans) {
     // Legacy Services LIVE triggers arrive here already promoted to an
-    // autostart item — see showConfig.promoteLegacyServicesLive — so the only
-    // question left is whether this event autostarts at all.
+    // autostart item or a scheduled-time start — see
+    // showConfig.promoteLegacyServicesLive — so the only question left is
+    // whether this event autostarts at all.
     const config = showConfig.getConfig(room.id, plan.id);
-    if (!config?.startItemId) continue;
+    if (!config?.startItemId && !config?.startAtScheduledTime) continue;
     const st = { id: plan.serviceTypeId, name: plan.serviceTypeName };
     const times = await pco.getPlanTimes(st, plan.id).catch(() => []);
     const window = armWindow(times);
@@ -947,16 +952,47 @@ export async function nextArmedEvent(room, now) {
   return null;
 }
 
+// Scheduled-time starts, for up to ~1 min before the loop re-arms. `started`
+// outlives any one arming, and is what stops the clock starting a service
+// twice. completedAt already covers a show somebody ended, but not one whose
+// timeline was deleted as a false start: without this, deleting an unwanted
+// 9:00 show at 9:05 would have it start again a few seconds later.
+async function watchClock(roomId, armed, isCompleted, started, signal) {
+  const key = (timeId) => `${armed.plan.id}__${timeId}`;
+  const done = (timeId) => isCompleted(timeId) || started.has(key(timeId));
+  for (let i = 0; i < ARM_CHECK_MS / PP_POLL_MS && !signal.aborted && !shows.has(roomId); i++) {
+    const timeId = IGNORE_WINDOW
+      ? pickAutostartTime(armed.times, Date.now(), done)
+      : dueScheduledTime(armed.times, Date.now(), done);
+    if (timeId) {
+      // Marked before the attempt: if it fails because somebody started a
+      // show by hand in the same instant, that person is running the service.
+      started.add(key(timeId));
+      try {
+        await startShow(roomId, armed.plan.id, timeId);
+        console.log(`[autostart] ${roomId}: scheduled time — show started for ${key(timeId)}`);
+      } catch {
+        /* conflict — someone started it manually first */
+      }
+      return;
+    }
+    await timerSleep(PP_POLL_MS, signal);
+  }
+}
+
 async function autostartLoop(roomId, signal) {
   let prevItemId = null; // last mapped PC item; null = no baseline (never trigger)
   let armedPlanId = null; // for state-change logging only
+  const clockStarted = new Set(); // '<plan>__<time>' the clock has started — see watchClock
   while (!signal.aborted) {
     // Connectivity AND the room itself are edited live, so eligibility is
     // per-cycle, not per-boot: a room gains (or loses) autostart within a
     // minute of a config save, and a topology rebuild swaps the room object.
+    // ProPresenter is not required at this point: a scheduled-time start needs
+    // only Planning Center. Item-triggered events check for it once armed.
     const room = rooms[roomId];
     const pp = room?.proPresenter;
-    if (!room || !ppro.isConfigured(pp) || !(room.planningCenter?.serviceTypes ?? []).length) {
+    if (!room || !(room.planningCenter?.serviceTypes ?? []).length) {
       prevItemId = null;
       await timerSleep(ARM_CHECK_MS, signal);
       continue;
@@ -978,6 +1014,18 @@ async function autostartLoop(roomId, signal) {
       await timerSleep(ARM_CHECK_MS, signal);
       continue;
     }
+    const isCompleted = (timeId) =>
+      Boolean(timeline.getReport(`${armed.plan.id}__${timeId}`)?.completedAt);
+    if (armed.config.startAtScheduledTime) {
+      prevItemId = null; // switching back to an item must find its own baseline
+      await watchClock(roomId, armed, isCompleted, clockStarted, signal);
+      continue;
+    }
+    if (!ppro.isConfigured(pp)) {
+      prevItemId = null;
+      await timerSleep(ARM_CHECK_MS, signal);
+      continue;
+    }
     // Armed: watch PP until the arm window closes, a show starts, or ~1 min
     // passes (then re-evaluate which event is armed).
     for (let i = 0; i < ARM_CHECK_MS / PP_POLL_MS && !signal.aborted && !shows.has(roomId); i++) {
@@ -994,8 +1042,6 @@ async function autostartLoop(roomId, signal) {
         console.log(`[autostart] ${roomId}: PP moved ${prevItemId ?? '(none)'} → ${itemId}`);
       }
       if (shouldAutostart(armed.config, prevItemId, itemId)) {
-        const isCompleted = (timeId) =>
-          Boolean(timeline.getReport(`${armed.plan.id}__${timeId}`)?.completedAt);
         const timeId = pickAutostartTime(armed.times, Date.now(), isCompleted);
         if (timeId) {
           try {

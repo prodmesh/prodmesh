@@ -213,8 +213,10 @@ Notes:
   between services); falls back to PC clock math otherwise.
 - **Show automation** (per event, Event Detail → Show Automation widget): pick the
   PC item that **autostarts** the show when ProPresenter lands on it (edge-triggered,
-  so "Pre-Service Slides" can loop between services harmlessly) and the item whose
-  **last slide auto-completes** it. Autostart picks the right service time by clock,
+  so "Pre-Service Slides" can loop between services harmlessly) — or **Scheduled
+  time**, which starts each service time on the clock and needs no ProPresenter
+  (fires up to 30 min late if ProdMesh was down, never twice for one service) —
+  and the item whose **last slide auto-completes** it. Autostart picks the right service time by clock,
   skipping already-completed ones; a per-room watcher polls PP only inside the arm
   window (2h before first service → 1h after last), zero browsers required. Manual
   **PC→PP mapping overrides** per event handle drifted orders (stored in SQLite

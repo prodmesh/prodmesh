@@ -30,9 +30,11 @@ function broadcastLabel(b: YouTubeBroadcast) {
 // key-absent / null / id, which keeps the default state out of the record.
 const AUTO = '';
 const NONE = '\u0000none';
+const CLOCK = 'clock:scheduled'; // stored as startAtScheduledTime; no PC item id has a colon
 
 const EMPTY: ShowConfig = {
-  startItemId: null, endItemId: null, map: {}, videos: {}, servicesLiveFromProPresenter: false,
+  startItemId: null, startAtScheduledTime: false, endItemId: null, map: {}, videos: {},
+  servicesLiveFromProPresenter: false,
 };
 
 // Per-event show automation (one config per event, shared by all its service
@@ -134,7 +136,8 @@ export function ShowConfigWidget({
     <Widget
       title="Show Automation"
       meta={
-        persisted?.startItemId || persisted?.endItemId || persisted?.servicesLiveFromProPresenter ? (
+        persisted?.startItemId || persisted?.startAtScheduledTime || persisted?.endItemId
+          || persisted?.servicesLiveFromProPresenter ? (
           <span className="svc__badge svc__badge--live">● armed</span>
         ) : (
           <span className="svc__badge svc__badge--mock">○ manual</span>
@@ -147,15 +150,38 @@ export function ShowConfigWidget({
           Services LIVE with no way to autostart at all, and two dropdowns whose
           difference nobody could see. */}
       <p className="widget__hint">
-        The show follows the ProPresenter operator — pre-service slides can loop between services
-        without tripping anything. Applies to every service time of this event.
+        {draft.startAtScheduledTime
+          ? 'Each service time of this event starts on the clock, whatever ProPresenter is showing.'
+          : 'The show follows the ProPresenter operator — pre-service slides can loop between services without tripping anything. Applies to every service time of this event.'}
       </p>
 
+      {/* The clock and the ProPresenter items share one dropdown because they
+          are one decision — how the show starts. A second control for it would
+          be the two-dropdown problem again. */}
       <div className="showcfg__row">
         <span className="showcfg__label">
           <Play size={13} /> Autostart service at
         </span>
-        {itemSelect(draft.startItemId, (v) => setDraft((d) => ({ ...d, startItemId: v })), 'Never (start manually)')}
+        <SelectField
+          className="showcfg__select"
+          value={draft.startAtScheduledTime ? CLOCK : (draft.startItemId ?? '')}
+          onChange={(e) => {
+            const v = e.target.value;
+            setDraft((d) => ({ ...d, startAtScheduledTime: v === CLOCK, startItemId: v && v !== CLOCK ? v : null }));
+          }}
+        >
+          <option value="">Never (start manually)</option>
+          <option value={CLOCK}>Scheduled time</option>
+          {trackable.length > 0 && (
+            <optgroup label="When ProPresenter reaches">
+              {trackable.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.title}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </SelectField>
       </div>
 
       <div className="showcfg__row">
@@ -334,7 +360,8 @@ export function ShowConfigWidget({
         <button className="btn btn--primary btn--sm" onClick={save}>
           Save automation
         </button>
-        {(persisted?.startItemId || persisted?.endItemId || persisted?.servicesLiveFromProPresenter || overrideCount > 0) && (
+        {(persisted?.startItemId || persisted?.startAtScheduledTime || persisted?.endItemId
+          || persisted?.servicesLiveFromProPresenter || overrideCount > 0) && (
           <button className="btn btn--ghost btn--sm" onClick={clear}>
             Clear
           </button>

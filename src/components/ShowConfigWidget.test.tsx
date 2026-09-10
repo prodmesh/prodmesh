@@ -39,6 +39,20 @@ describe('Show Automation', () => {
     }));
   });
 
+  it('can start on the clock instead of a ProPresenter item', async () => {
+    render(<ShowConfigWidget roomId="r" planId="p" items={items} times={times} saved={null} />);
+    const select = within(row(/Autostart service at/)).getByRole('combobox');
+    await userEvent.selectOptions(select, 'worship');
+    await userEvent.selectOptions(select, 'Scheduled time');
+    expect(screen.getByText(/starts on the clock/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Save automation' }));
+    // The item picked first does not survive the switch: one way to start.
+    expect(api.saveShowConfig).toHaveBeenCalledWith('r', 'p', expect.objectContaining({
+      startAtScheduledTime: true,
+      startItemId: null,
+    }));
+  });
+
   it('adds no second dropdown when Services LIVE is ticked', async () => {
     // Two dropdowns whose difference nobody could see was half the complaint.
     render(<ShowConfigWidget roomId="r" planId="p" items={items} times={times} saved={null} />);

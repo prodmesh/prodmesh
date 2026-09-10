@@ -3,6 +3,7 @@
 //
 //  config = {
 //    startItemId: '<pc item id>' | null,  // PP lands on this item → show starts
+//    startAtScheduledTime: bool,          // …or each service time starts on the clock
 //    endItemId:   '<pc item id>' | null,  // last slide of this item → show ends
 //    map: { '<pc item id>': { ppIndex, ppName } }  // manual PC→PP overrides
 //    videos: { '<time id>': '<video id>' | null }   // per service, tri-state
@@ -49,23 +50,20 @@ import { getDb } from './db.js';
  * Only while "ProPresenter controls Services LIVE" is on: a trigger left behind
  * after the box was unticked is not a request to autostart anything.
  *
- * A service-TIME trigger cannot be promoted — autostart is keyed on a
- * ProPresenter item, and there is no item to promote it to. Such an event keeps
- * the checkbox and starts Services LIVE whenever its show starts, which for it
- * now means whenever somebody presses Start.
+ * A service-TIME trigger becomes a scheduled-time start. Not quite the same
+ * thing: the old trigger named one service time and kept Services LIVE running
+ * from then on, where the show starts at every service time of the event. Each
+ * of those shows takes Services LIVE with it, so the room ends up in the same
+ * place.
  */
 export function promoteLegacyServicesLive(config) {
   if (!config || typeof config !== 'object') return config;
   const { servicesLiveStartMode, servicesLiveStartItemId, servicesLiveStartTimeId, ...rest } = config;
-  if (
-    !rest.startItemId
-    && rest.servicesLiveFromProPresenter
-    && servicesLiveStartMode !== 'service-time'
-    && servicesLiveStartItemId
-  ) {
-    return { ...rest, startItemId: servicesLiveStartItemId };
+  if (rest.startItemId || rest.startAtScheduledTime || !rest.servicesLiveFromProPresenter) return rest;
+  if (servicesLiveStartMode === 'service-time') {
+    return servicesLiveStartTimeId ? { ...rest, startAtScheduledTime: true } : rest;
   }
-  return rest;
+  return servicesLiveStartItemId ? { ...rest, startItemId: servicesLiveStartItemId } : rest;
 }
 
 export function getConfig(roomId, planId) {
@@ -142,8 +140,13 @@ function validate(input) {
     }
   }
 
+  // One way to start, not two. The UI offers both in a single dropdown; a
+  // client that sends both anyway gets the clock, which is the one it chose
+  // deliberately — an item id could be left over from before the switch.
+  const startAtScheduledTime = Boolean(config.startAtScheduledTime);
   return {
-    startItemId: id(config.startItemId, 'startItemId'),
+    startItemId: startAtScheduledTime ? null : id(config.startItemId, 'startItemId'),
+    startAtScheduledTime,
     endItemId: id(config.endItemId, 'endItemId'),
     map,
     videos,

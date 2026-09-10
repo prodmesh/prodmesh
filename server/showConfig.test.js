@@ -74,14 +74,24 @@ test('a legacy trigger is promoted only when it could have started anything', ()
   const base = { servicesLiveStartMode: 'item', servicesLiveStartItemId: 'worship' };
   // The box was unticked: a leftover trigger is not a request to autostart.
   assert.equal(cfg.promoteLegacyServicesLive({ ...base, servicesLiveFromProPresenter: false }).startItemId, undefined);
-  // A service TIME has no ProPresenter item to become.
-  assert.equal(cfg.promoteLegacyServicesLive({
+  // A service TIME has no ProPresenter item to become; it starts on the clock.
+  const clock = cfg.promoteLegacyServicesLive({
     servicesLiveFromProPresenter: true, servicesLiveStartMode: 'service-time', servicesLiveStartTimeId: 't1',
-  }).startItemId, undefined);
+  });
+  assert.equal(clock.startAtScheduledTime, true);
+  assert.equal(clock.startItemId, undefined);
+  assert.equal('servicesLiveStartTimeId' in clock, false);
   // An autostart item that already exists wins over the old trigger.
   assert.equal(cfg.promoteLegacyServicesLive({
     ...base, servicesLiveFromProPresenter: true, startItemId: 'welcome',
   }).startItemId, 'welcome');
+});
+
+test('an event starts on the clock or at an item, never both', () => {
+  const saved = cfg.setConfig('r-clock', 'p-clock', { startAtScheduledTime: true, startItemId: 'worship' });
+  assert.equal(saved.startAtScheduledTime, true);
+  assert.equal(saved.startItemId, null, 'an item left over from before the switch is dropped');
+  assert.equal(cfg.setConfig('r-clock', 'p-clock', { startItemId: 'worship' }).startAtScheduledTime, false);
 });
 
 test('a mapping can explicitly exclude an item from automatic matching', () => {
