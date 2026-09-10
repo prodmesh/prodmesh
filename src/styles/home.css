@@ -31,11 +31,13 @@
   letter-spacing: 0.08em;
 }
 
+/* Separate rounded cards, edged like every other card in the app. They were
+   one joined grid with shared borders and square corners, which stood out
+   once the chrome around them floated. */
 .home__rooms {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  border-top: 1px solid var(--border);
-  border-left: 1px solid var(--border);
+  gap: 12px;
 }
 
 @media (max-width: 980px) {
@@ -50,11 +52,9 @@
   gap: 16px;
   min-height: 202px;
   padding: 16px;
-  border-radius: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg); /* as .widget */
   background: var(--bg-raised);
-  border: 0;
-  border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
   text-decoration: none;
   color: var(--text);
   transition: background 0.12s ease;
@@ -226,6 +226,7 @@
 
 .home__tools {
   border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
   background: var(--bg-raised);
 }
 
@@ -237,6 +238,15 @@
   padding: 13px 15px;
   cursor: pointer;
   list-style: none;
+  /* The hover fill follows the panel's corners. Rounded here rather than by
+     clipping the panel with overflow, which would also clip any popover a
+     launcher tile below opens. */
+  border-radius: calc(var(--radius-lg) - 1px);
+}
+
+.home__tools[open] .home__tools-summary {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 .home__tools-summary::-webkit-details-marker { display: none; }

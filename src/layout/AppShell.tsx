@@ -21,6 +21,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Wrench,
+  type LucideIcon,
 } from 'lucide-react';
 import { clearToken, getAuthStatus, getConfig, logoSrc, logoutAdmin, type AuthStatus, type Station } from '../api';
 import { HelpDrawer } from '../components/HelpDrawer';
@@ -44,19 +45,48 @@ const NAV = [
   { to: '/admin/general', label: 'Admin', icon: Wrench },
 ];
 
+// Admin's sections get a panel of their own beside the sidebar, rather than a
+// sublist inside it. Nested in the sidebar they vanished whenever it was
+// collapsed to its rail, and reflowed while it animated open.
 const ADMIN_NAV = [
-  { to: '/admin/general', label: 'General', icon: Settings2 },
-  { to: '/admin/integrations', label: 'Integrations', icon: Plug },
-  { to: '/admin/campuses', label: 'Campuses', icon: Building2 },
-  { to: '/admin/users', label: 'Users & access', icon: Users },
-  { to: '/admin/stations', label: 'Stations', icon: MonitorCog },
-  { to: '/admin/checklists', label: 'Checklists', icon: ClipboardList },
-  { to: '/admin/logs', label: 'Logs', icon: ScrollText },
+  {
+    heading: 'Setup',
+    items: [
+      { to: '/admin/general', label: 'General', icon: Settings2 },
+      { to: '/admin/integrations', label: 'Integrations', icon: Plug },
+      { to: '/admin/campuses', label: 'Campuses', icon: Building2 },
+    ],
+  },
+  {
+    heading: 'People',
+    items: [
+      { to: '/admin/users', label: 'Users & access', icon: Users },
+      { to: '/admin/stations', label: 'Stations', icon: MonitorCog },
+    ],
+  },
+  {
+    heading: 'Operations',
+    items: [
+      { to: '/admin/checklists', label: 'Checklists', icon: ClipboardList },
+      { to: '/admin/logs', label: 'Logs', icon: ScrollText },
+    ],
+  },
 ];
+
+// Every sidebar icon sits in a cell as wide as the rail's content box, so it
+// is centred when the sidebar is collapsed and does not move when it opens.
+function Glyph({ icon: Icon, size = 19 }: { icon: LucideIcon; size?: number }) {
+  return (
+    <span className="sidebar__glyph" aria-hidden>
+      <Icon size={size} className="sidebar__icon" />
+    </span>
+  );
+}
 
 // Persistent chrome: a left sidebar (collapsible to an icon rail) with the
 // church brand + campus scope up top, global nav, and the user slot pinned at
-// the bottom. Pages render inside <Outlet /> and own no chrome. Room-level
+// the bottom; Admin pages add a second panel of their own sections beside it.
+// Pages render inside <Outlet /> and own no chrome. Room-level
 // pages (/room/…) still exist below this nav — Home/Services link into them.
 export function AppShell() {
   const location = useLocation();
@@ -240,6 +270,7 @@ export function AppShell() {
     lockedPrefix != null &&
     location.pathname !== lockedPrefix &&
     !location.pathname.startsWith(`${lockedPrefix}/`);
+  const adminOpen = !lockedPrefix && location.pathname.startsWith('/admin');
 
   const lock = async () => {
     await logoutAdmin();
@@ -307,35 +338,23 @@ export function AppShell() {
                 data-rail-label={lockedRoomName ?? undefined}
                 className={({ isActive }) => `sidebar__item${isActive ? ' sidebar__item--active' : ''}`}
               >
-                <HomeIcon size={19} className="sidebar__icon" />
+                <Glyph icon={HomeIcon} />
                 <span className="sidebar__label rail-hide">{lockedRoomName}</span>
               </NavLink>
-            ) : NAV.map(({ to, label, icon: Icon, end }) => {
-              const adminActive = label === 'Admin' && location.pathname.startsWith('/admin');
-              return (
-                <div key={to} className="sidebar__navgroup">
-                  <NavLink
-                    to={to}
-                    end={end}
-                    aria-label={label}
-                    data-rail-label={label}
-                    className={({ isActive }) => `sidebar__item${isActive || adminActive ? ' sidebar__item--active' : ''}`}
-                  >
-                    <Icon size={19} className="sidebar__icon" />
-                    <span className="sidebar__label rail-hide">{label}</span>
-                  </NavLink>
-                  {adminActive && (
-                    <div className="sidebar__subnav rail-hide">
-                      {ADMIN_NAV.map(({ to: subTo, label: subLabel, icon: SubIcon }) => (
-                        <NavLink key={subTo} to={subTo} className={({ isActive }) => `sidebar__subitem${isActive ? ' sidebar__subitem--active' : ''}`}>
-                          <SubIcon size={13} /> {subLabel}
-                        </NavLink>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            ) : NAV.map(({ to, label, icon, end }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                aria-label={label}
+                data-rail-label={label}
+                className={({ isActive }) =>
+                  `sidebar__item${isActive || (label === 'Admin' && adminOpen) ? ' sidebar__item--active' : ''}`}
+              >
+                <Glyph icon={icon} />
+                <span className="sidebar__label rail-hide">{label}</span>
+              </NavLink>
+            ))}
           </nav>
 
           <div className="sidebar__foot">
@@ -348,7 +367,7 @@ export function AppShell() {
                 onClick={() => setHelpOpen((open) => !open)}
                 aria-expanded={helpOpen}
               >
-                <CircleHelp size={17} />
+                <Glyph icon={CircleHelp} size={17} />
                 <span className="sidebar__label rail-hide">Help</span>
               </button>
               {helpOpen && (
@@ -389,9 +408,11 @@ export function AppShell() {
                 onClick={identity?.authenticated ? () => setAccountOpen((open) => !open) : () => setIdentityOpen(true)}
               >
                 {identity?.user?.avatarUrl ? (
-                  <img className="sidebar__avatar" src={identity.user.avatarUrl} alt="" />
+                  <span className="sidebar__glyph" aria-hidden>
+                    <img className="sidebar__avatar" src={identity.user.avatarUrl} alt="" />
+                  </span>
                 ) : (
-                  <CircleUser size={19} className="sidebar__icon" />
+                  <Glyph icon={CircleUser} />
                 )}
                 <div className="sidebar__label rail-hide">
                   <span className="sidebar__username">{operatorName}</span>
@@ -415,11 +436,34 @@ export function AppShell() {
               data-rail-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
-              {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+              <Glyph icon={collapsed ? PanelLeftOpen : PanelLeftClose} size={17} />
               <span className="sidebar__label rail-hide">Collapse</span>
             </button>
           </div>
         </aside>
+
+        {adminOpen && (
+          <nav className="subpanel" aria-label="Admin">
+            <p className="subpanel__title">Admin</p>
+            {ADMIN_NAV.map(({ heading, items }) => (
+              <div key={heading} className="subpanel__group">
+                <p className="subpanel__heading">{heading}</p>
+                {items.map(({ to, label, icon }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    aria-label={label}
+                    data-rail-label={label}
+                    className={({ isActive }) => `sidebar__item${isActive ? ' sidebar__item--active' : ''}`}
+                  >
+                    <Glyph icon={icon} size={17} />
+                    <span className="sidebar__label">{label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            ))}
+          </nav>
+        )}
 
         <main className="shell__main">
           <AssistanceBar enabled={Boolean(identity?.station)} />

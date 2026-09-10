@@ -292,23 +292,29 @@
 
 .viewbar,
 .editbar {
-  /* Full-bleed: cancel the shell's padding so the bar sits flush against the
-     sidebar and the top of the window. Inset and rounded, it read as a card
-     that happened to be at the top — the one thing on the page that is chrome
-     rather than content, drawn like content. A toolbar has edges, not
-     corners. */
-  margin: calc(-1 * var(--main-pad)) calc(-1 * var(--main-pad)) 0;
-  width: calc(100% + 2 * var(--main-pad));
-  border-radius: 0;
-  /* No border at all. The raised background is already the edge, and the
-     1px was what put the bar a hair out of step with the sidebar's own
-     header block. */
-  border: 0;
+  /* Chrome, drawn like the rest of the chrome. The bar cancels the shell's
+     padding down to the sidebar's own inset and takes the same rounded,
+     bordered edge, so the two read as one set of tools over the page.
+
+     Two earlier versions were each wrong in their own way. Inset like page
+     content and rounded, it read as a card that happened to be at the top —
+     chrome drawn like content. Then full-bleed, flush to the window and the
+     sidebar: right while the sidebar was a flush column, but once the sidebar
+     floated, the bar butted against its edge and ran up past its top. The
+     inset that matters is the chrome's, not the content's. */
+  --bar-inset: calc(var(--main-pad) - var(--shell-gap));
+  margin: calc(-1 * var(--bar-inset)) calc(-1 * var(--bar-inset)) 0;
+  width: calc(100% + 2 * var(--bar-inset));
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
   /* Held while a tall dashboard scrolls: which service you are looking at is
-     not something to have to scroll back up for. */
+     not something to have to scroll back up for. The shadow paints the gap
+     the bar floats in, so content scrolling up vanishes at the window edge
+     instead of showing through above the bar. */
   position: sticky;
-  top: 0;
+  top: var(--shell-gap);
   z-index: 5;
+  box-shadow: 0 calc(-1 * var(--shell-gap) - 1px) 0 0 var(--bg);
 }
 
 .viewbar {
@@ -316,7 +322,7 @@
   align-items: stretch;
   gap: 10px;
   flex-wrap: wrap;
-  padding: 10px var(--main-pad);
+  padding: 10px var(--bar-inset); /* controls line up with the page content */
   background: var(--bg-raised);
 }
 
@@ -530,7 +536,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px var(--main-pad);
+  padding: 10px var(--bar-inset); /* controls line up with the page content */
   background: var(--bg-raised);
 }
 

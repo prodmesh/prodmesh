@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -82,6 +82,24 @@ describe('AppShell identity and Admin navigation', () => {
       'src',
       authenticated.user?.avatarUrl,
     );
+  });
+
+  it('keeps the Admin sections reachable with the sidebar collapsed', async () => {
+    // They were a sublist inside the sidebar, hidden along with its labels.
+    localStorage.setItem('prodmesh.sidebar', 'rail');
+    try {
+      renderShell();
+      const panel = await screen.findByRole('navigation', { name: 'Admin' });
+      expect(within(panel).getByRole('link', { name: 'Users & access' })).toHaveAttribute('aria-current', 'page');
+    } finally {
+      localStorage.removeItem('prodmesh.sidebar');
+    }
+  });
+
+  it('shows the Admin panel only on Admin pages', async () => {
+    renderShell('/room/north-main');
+    expect(await screen.findByText('Room page content')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Admin' })).not.toBeInTheDocument();
   });
 
   it('dismisses the account menu by toggle, click-away, and Escape', async () => {
