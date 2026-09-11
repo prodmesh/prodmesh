@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Music } from 'lucide-react';
 import { useTopic, roomTopic } from '../lib/stream';
+import { scrollWithin } from '../lib/scrollWithin';
 import type { RoomLyrics } from '../api';
 import type { WidgetProps } from './types';
 
@@ -37,6 +38,7 @@ const ENDGAME = 3;
 export function LyricsWidget({ roomId }: WidgetProps) {
   const lyrics = useTopic<RoomLyrics>(roomTopic.lyrics(roomId));
   const active = useRef<HTMLLIElement | null>(null);
+  const list = useRef<HTMLOListElement | null>(null);
 
   const slides = lyrics?.slides ?? [];
   // A position past the end means the arrangement we expanded is not the one
@@ -46,10 +48,10 @@ export function LyricsWidget({ roomId }: WidgetProps) {
   const at = raw != null && raw >= 0 && raw < slides.length ? raw : null;
 
   useEffect(() => {
-    if (at == null) return;
+    if (at == null || !list.current || !active.current) return;
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-    // Optional call: jsdom has no layout, so this is simply absent under test.
-    active.current?.scrollIntoView?.({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
+    // The list, not the page: see scrollWithin (#36).
+    scrollWithin(list.current, active.current, { block: 'center', behavior: reduced ? 'auto' : 'smooth' });
   }, [at]);
 
   // Nothing open in ProPresenter, or a presentation with no cues — an empty
@@ -70,7 +72,7 @@ export function LyricsWidget({ roomId }: WidgetProps) {
       </div>
 
       <div className="lyr">
-        <ol className="lyr__list">
+        <ol className="lyr__list" ref={list}>
           {slides.map((s, i) => {
             const blank = s.text.trim() === '';
             const state = at == null ? '' : i < at ? ' lyr__row--past' : i === at ? ' lyr__row--now' : '';
