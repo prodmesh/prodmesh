@@ -186,6 +186,14 @@ playing.
   slide action. Keep the last mapped item as a baseline.
 - **Zero-slide "shell" presentations** (a placeholder like "Message") cannot be
   activated at all.
+- **Slide thumbnails are zero-based**, the same `index` as `slide_index` and
+  the trigger routes: `GET /v1/presentation/{uuid}/thumbnail/{index}`. A `+1`
+  shipped on 2026-08-13 on the belief that the endpoint was one-based, and
+  every slide in the production console drew the NEXT slide's image (#42: an
+  intro slide showing verse 1's text, an image-only presentation losing its
+  first image). The giveaway was a retry that only ever fired for the last
+  slide. Established from the 7.9 OpenAPI spec and two independent clients that
+  draw the live slide; not yet probed on a running ProPresenter here.
 
 Trigger endpoints: `GET /v1/playlist/focused/{index}/trigger`,
 `GET /v1/trigger/next`, `GET /v1/presentation/active/{i}/trigger`.
