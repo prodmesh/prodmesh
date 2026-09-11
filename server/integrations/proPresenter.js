@@ -763,10 +763,11 @@ export async function readThumbnail(pp, presentationUuid, cueIndex, signal) {
   // because its +1 missed and a retry fell back to the true index. That retry
   // was the symptom being patched, not a second API variant.
   //
-  // Evidence: the 7.9 OpenAPI spec names the parameter `index` with no base,
-  // and independent clients that draw the LIVE slide pass slide_index straight
-  // through, which would be visibly wrong if it were one-based. Not yet checked
-  // against a running ProPresenter here.
+  // Verified live on ProPresenter 21.4 (2026-09-10): a 14-slide song answers
+  // thumbnails 0-13 and 404s at 14, and thumbnail 0 is its blank intro while 1
+  // is verse 1. The 7.9 OpenAPI spec names the parameter `index` with no base,
+  // and independent clients that draw the live slide pass slide_index straight
+  // through. 21.1 not yet probed.
   const res = await fetch(`${baseUrl(pp)}/v1/presentation/${encodeURIComponent(presentationUuid)}/thumbnail/${cueIndex}`, {
     signal: withTimeout(signal),
   });

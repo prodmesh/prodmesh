@@ -192,8 +192,10 @@ playing.
   every slide in the production console drew the NEXT slide's image (#42: an
   intro slide showing verse 1's text, an image-only presentation losing its
   first image). The giveaway was a retry that only ever fired for the last
-  slide. Established from the 7.9 OpenAPI spec and two independent clients that
-  draw the live slide; not yet probed on a running ProPresenter here.
+  slide. Probed live on 21.4 (2026-09-10): a 14-slide song answers thumbnails
+  0–13 and 404s at 14, and thumbnail 0 is its blank intro while 1 is verse 1.
+  Agrees with the 7.9 OpenAPI spec and two independent clients that draw the
+  live slide. Not yet probed on 21.1.
 
 Trigger endpoints: `GET /v1/playlist/focused/{index}/trigger`,
 `GET /v1/trigger/next`, `GET /v1/presentation/active/{i}/trigger`.
