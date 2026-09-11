@@ -9,7 +9,7 @@
 //  Per-room host/port (ProPresenter picks an ephemeral API port). No auth (LAN).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { report } from '../health.js';
+import { outage, report } from '../health.js';
 
 const DEFAULT_PORT = 62202;
 
@@ -122,16 +122,20 @@ async function ppGet(pp, path, signal) {
     // A caller abort (show ended, view closed) is not an integration failure;
     // an unresponsive PP surfaces as TimeoutError and is.
     if (err?.name !== 'AbortError') report(key, false, String(err.message ?? err));
-    throw err;
+    throw outage(err, key); // an outage, not a bug — see health.js
   }
 }
 
 // Like ppGet but without health reporting — for probes where a failure is an
 // expected answer (PP 21 404s the uuid playlist route), not an outage.
 async function rawGet(pp, path, signal) {
-  const res = await fetch(`${baseUrl(pp)}${path}`, { signal: withTimeout(signal) });
-  if (!res.ok) throw new Error(`ProPresenter ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetch(`${baseUrl(pp)}${path}`, { signal: withTimeout(signal) });
+    if (!res.ok) throw new Error(`ProPresenter ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    throw outage(err, healthKey(pp));
+  }
 }
 
 // ── ProPresenter 21 compatibility ────────────────────────────────────────────
@@ -697,7 +701,7 @@ async function ppControlGet(pp, path, signal) {
     report(key, true);
   } catch (err) {
     if (err?.name !== 'AbortError') report(key, false, String(err.message ?? err));
-    throw err;
+    throw outage(err, key); // an outage, not a bug — see health.js
   }
 }
 

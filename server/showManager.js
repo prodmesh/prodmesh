@@ -29,6 +29,7 @@ import * as streamStore from './streamStore.js';
 import * as summaries from './showSummaries.js';
 import * as showConfig from './showConfig.js';
 import { armWindow, dueScheduledTime, pickAutostartTime, shouldAutostart, shouldAutoComplete, armsAutoComplete } from './autoShow.js';
+import { survive, unexpected } from './health.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SHOWS_DIR = join(process.env.PRODMESH_DATA_DIR ?? join(__dirname, 'data'), 'shows');
@@ -288,10 +289,10 @@ async function serviceSoon(roomId) {
   if (!types.length) return false;
   const now = Date.now();
   for (const st of types) {
-    for (const plan of await pco.getUpcomingPlans(st, 2).catch(() => [])) {
+    for (const plan of await pco.getUpcomingPlans(st, 2).catch(survive([], `service window ${roomId}`))) {
       const times = await pco
         .getPlanTimes({ id: plan.serviceTypeId, name: plan.serviceTypeName }, plan.id)
-        .catch(() => []);
+        .catch(survive([], `service window ${roomId}`));
       const window = armWindow(times, SERVICE_LEAD_MS, SERVICE_TAIL_MS);
       if (window && now >= window.from && now <= window.to) return true;
     }
@@ -605,7 +606,7 @@ function removeShowFile(roomId) {
 // ── Plan lookup ─────────────────────────────────────────────────────────────
 async function findPlan(room, planId) {
   for (const st of room.planningCenter?.serviceTypes ?? []) {
-    const plans = await pco.getUpcomingPlans(st, 10).catch(() => []);
+    const plans = await pco.getUpcomingPlans(st, 10).catch(survive([], `plan lookup ${room.id}`));
     const p = plans.find((x) => x.id === planId);
     if (p) return p;
   }
@@ -647,8 +648,10 @@ async function beginShow(roomId, planId, timeId, startedAt, { startedLogging = f
         timeStartsAt: time?.startsAt ?? null,
       });
     }
-  } catch {
-    /* items stay [] */
+  } catch (err) {
+    // Planning Center down or the plan aged out: items stay [], quietly.
+    // Anything else is a bug, and this try also spans a timeline write.
+    unexpected(`show ${roomId}`, err);
   }
 
   // Plan unavailable (PCO outage, plan aged out) but we have a persisted copy
@@ -771,9 +774,20 @@ function startPoller(show) {
     publishShow(show.roomId);
     return;
   }
+  // onPoll runs inside pollRunState's try, where a throw counts as a failed
+  // ProPresenter read: three in a row and the show reported PP disconnected.
+  // A failure applying an update is ours, not PP's. Log it and keep polling.
+  const apply = (s) => {
+    try {
+      onPoll(show, s);
+    } catch (err) {
+      unexpected(`show ${show.roomId}`, err);
+    }
+  };
   ppro
-    .pollRunState(pp, (s) => onPoll(show, s), show.abort.signal, SHOW_POLL_MS)
-    .catch(() => {
+    .pollRunState(pp, apply, show.abort.signal, SHOW_POLL_MS)
+    .catch((err) => {
+      unexpected(`show ${show.roomId}`, err);
       if (!show.abort.signal.aborted) {
         show.ppConnected = false;
         publishShow(show.roomId);
@@ -931,7 +945,7 @@ const SHOW_POLL_MS = envMs('PRODMESH_SHOW_POLL_MS', 800);
 export async function nextArmedEvent(room, now) {
   const plans = [];
   for (const st of room.planningCenter?.serviceTypes ?? []) {
-    plans.push(...(await pco.getUpcomingPlans(st, 3).catch(() => [])));
+    plans.push(...(await pco.getUpcomingPlans(st, 3).catch(survive([], `autostart ${room.id}`))));
   }
   plans.sort((a, b) => String(a.sortDate ?? '').localeCompare(String(b.sortDate ?? '')));
   for (const plan of plans) {
@@ -942,10 +956,10 @@ export async function nextArmedEvent(room, now) {
     const config = showConfig.getConfig(room.id, plan.id);
     if (!config?.startItemId && !config?.startAtScheduledTime) continue;
     const st = { id: plan.serviceTypeId, name: plan.serviceTypeName };
-    const times = await pco.getPlanTimes(st, plan.id).catch(() => []);
+    const times = await pco.getPlanTimes(st, plan.id).catch(survive([], `autostart ${room.id}`));
     const window = armWindow(times);
     if (!IGNORE_WINDOW && (!window || now < window.from || now > window.to)) continue;
-    const items = await pco.getPlanItems(st, plan.id).catch(() => []);
+    const items = await pco.getPlanItems(st, plan.id).catch(survive([], `autostart ${room.id}`));
     if (items.length === 0) continue;
     return { plan, config, times, items };
   }
@@ -971,8 +985,10 @@ async function watchClock(roomId, armed, isCompleted, started, signal) {
       try {
         await startShow(roomId, armed.plan.id, timeId);
         console.log(`[autostart] ${roomId}: scheduled time — show started for ${key(timeId)}`);
-      } catch {
-        /* conflict — someone started it manually first */
+      } catch (err) {
+        // A conflict means somebody started a show by hand in the same
+        // instant. Anything else is a scheduled service that did not start.
+        if (err?.code !== 'conflict') unexpected(`autostart ${roomId}`, err);
       }
       return;
     }
@@ -1001,7 +1017,11 @@ async function autostartLoop(roomId, signal) {
     if (!shows.has(roomId)) {
       try {
         armed = await nextArmedEvent(room, Date.now());
-      } catch {
+      } catch (err) {
+        // nextArmedEvent survives Planning Center outages itself, so what lands
+        // here is a bug, and a bug here disarms autostart: on a Sunday that
+        // presents as "the show just didn't start". Never silently.
+        unexpected(`autostart ${roomId}`, err);
         armed = null;
       }
     }
@@ -1033,7 +1053,8 @@ async function autostartLoop(roomId, signal) {
       try {
         const active = await ppro.readActive(pp, signal);
         itemId = ppro.mapActiveToItemId(armed.items, active, armed.config.map);
-      } catch {
+      } catch (err) {
+        unexpected(`autostart ${roomId}`, err); // silent for an outage
         prevItemId = null; // PP unreachable → drop the baseline
         await timerSleep(PP_POLL_MS, signal);
         continue;
@@ -1047,8 +1068,10 @@ async function autostartLoop(roomId, signal) {
           try {
             await startShow(roomId, armed.plan.id, timeId);
             console.log(`[autostart] ${roomId}: show started for ${armed.plan.id}__${timeId}`);
-          } catch {
-            /* conflict — someone started it manually first */
+          } catch (err) {
+            // A conflict means somebody started it by hand first. Anything
+            // else is a show that should have started and did not.
+            if (err?.code !== 'conflict') unexpected(`autostart ${roomId}`, err);
           }
         }
       }

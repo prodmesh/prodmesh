@@ -18,6 +18,7 @@ import * as auth from '../authStore.js';
 import { requirePermission, permissionRequired, auditSuccess } from '../httpAuth.js';
 import { applyMode, modeLockError } from '../roomModes.js';
 import { bump } from '../roomStateWatcher.js';
+import { survive, unexpected } from '../health.js';
 
 const router = express.Router();
 
@@ -163,10 +164,12 @@ router.get('/api/rooms/:id/event/:planId/pp-playlist', async (req, res) => {
   if (!room) return res.status(404).json({ error: 'Unknown room' });
   if (!ppro.isConfigured(room.proPresenter)) return res.json({ playlist: null });
   try {
-    const plan = await planForRoom(room, req.params.planId).catch(() => null);
+    const plan = await planForRoom(room, req.params.planId).catch(survive(null, 'pp-playlist'));
     res.json({ playlist: await ppro.readPlaylistItems(room.proPresenter, undefined, plan) });
-  } catch {
-    res.json({ playlist: null }); // PP offline — the UI explains itself
+  } catch (err) {
+    // PP offline: the UI explains itself. A parse bug used to read the same.
+    unexpected('pp-playlist', err);
+    res.json({ playlist: null });
   }
 });
 
