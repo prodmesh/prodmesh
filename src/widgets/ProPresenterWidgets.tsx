@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ChevronLeft, ChevronRight, ListVideo, MonitorPlay } from 'lucide-react';
 import { proPresenterControl, type ProPresenterState } from '../api';
 import { roomTopic, useTopic } from '../lib/stream';
+import { scrollWithin } from '../lib/scrollWithin';
 import type { WidgetProps } from './types';
 
 /** The server deliberately sends compact runtime frames after a rich playlist
@@ -62,8 +63,10 @@ export function ProPresenterPlaylist({ roomId, config }: WidgetProps) {
   const activeKey = `${active?.activePresentationUuid}:${active?.activeCueIndex}`;
   useEffect(() => {
     if (!config.followActive || !ref.current) return;
-    const node = ref.current.querySelector('[data-active-cue="true"]');
-    node?.scrollIntoView({ block: 'nearest' });
+    // Within the playlist's own scroll box, never the page (#36).
+    const box = ref.current.querySelector<HTMLElement>('.ppplaylist__scroll');
+    const node = ref.current.querySelector<HTMLElement>('[data-active-cue="true"]');
+    if (box && node) scrollWithin(box, node, { block: 'nearest' });
   }, [activeKey, config.followActive]);
   useEffect(() => {
     if (!keyboard || !controls) return;
