@@ -8,7 +8,7 @@
 //  endpoint that accepts any string is therefore a way to make this server
 //  hammer a Companion on someone's behalf.
 //
-//  Two things keep that bounded:
+//  Three things keep that bounded:
 //
 //    • Names are shape-checked, and a room may have at most MAX_PER_ROOM
 //      distinct variables watched at once. Beyond that the topic is simply
@@ -17,6 +17,10 @@
 //    • One loop per ROOM, not per variable. Eight variables on a wall display
 //      are eight small GETs per cycle from one timer, not eight timers; and
 //      three browsers watching the same eight cost the same as one.
+//    • How often is a stored choice, not a request (#24). Each saved widget
+//      picks a refresh from a fixed menu, a variable is read at the fastest
+//      refresh of any saved widget showing it, and a room's widgets together
+//      may not ask for more than COMPANION_READS_PER_SECOND, refused at save.
 //
 //  Published on CHANGE, like the mode watcher, so a rack of variables that
 //  nobody is touching costs the browsers nothing.
@@ -31,9 +35,12 @@
 import { rooms } from './roomsStore.js';
 import * as hub from './streamHub.js';
 import { readVariable } from './companion.js';
-import { COMPANION_VAR_SEGMENT } from './validate.js';
+import { COMPANION_DEFAULT_REFRESH_MS, COMPANION_VAR_SEGMENT } from './validate.js';
+import { companionRefreshFor } from './views.js';
 
-const POLL_MS = 4000;
+/** Never sleep less than this between passes, whatever is due. The fastest
+ *  refresh on the menu is a second, so a shorter gap only ever means a bug. */
+const MIN_GAP_MS = 100;
 
 /** Distinct variables one room may have watched at once, across every browser.
  *  Eight rows is a full widget; three widgets on a wall is 24. Past that a
@@ -58,6 +65,7 @@ export const variableTopic = (roomId, label, name) => `room:${roomId}:var:${labe
 const refKey = (label, name) => `${label}:${name}`;
 
 const wakers = new Map(); // roomId -> end this room's current sleep early
+const dueAt = new Map(); // roomId -> Map<`label:name`, when it is next due>
 
 /**
  * The gap between passes, endable three ways: the timer, the last subscriber
@@ -123,13 +131,28 @@ async function loop(roomId, signal) {
     // loads. `null` is "never read"; a read always leaves a payload.
     const unread = [...refs.keys()].filter((key) => refs.get(key) === null);
 
+    // How often each variable is read: the fastest refresh of any SAVED
+    // Companion widget in this room showing it, from the database rather than
+    // from whoever happens to be watching (#24). A variable no saved widget
+    // names, such as the editor previewing a row not yet saved, reads at the
+    // default.
+    const periods = companionRefreshFor(roomId);
+    let due = dueAt.get(roomId);
+    if (!due) {
+      due = new Map();
+      dueAt.set(roomId, due);
+    }
+    const passAt = Date.now();
+    const batch = unread.length ? unread : [...refs.keys()].filter((key) => (due.get(key) ?? 0) <= passAt);
+
     // Sequentially, deliberately: these are small GETs to one machine, and
     // firing eight at once at a Companion that is already busy driving a
     // service buys nothing worth the burst.
-    for (const key of unread.length ? unread : [...refs.keys()]) {
+    for (const key of batch) {
       if (signal.aborted) return;
       const [label, name] = key.split(':');
       const next = await read(room, label, name);
+      due.set(key, Date.now() + (periods.get(key) ?? COMPANION_DEFAULT_REFRESH_MS));
       // Re-read the map rather than trusting the one this cycle started with:
       // the last subscriber may have left while that request was in flight,
       // and publishing then would repopulate a topic nobody holds.
@@ -144,14 +167,19 @@ async function loop(roomId, signal) {
     // Anything that arrived WHILE that pass was in flight is served now rather
     // than after the sleep — same reason, one tick later.
     const now = watched.get(roomId);
-    if (now && [...now.keys()].some((key) => now.get(key) === null)) continue;
+    if (!now?.size) continue; // the last subscriber left mid-pass; the loop's top ends it
+    if ([...now.keys()].some((key) => now.get(key) === null)) continue;
 
+    // Sleep until the next variable is due rather than for a fixed cycle, so
+    // a 1-second widget and a 10-second one share one loop and one timer.
+    //
     // A simulated room keeps its timer and touches no network (see read()).
     // Ending the loop instead would be cheaper and is not worth the hole it
     // leaves: a room switched out of mock in Admin would then have nothing
     // running to notice, and every screen watching it would stay simulated
     // until somebody reloaded.
-    await idle(roomId, POLL_MS, signal);
+    const soonest = Math.min(...[...now.keys()].map((key) => due.get(key) ?? 0));
+    await idle(roomId, Math.max(MIN_GAP_MS, soonest - Date.now()), signal);
   }
 }
 
@@ -185,8 +213,10 @@ function stop(roomId, label, name) {
   const refs = watched.get(roomId);
   if (!refs) return;
   refs.delete(refKey(label, name));
+  dueAt.get(roomId)?.delete(refKey(label, name));
   if (refs.size) return;
   watched.delete(roomId);
+  dueAt.delete(roomId);
   loops.get(roomId)?.abort();
   loops.delete(roomId);
 }
@@ -211,5 +241,6 @@ export function stopAll() {
   for (const ctl of loops.values()) ctl.abort();
   loops.clear();
   wakers.clear();
+  dueAt.clear();
   watched.clear();
 }

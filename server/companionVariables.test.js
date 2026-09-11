@@ -13,6 +13,7 @@ process.env.PRODMESH_DATA_DIR = mkdtempSync(join(tmpdir(), 'prodmesh-cvars-'));
 const hub = await import('./streamHub.js');
 const { rooms } = await import('./roomsStore.js');
 const cvars = await import('./companionVariables.js');
+const views = await import('./views.js');
 
 // north-youth ships simulated and has no ProPresenter or analysis, so nothing
 // else in the process starts polling because of these tests.
@@ -215,5 +216,28 @@ test('one loop serves every subscriber, and the last one out stops it', async ()
     assert.equal(srv.seen.length, atStop, 'nobody is watching, so nothing is polled');
   } finally {
     await srv.close();
+  }
+});
+
+test('a saved 1-second widget is read every second, not every four (#24)', async () => {
+  const v = views.createView({ roomId: ROOM, kind: 'dashboard', name: 'Fast', slug: 'fast-cvars' });
+  views.replaceView(v.id, {
+    name: 'Fast', slug: 'fast-cvars',
+    widgets: [{ type: 'companion-variables', x: 0, y: 0, w: 2, h: 2, config: { refreshMs: 1000, rows: [{ variable: 'custom:tick' }] } }],
+  });
+  const srv = await fakeCompanion({ tick: '1' });
+  const res = fakeRes();
+  try {
+    hub.subscribe(res, [topic('custom', 'tick')]);
+    await until(() => res.frames('custom', 'tick').length === 1);
+    srv.values.tick = '2';
+    const changedAt = Date.now();
+    assert.ok(await until(() => res.frames('custom', 'tick').length === 2, 2500), 'read again');
+    // The old fixed cycle would have taken up to four seconds.
+    assert.ok(Date.now() - changedAt < 2000, `took ${Date.now() - changedAt}ms`);
+  } finally {
+    hub.unsubscribe(res);
+    await srv.close();
+    views.deleteView(v.id);
   }
 });

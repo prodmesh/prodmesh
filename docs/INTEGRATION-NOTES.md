@@ -502,7 +502,12 @@ green on any HTTP status.
 
 **There is no bulk read.** `/api/variables` is a 404: n variables is n
 requests, which is why `companionVariables.js` polls one loop per room rather
-than one per variable, and caps how many a room may watch.
+than one per variable, and caps how many a room may watch. How often is
+bounded the same way (#24): each saved variables widget picks a refresh from a
+fixed menu (1, 2, 4 or 10 seconds, 4 by default), a variable is read at the
+fastest refresh of any saved widget showing it, and a room's widgets together
+may not ask for more than 8 reads a second, refused when the dashboard is
+saved. A full rack of 24 variables at the default is 6 a second.
 
 `GET /api/connections` lists the connection labels (`[{id, label, moduleId,
 enabled, status}]`) — not used yet, but it is what a variable picker would

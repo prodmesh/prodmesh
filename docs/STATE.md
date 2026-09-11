@@ -307,7 +307,10 @@ Notes:
   anything unlisted stays grey rather than being guessed at. It is the FIRST
   multi-instance widget (`unique: false`) — two of them are two different
   racks, identified by their config, which is the case the flag was written
-  for. Each row is its own `room:*:var:<label>:<name>` topic, so eight rows
+  for. Each widget has one Refresh setting for all its rows (1, 2, 4 or 10
+  seconds, 4 by default); a variable is read at the fastest refresh of any
+  saved widget showing it, and a room's Companion widgets share a budget of 8
+  reads a second, refused at save (#24). Each row is its own `room:*:var:<label>:<name>` topic, so eight rows
   across three screens cost ONE poll loop per room
   (`server/companionVariables.js`); names are shape-checked and a room may have
   at most 24 distinct variables watched at once, because subscribing starts

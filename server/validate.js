@@ -392,6 +392,38 @@ const MAX_COMPANION_ROWS = 8;
 const ROW_DISPLAYS = new Set(['text', 'status', 'bar']);
 
 /**
+ * How often a Companion widget reads its variables (#24). A menu, not a
+ * number: together with the room budget below, it is the only thing bounding
+ * what a stored dashboard can make this server ask of an unauthenticated
+ * Companion on the production VLAN (ADR 0010: subscribing starts work). The
+ * floor is a second because nothing an operator watches changes faster than
+ * that in a way worth a request.
+ */
+export const COMPANION_REFRESH_MS = [1000, 2000, 4000, 10000];
+export const COMPANION_DEFAULT_REFRESH_MS = 4000;
+
+/** Reads a second one room may ask of its Companion, across every saved
+ *  widget. A full rack of 24 variables at the default is 6, so this leaves
+ *  room for a few fast values and no more. */
+export const COMPANION_READS_PER_SECOND = 8;
+
+/** Each variable in these Companion widget configs, mapped to the fastest
+ *  refresh any of them asks for. One read serves every widget showing it. */
+export function companionPeriods(configs) {
+  const out = new Map();
+  for (const config of configs) {
+    const ms = COMPANION_REFRESH_MS.includes(config?.refreshMs) ? config.refreshMs : COMPANION_DEFAULT_REFRESH_MS;
+    for (const row of Array.isArray(config?.rows) ? config.rows : []) {
+      if (typeof row?.variable !== 'string') continue;
+      out.set(row.variable, Math.min(out.get(row.variable) ?? Infinity, ms));
+    }
+  }
+  return out;
+}
+
+export const readsPerSecond = (periods) => [...periods.values()].reduce((sum, ms) => sum + 1000 / ms, 0);
+
+/**
  * Normalize the Companion widget's rows.
  *
  * Bad input THROWS rather than being dropped, unlike an unknown scalar key
@@ -484,6 +516,15 @@ function viewWidgetConfig(config) {
     if (typeof config[key] === 'boolean') out[key] = config[key];
   }
   if (['16:9', '4:3', '1:1'].includes(config.aspectRatio)) out.aspectRatio = config.aspectRatio;
+  // Refused rather than dropped, like a mistyped variable: a rate the menu
+  // does not offer came from somewhere other than this build's editor.
+  if (config.refreshMs != null && config.refreshMs !== '') {
+    const ms = Number(config.refreshMs);
+    if (!COMPANION_REFRESH_MS.includes(ms)) {
+      throw new Error(`Companion refresh must be one of ${COMPANION_REFRESH_MS.map((v) => `${v / 1000}s`).join(', ')}`);
+    }
+    if (ms !== COMPANION_DEFAULT_REFRESH_MS) out.refreshMs = ms; // the default is not stored
+  }
   const rows = companionRows(config.rows);
   if (rows) out.rows = rows;
   return out;
