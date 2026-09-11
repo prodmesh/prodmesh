@@ -25,7 +25,7 @@ import { getDb } from './db.js';
 import { gridFor } from './gridLayout.js';
 import { rooms } from './roomsStore.js';
 import * as hub from './streamHub.js';
-import { validateView } from './validate.js';
+import { COMPANION_READS_PER_SECOND, companionPeriods, readsPerSecond, validateView } from './validate.js';
 
 const id = () => crypto.randomUUID();
 
@@ -70,6 +70,27 @@ function widgetsFor(viewId) {
     .prepare('SELECT * FROM view_widgets WHERE view_id = ? ORDER BY position')
     .all(viewId)
     .map(rowToWidget);
+}
+
+/** The saved Companion widget configs in a room, optionally leaving one view
+ *  out (the one being replaced, whose old widgets are about to go). */
+function companionConfigs(roomId, exceptViewId = null) {
+  return getDb()
+    .prepare(
+      `SELECT vw.config FROM view_widgets vw JOIN views v ON v.id = vw.view_id
+       WHERE v.room_id = ? AND vw.type = 'companion-variables' AND vw.view_id IS NOT ?`,
+    )
+    .all(roomId, exceptViewId)
+    .map((row) => parseConfig(row.config));
+}
+
+/**
+ * How often each saved Companion variable in a room should be read: the
+ * fastest refresh of any saved widget showing it (#24). From the database, so
+ * the rate is the operator's stored choice and never a number a browser sent.
+ */
+export function companionRefreshFor(roomId) {
+  return companionPeriods(companionConfigs(roomId));
 }
 
 /** A room's views, newest layout order, WITHOUT their placements. */
@@ -146,6 +167,19 @@ export function replaceView(viewId, input, nowMs = Date.now()) {
     .prepare('SELECT 1 FROM views WHERE room_id = ? AND slug = ? AND id <> ?')
     .get(existing.room_id, clean.slug, viewId);
   if (clash) throw new Error(`This room already has a view called "${clean.slug}"`);
+
+  // The room's Companion read budget, across every saved view: everyone
+  // else's widgets plus this view's new ones (#24). Refused here, at save,
+  // because that is the only moment anybody is looking.
+  const rate = readsPerSecond(companionPeriods([
+    ...companionConfigs(existing.room_id, viewId),
+    ...clean.widgets.filter((w) => w.type === 'companion-variables').map((w) => w.config),
+  ]));
+  if (rate > COMPANION_READS_PER_SECOND + 1e-9) {
+    throw new Error(
+      `This room's Companion widgets would read ${Math.round(rate * 10) / 10} variables a second, and the limit is ${COMPANION_READS_PER_SECOND}. Slow a widget's refresh, or show fewer variables at the faster rates.`,
+    );
+  }
 
   db.transaction(() => {
     db.prepare('DELETE FROM view_widgets WHERE view_id = ?').run(viewId);

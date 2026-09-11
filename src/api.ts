@@ -1423,6 +1423,9 @@ export interface ViewPlacement {
 export interface WidgetConfigJson {
   hideHeader?: boolean;
   rows?: CompanionVariableRow[];
+  /** Companion widget: how often its variables are read, from the menu the
+   *  server allows (1000, 2000, 4000, 10000). Absent means the 4s default. */
+  refreshMs?: number;
   planId?: string;
   timeId?: string;
   slideControls?: boolean;

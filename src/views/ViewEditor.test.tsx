@@ -396,6 +396,24 @@ describe('ViewEditor', () => {
     expect(within(at('companion-variables')).getByText(/add them in Widget settings/i)).toBeInTheDocument();
   });
 
+  it('the Companion widget sets one refresh for all of its variables (#24)', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await openPaletteGroup(user, 'Bitfocus Companion');
+    await user.click(screen.getByRole('button', { name: 'Add Companion variables' }));
+    await user.click(within(at('companion-variables')).getByRole('button', { name: /Move Companion variables/ }));
+    const panel = within(screen.getByText('Widget settings').closest('aside')!);
+
+    // A widget-level choice, not a per-row one: one read serves every widget
+    // showing a variable, so the fastest widget sets the pace anyway.
+    const refresh = panel.getByLabelText('Refresh') as HTMLSelectElement;
+    expect(refresh.value).toBe('4000');
+    await user.selectOptions(refresh, 'Every second');
+    expect(refresh.value).toBe('1000');
+    await user.selectOptions(refresh, 'Every 4 seconds');
+    expect(refresh.value).toBe('4000');
+  });
+
   it('the palette shows each widget’s size, since the grid is what it competes for', async () => {
     const user = userEvent.setup();
     render(<Harness />);
