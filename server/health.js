@@ -50,6 +50,53 @@ export function report(key, ok, errorMessage) {
   }
 }
 
+// ── Outage or bug? ────────────────────────────────────────────────────────────
+//  The fallbacks above the choke points exist for OUTAGES, but they caught
+//  everything. A TypeError in a Planning Center parser read exactly like
+//  "Planning Center is down", and a bare catch in the autostart loop could
+//  disarm autostart with nothing in the log (#41), which on a Sunday presents
+//  as "the show just didn't start". So the choke points tag what they throw
+//  with outage(), and code above them can tell the two apart. An outage takes
+//  its fallback quietly, because report() has already logged it. Anything else
+//  takes the fallback too, so a service is never interrupted by it, but it is
+//  logged with its stack.
+
+/** Tag an error thrown at a transport choke point as an outage of `key`. */
+export function outage(err, key) {
+  if (err && typeof err === 'object') err.outage = key;
+  return err;
+}
+
+export const isOutage = (err) => Boolean(err?.outage);
+
+const UNEXPECTED_EVERY_MS = 60_000;
+const unexpectedSeen = new Map(); // `${where}|${message}` → when it was last logged
+
+/**
+ * Log an error that is not an outage, with its stack. At most once a minute per
+ * place and message: a bug inside an 800ms poll is one line a minute, not a
+ * flood that buries everything else in Admin → Logs. Returns whether it logged.
+ */
+export function unexpected(where, err, now = Date.now()) {
+  if (isOutage(err)) return false;
+  const key = `${where}|${err?.message ?? err}`;
+  const last = unexpectedSeen.get(key);
+  if (last != null && now - last < UNEXPECTED_EVERY_MS) return false;
+  // Bounded like the registry: a burst of distinct bugs resets the throttle
+  // rather than growing the map.
+  if (unexpectedSeen.size >= 200) unexpectedSeen.clear();
+  unexpectedSeen.set(key, now);
+  console.error(`[${where}] unexpected error — ${err?.stack ?? err}`);
+  return true;
+}
+
+/** A .catch handler for a read the caller can do without: always the
+ *  fallback, and logged unless the failure was an outage. */
+export const survive = (fallback, where) => (err) => {
+  unexpected(where, err);
+  return fallback;
+};
+
 /** Plain-object view for the API: { [key]: { ok, lastSuccess, lastError, consecutiveFailures } }. */
 export function snapshot() {
   const out = {};
@@ -69,4 +116,5 @@ export function snapshot() {
 /** Tests only — forget every recorded status. */
 export function reset() {
   integrations.clear();
+  unexpectedSeen.clear();
 }

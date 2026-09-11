@@ -13,7 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { getSecret } from '../secrets.js';
-import { report } from '../health.js';
+import { outage, report } from '../health.js';
 
 const BASE = 'https://api.planningcenteronline.com/services/v2';
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -88,7 +88,9 @@ async function pcGet(path) {
     return body;
   } catch (err) {
     report('planningCenter', false, String(err.message ?? err));
-    throw err;
+    // Tagged so the fallbacks upstream can tell Planning Center being down
+    // from a bug in what we do with its answer (see health.js).
+    throw outage(err, 'planningCenter');
   }
 }
 
@@ -99,7 +101,7 @@ async function pcPost(path, body = undefined) {
     if (!res.ok) throw new Error(`Planning Center ${path} → HTTP ${res.status}`);
     report('planningCenter', true);
     return res.status === 204 ? null : res.json().catch(() => null);
-  } catch (err) { report('planningCenter', false, String(err.message ?? err)); throw err; }
+  } catch (err) { report('planningCenter', false, String(err.message ?? err)); throw outage(err, 'planningCenter'); }
 }
 
 // ── Normalizers (JSON:API → our clean shapes) — field names verified live ─────

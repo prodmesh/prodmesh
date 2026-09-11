@@ -195,6 +195,48 @@ test('a caller abort is not a ProPresenter failure', async () => {
   }
 });
 
+// ── Outage or bug (#41) ──────────────────────────────────────────────────────
+
+test('unexpected() ignores outages and logs a bug with its stack, once a minute per place', (t) => {
+  health.reset();
+  const errors = t.mock.method(console, 'error', () => {});
+  const down = health.outage(new Error('fetch failed'), 'planningCenter');
+  assert.equal(health.unexpected('autostart north-main', down), false, 'report() already logged the outage');
+
+  const bug = new TypeError("Cannot read properties of undefined (reading 'attributes')");
+  assert.equal(health.unexpected('autostart north-main', bug, 1_000), true);
+  assert.equal(health.unexpected('autostart north-main', bug, 30_000), false, 'the same bug, within the minute');
+  assert.equal(health.unexpected('show north-main', bug, 30_000), true, 'a different place gets its own line');
+  assert.equal(health.unexpected('autostart north-main', bug, 61_001), true, 'and it comes back after a minute');
+  assert.equal(errors.mock.callCount(), 3);
+  assert.match(errors.mock.calls[0].arguments[0], /^\[autostart north-main\] unexpected error — TypeError: Cannot read/);
+});
+
+test('survive() always hands back the fallback, and logs only a bug', async (t) => {
+  health.reset();
+  const errors = t.mock.method(console, 'error', () => {});
+  const offline = await Promise.reject(health.outage(new Error('HTTP 503'), 'planningCenter'))
+    .catch(health.survive([], 'plan lookup'));
+  assert.deepEqual(offline, []);
+  assert.equal(errors.mock.callCount(), 0);
+
+  const broken = await Promise.reject(new TypeError('normalizePlan is broken')).catch(health.survive([], 'plan lookup'));
+  assert.deepEqual(broken, [], 'a bug still takes the fallback, so a service carries on');
+  assert.equal(errors.mock.callCount(), 1, 'but it is not silent');
+});
+
+test('a ProPresenter transport failure arrives tagged as an outage', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const srv = await fakeProPresenter();
+  try {
+    srv.failNextRequests(Infinity);
+    const err = await readActive({ host: '127.0.0.1', port: srv.port() }).catch((e) => e);
+    assert.ok(health.isOutage(err), `expected an outage, got ${err}`);
+  } finally {
+    await srv.close();
+  }
+});
+
 // ── Boot declarations (every configured integration appears immediately) ─────
 
 test('declareConfiguredIntegrations lists configured-but-uncontacted integrations as ok:null', async () => {
