@@ -62,10 +62,16 @@
   flex-direction: column;
   gap: 12px;
   justify-content: center;
+  /* The controls size to this card, not the window. With countdown, loudness
+     and viewers beside it, the row can squeeze this card to its 260px
+     minimum, and the buttons used to run straight out of it (#38). */
+  container-type: inline-size;
+  min-width: 0;
 }
 
 .ros-track__status {
   display: flex;
+  flex-wrap: wrap; /* "Manual override" + "Resume follow" stack rather than spill */
   align-items: center;
   justify-content: space-between;
   gap: 10px;
@@ -107,6 +113,7 @@ span.ros-track__status {
 
 .ros-track__start {
   display: flex;
+  flex-wrap: wrap; /* a narrow card puts Start under the status, not past the edge */
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -120,6 +127,28 @@ span.ros-track__status {
 
 .ros-track__buttons .btn {
   flex: 1;
+  min-width: 0; /* a flex item otherwise refuses to shrink below its label */
+  white-space: nowrap;
+  overflow: hidden; /* the last resort in a very narrow card: clip, never spill */
+}
+
+/* A narrow card: the buttons get smaller rather than wider than the card.
+   Tighter, sized to their labels so "End Show" gets the room it needs, and
+   the icons go, since the labels already say what each one does. */
+@container (max-width: 300px) {
+  .ros-track__buttons {
+    gap: 6px;
+  }
+
+  .ros-track__buttons .btn {
+    flex: 1 1 auto;
+    padding: 7px 8px;
+    font-size: 0.84rem;
+  }
+
+  .ros-track__buttons .btn svg {
+    display: none;
+  }
 }
 
 /* Where the show controls would be, for someone who may not use them. */
