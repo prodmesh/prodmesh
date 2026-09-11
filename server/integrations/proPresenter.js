@@ -755,14 +755,22 @@ export async function controlAdjacentItem(pp, direction, signal) {
  * the device directly. Returns null for a missing thumbnail. */
 export async function readThumbnail(pp, presentationUuid, cueIndex, signal) {
   if (!/^[a-z0-9-]{8,}$/i.test(String(presentationUuid)) || !validIndex(cueIndex)) return null;
-  // PP 7 documents this endpoint as one-based, but some newer builds respond
-  // with zero-based indexes. In that variant every final cue is requested one
-  // past the presentation, so retry the raw API cue index only after a miss.
-  const get = (index) => fetch(`${baseUrl(pp)}/v1/presentation/${encodeURIComponent(presentationUuid)}/thumbnail/${index}`, {
+  // Zero-based: the same `index` that slide_index reports and the trigger
+  // routes take. This used to ask for cueIndex + 1, on the belief that the
+  // endpoint was one-based. It is not, and every slide drew the NEXT slide's
+  // image (#42: an intro slide showing verse 1's text, an image-only
+  // presentation losing its first image). Only the last slide looked right,
+  // because its +1 missed and a retry fell back to the true index. That retry
+  // was the symptom being patched, not a second API variant.
+  //
+  // Verified live on ProPresenter 21.4 (2026-09-10): a 14-slide song answers
+  // thumbnails 0-13 and 404s at 14, and thumbnail 0 is its blank intro while 1
+  // is verse 1. The 7.9 OpenAPI spec names the parameter `index` with no base,
+  // and independent clients that draw the live slide pass slide_index straight
+  // through. 21.1 not yet probed.
+  const res = await fetch(`${baseUrl(pp)}/v1/presentation/${encodeURIComponent(presentationUuid)}/thumbnail/${cueIndex}`, {
     signal: withTimeout(signal),
   });
-  let res = await get(cueIndex + 1);
-  if (!res.ok) res = await get(cueIndex);
   if (!res.ok) return null;
   const bytes = Buffer.from(await res.arrayBuffer());
   return { bytes, type: res.headers.get('content-type') || 'image/jpeg' };
