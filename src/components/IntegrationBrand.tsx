@@ -27,7 +27,9 @@ export const integrationInfo: Record<IntegrationId, { name: string; mark: string
   'planning-center': { name: 'Planning Center', mark: 'PC', logo: planningCenterLogo },
   restream: { name: 'Restream', mark: 'R', logo: restreamLogo },
   resi: { name: 'Resi', mark: 'R', logo: resiLogo, beta: true },
-  obs: { name: 'OBS Studio', mark: 'OBS', logo: obsLogo },
+  // Beta by the rule in docs/STATE.md: nobody here has run it against a real
+  // OBS. The flag comes off when somebody does and records what they saw.
+  obs: { name: 'OBS Studio', mark: 'OBS', logo: obsLogo, beta: true },
   youtube: { name: 'YouTube', mark: '▶', logo: youTubeLogo },
   slack: { name: 'Slack', mark: 'S', logo: slackLogo },
   companion: { name: 'Bitfocus Companion', mark: 'C', logo: companionLogo },
