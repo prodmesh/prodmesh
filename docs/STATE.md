@@ -17,7 +17,7 @@ maintainer has.
 | | |
 |---|---|
 | **ProdMesh RTA** | A live 1/3-octave spectrum widget reading the analyzer's own bands, plus concurrent A/B/C/Z Fast and Slow readings. Fast frames now aggregate to one energy-equivalent row per second — a service records ~5,400 rows rather than one per frame — and a row carries a `peak` beside its Leq, because averaging a second of samples buried transients by ~12 dB |
-| **OBS Studio** | Per-room host/port/password and a read-only health widget: stream, recording, audio, frames, scene, bitrate. Read-only by design; it cannot control OBS. **Not verified against a real OBS — see below** |
+| **OBS Studio** | Per-room host/port/password and a read-only health widget: stream, recording, audio, frames, scene, bitrate. Read-only by design; it cannot control OBS. **Beta: not verified against a real OBS — see below** |
 | **Bitfocus Companion** | Companion variables on a dashboard; an emulator-surface picker read from Companion's tRPC API; and Room Mode is now optional per room, so a church can run our mode model, Companion's own surface, both, or neither |
 | **Widget placement** | Shrink-to-fit — the editor walks candidate sizes biggest-first instead of refusing a half-empty grid. `minSize` is a *claim* that a widget renders acceptably that small, not a layout hint, so a widget that has not been designed small does not declare one |
 | **One admin identity** (ADR 0012) | The admin PIN is the `admin` account's PIN rather than a second bypass beside the account system |
@@ -47,10 +47,9 @@ maintainer has.
 
 ### Known gaps
 
-- **OBS is not labelled Beta**, though by the rule above it should be — Resi is
-  the only integration currently carrying the mark. Either OBS gets the label
-  before v1.4.0 is tagged, or somebody points it at a real OBS and records what
-  they saw.
+- **OBS ships labelled Beta** (decided 2026-09-11), beside Resi, by the rule
+  above: nobody here has run it against a real OBS. It graduates when somebody
+  does and records what they saw in INTEGRATION-NOTES.
 - **The Companion emulator surface has no lockout, PIN or audit trail.** That
   is inherent, not a defect: the browser talks straight to Companion, which has
   no auth of its own, so a press there skips the `rooms.mode.change`
