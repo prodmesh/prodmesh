@@ -68,7 +68,7 @@ because instance-to-instance config sync is a write. The remaining questions
 for the ADR are which endpoints make the cut, and whether
 `x-prodmesh-station` stays public contract or becomes browser-only.
 
-### 2. Multi-site: directory and hand-off (needs an issue and ADR 0014)
+### 2. Multi-site: directory and hand-off (needs an issue · [ADR 0014](./decisions/0014-a-server-per-site.md))
 
 **A server per site, instances aware of each other.** The bandwidth argument is
 real — 14 campuses × 3 auditoriums is 42 rooms of ProPresenter and RTA
@@ -78,20 +78,31 @@ central server means a campus with a dead WAN link cannot run its own room.
 That is disqualifying on its own, and it holds even for a church whose VPN is
 excellent.
 
-**The frontend talks directly to the owning site's backend.** Viewing another
-campus hands the browser off rather than proxying through the home instance —
-which would recreate the bandwidth problem and make the home site a single
-point of failure for *looking at* another site. Two consequences worth knowing
-before the estimate:
+**The browser navigates to the owning site; the server aggregates.** This is
+cheaper than the first draft of this plan estimated, because that draft
+conflated two features. Writing ADR 0014 separated them:
 
-- Production is served as **one origin** today, and it shows: **44
-  root-relative `/api/…` call sites** in `src/`, plus `requestHeaders()` and a
-  single `new EventSource` at `src/lib/stream.ts:55`. The good news is the
-  choke points are already centralised — headers in one function, SSE in one
-  place — so this is a base-URL concept threaded through call sites, not a
-  rewrite. **No CORS handling exists anywhere in `server/`.**
-- The session token is per-instance, so cross-origin viewing needs an answer
-  for identity at the far end (see the replication question below).
+- **Looking at one other campus** is a **navigation** to that site's own origin,
+  carrying a short-lived signed assertion so the admin arrives already signed
+  in. Not a cross-origin fetch — so **no CORS**, the ~44 root-relative
+  `/api/…` call sites are **untouched**, `src/lib/stream.ts:55` stays as it is,
+  and the browser never meets a self-signed certificate it would have to be
+  trained to click through.
+- **Seeing all campuses at once** is a **server-to-server digest**: the local
+  instance pulls a small summary from each peer and republishes it on its own
+  topic stream, so the browser subscribes to its own server as always.
+
+The digest is a refcounted topic — `registerTopic('site:<id>:summary', { start,
+stop })`, the same primitive ADR 0010 already uses for lyrics and captions — so
+polling runs only while somebody is watching, and fourteen campuses do not
+become 182 pollers.
+
+**Identity cannot be deferred even though replication can.** Cross-site viewing
+needs the home site to *vouch* for a user (Ed25519 via `node:crypto`, no new
+dependency), with the receiving site deciding what a visitor may do — default
+read-only. Otherwise the far site either needs an account per person per campus,
+or authenticates the instance rather than the human, discarding exactly what
+ADR 0012 established.
 
 **What crosses the wire, and when.** Room *definitions* sync — small, rarely
 changes. Room *state* (mode, SSE, RTA, slides) is fetched live from the owning
@@ -317,7 +328,8 @@ Ten weeks, one maintainer, occasional contributions.
 3. **ADR 0013**, then service tokens, then the `/api/v1` freeze. First, because
    everything else adds surface that should be added *into* the frozen shape.
 4. **System identity → mDNS discovery → desktop window** (#18 pieces).
-5. **ADR 0014 and the multi-site directory + hand-off**, which needs 3 and 4.
+5. **The multi-site directory + hand-off** ([ADR 0014](./decisions/0014-a-server-per-site.md)),
+   which needs 3 and 4.
 6. **The alert spine** — persist transitions, then rules, then the Slack sink.
    Independent of 3–5, so it is the natural thing to interleave.
 7. **The `prodmesh-watch` spike** — contract only this cycle; the app itself is
