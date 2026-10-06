@@ -166,7 +166,7 @@ imply a bar that federation no longer meets.
 its own admin. What federation delivers is the single pane of glass, which is a
 VISION promise, not a launch dependency.
 
-### 3. The alert spine (needs an issue and ADR 0015)
+### 3. The alert spine (needs an issue · [ADR 0015](./decisions/0015-events-and-alerts.md))
 
 VISION §4 wants real-time monitoring and preemptive alerting. The striking
 thing is how much of it already exists and is simply not connected:
@@ -288,7 +288,10 @@ without it, like `prodmesh-rta` today. A second required install would undercut
   gains a compile step, and Electron needs the ABI rebuild `better-sqlite3`
   already taught us. It belongs in a sidecar.
 - **Telemetry** ([#37](https://github.com/prodmesh/prodmesh/issues/37)) — so it
-  reuses the alert spine's event model. Still needs its own ADR when it comes:
+  reuses the alert spine's classifier: per
+  [ADR 0015](./decisions/0015-events-and-alerts.md) an *outage* is the church's
+  problem and a *bug* is ours, which makes telemetry the second consumer of one
+  classification rather than a parallel pipeline. Still needs its own ADR when it comes:
   off by default, a screen showing exactly what a payload contains, the
   `server/`-is-published rule applied to payloads (never a Planning Center id,
   room name or person's name), and an offline queue that **drops** rather than
@@ -312,9 +315,15 @@ without it, like `prodmesh-rta` today. A second required install would undercut
 - **`server/setupApi.test.js` must stop failing intermittently** (#41 item 3).
   A suite that fails 1-in-N teaches people to re-run instead of read, and an
   LTS release is the worst one to ship that on.
-- **Swallowed programming errors** (#41 item 1). `autostartLoop`'s bare catch
-  silently disarms show autostart — precisely the class of fault the alert
-  spine exists to surface, so the spine is worth little until these are narrowed.
+- ~~**Swallowed programming errors** (#41 item 1)~~ — **already done**, and this
+  corrects an earlier claim in this document that the alert spine was blocked on
+  it. `health.js` carries `outage()` / `unexpected()` / `survive()`, the
+  choke points in `proPresenter.js` and `planningCenter.js` use them, and
+  `autostartLoop` now calls `unexpected()` with a comment explaining that a bug
+  there presents on a Sunday as "the show just didn't start". The two bare
+  catches left in `showManager.js` are narrow and intentional. Better than
+  unblocked: that outage/bug split is what [ADR 0015](./decisions/0015-events-and-alerts.md)
+  uses to decide whether a fault belongs to the church or to us.
 - **OBS graduates or stays Beta.** Per the existing rule a Beta integration
   never blocks a tag.
 
