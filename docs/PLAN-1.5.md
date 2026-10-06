@@ -43,7 +43,7 @@ good enough to publish.
 
 ## In scope
 
-### 1. API v1 + service tokens — the substrate (needs an issue and ADR 0013)
+### 1. API v1 + service tokens — the substrate ([#45](https://github.com/prodmesh/prodmesh/issues/45) · needs ADR 0013)
 
 - **Freeze a surface under `/api/v1`.** Not all ~100 endpoints: v1 is the set
   we are willing to keep working for the life of 1.5.x. Everything else stays
@@ -68,7 +68,7 @@ because instance-to-instance config sync is a write. The remaining questions
 for the ADR are which endpoints make the cut, and whether
 `x-prodmesh-station` stays public contract or becomes browser-only.
 
-### 2. Multi-site: directory and hand-off (needs an issue · [ADR 0014](./decisions/0014-a-server-per-site.md))
+### 2. Multi-site: directory and hand-off ([#46](https://github.com/prodmesh/prodmesh/issues/46) · [ADR 0014](./decisions/0014-a-server-per-site.md))
 
 **A server per site, instances aware of each other.** The bandwidth argument is
 real — 14 campuses × 3 auditoriums is 42 rooms of ProPresenter and RTA
@@ -166,7 +166,7 @@ imply a bar that federation no longer meets.
 its own admin. What federation delivers is the single pane of glass, which is a
 VISION promise, not a launch dependency.
 
-### 3. The alert spine (needs an issue · [ADR 0015](./decisions/0015-events-and-alerts.md))
+### 3. The alert spine ([#47](https://github.com/prodmesh/prodmesh/issues/47) · [ADR 0015](./decisions/0015-events-and-alerts.md))
 
 VISION §4 wants real-time monitoring and preemptive alerting. The striking
 thing is how much of it already exists and is simply not connected:
@@ -195,7 +195,7 @@ The genuinely new work is therefore small and specific:
 - **One spine, not two.** This is also why telemetry (#37) moves to 1.6 — it
   should reuse this event model rather than grow a parallel path.
 
-### 4. Desktop, app-shaped — [#18](https://github.com/prodmesh/prodmesh/issues/18), split
+### 4. Desktop, app-shaped — [#18](https://github.com/prodmesh/prodmesh/issues/18), split into [#48](https://github.com/prodmesh/prodmesh/issues/48) and [#49](https://github.com/prodmesh/prodmesh/issues/49)
 
 Take the pieces federation also needs:
 
@@ -207,7 +207,7 @@ Take the pieces federation also needs:
 
 Restore-onto-new-hardware moves to 1.6 with the rest of the cut.
 
-### 5. Planning Center Calendar to live (needs an issue)
+### 5. Planning Center Calendar to live ([#50](https://github.com/prodmesh/prodmesh/issues/50))
 
 Further along than STATE.md admitted — `routes/calendar.js` and
 `integrations/pcCalendar.js` are built mock-first and waiting on the product
@@ -219,7 +219,7 @@ the `location` string, then auto-populate lockout windows from real bookings.
 The access request should go out in week 1 — it is the one item blocked on
 somebody else's timeline.
 
-## The `prodmesh-watch` spike
+## The `prodmesh-watch` spike ([#51](https://github.com/prodmesh/prodmesh/issues/51))
 
 SNMP traps from production devices (Evertz and friends) and Dante device
 errors belong in a **separate sidecar app**, following the `prodmesh-rta`
@@ -278,6 +278,9 @@ without it, like `prodmesh-rta` today. A second required install would undercut
 #18's "download, install, open" in the same release that delivers it.
 
 ## Deferred to 1.6
+
+All three issues below now carry the **v1.6 Release** milestone, each with a
+comment on it saying why it moved.
 
 - **OSC buttons** ([#30](https://github.com/prodmesh/prodmesh/issues/30)) — a
   feature rather than a foundation. When it lands it goes through
