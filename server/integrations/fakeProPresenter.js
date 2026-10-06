@@ -22,6 +22,9 @@
 //   srv.failNextRequests(n)      — next n requests answer HTTP 500 (Infinity = forever)
 //   srv.dropStreams()            — kill open chunked streams (PP restart/blip)
 //
+// Slide thumbnails answer at /v1/presentation/{uuid}/thumbnail/{i}, zero-based
+// like slide_index, for i < setSlideCount(); the body is `thumb-{i}`.
+//
 // The `chunked` option models the version split on slide streaming: true =
 // PP 21.4+, where slide_index?chunked=true holds the connection open and
 // pushes on every setSlide(); false (default) = older builds, which answer
@@ -100,6 +103,19 @@ export async function fakeProPresenter({
       return;
     }
     const playlistBody = () => json({ id: playlistId, items: state.items.map(playlistItem) });
+
+    // Slide thumbnails: zero-based, the same index slide_index reports, and a
+    // miss one past the last slide. Any presentation uuid is accepted.
+    const thumb = /^\/v1\/presentation\/[^/]+\/thumbnail\/(\d+)$/.exec(req.url);
+    if (thumb) {
+      const i = Number(thumb[1]);
+      if (i >= state.slideCount) {
+        res.statusCode = 404;
+        return res.end('not found');
+      }
+      res.setHeader('content-type', 'image/jpeg');
+      return res.end(`thumb-${i}`);
+    }
 
     // PP 21 addresses playlists by index path; PP 7 by uuid.
     if (pp21 && req.url === '/v1/playlist/0/0') return playlistBody();
