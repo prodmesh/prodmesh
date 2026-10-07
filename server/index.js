@@ -34,6 +34,8 @@ import './integrationWatcher.js'; // registers the org-level integration:* topic
 import roomsRouter from './routes/rooms.js';
 import showsRouter from './routes/shows.js';
 import streamRouter from './routes/stream.js';
+import messagesRouter from './routes/messages.js';
+import { startSundayLifecycle } from './messagingSchedule.js';
 import viewsRouter from './routes/views.js';
 import eventsRouter from './routes/events.js';
 import calendarRouter from './routes/calendar.js';
@@ -121,6 +123,7 @@ app.use(calendarRouter);
 app.use(assistanceRouter);
 app.use(showsRouter);
 app.use(streamRouter);
+app.use(messagesRouter);
 app.use(viewsRouter);
 app.use(authRouter);
 app.use(adminConfigRouter);
@@ -162,6 +165,7 @@ if (existsSync(distDir)) {
  * that needs the port (the launcher, when asked for :0) can read it.
  */
 export function start(port = PORT) {
+  startSundayLifecycle();
   show.restoreShows().catch(() => {}); // resume any show that was active before restart
   show.initAutomation(); // per-room autostart watchers (PP-driven, browserless)
   summaries.syncFromTimelines(); // legacy timelines → summary rows (one-time per boot)

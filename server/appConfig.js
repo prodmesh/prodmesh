@@ -23,7 +23,7 @@ export function getChurch() {
   const db = getDb();
   const row = db.prepare('SELECT value FROM app_config WHERE key = ?').get(INSTITUTION_KEY);
   const name = row ? JSON.parse(row.value).name : 'Production Dashboard';
-  const sites = db.prepare('SELECT id, name, status FROM sites ORDER BY position').all();
+  const sites = db.prepare('SELECT id, name, status, timezone FROM sites ORDER BY position').all();
   const rooms = db.prepare('SELECT id, site_id AS siteId, name FROM site_rooms ORDER BY position').all();
   const tiles = db.prepare('SELECT id, room_id AS roomId, type, label, note, icon, config FROM tiles ORDER BY position').all();
 
@@ -33,6 +33,7 @@ export function getChurch() {
       id: site.id,
       name: site.name,
       status: site.status,
+      ...(site.timezone ? { timezone: site.timezone } : {}),
       auditoriums: rooms.filter((r) => r.siteId === site.id).map((room) => ({
         id: room.id,
         name: room.name,
@@ -53,6 +54,7 @@ export function getChurch() {
 export function replaceChurch(input) {
   const clean = validateChurch(input);
   const db = getDb();
+  const oldZones = new Map(db.prepare('SELECT id, timezone FROM sites').all().map(s => [s.id, s.timezone]));
   db.transaction(() => {
     db.prepare('DELETE FROM tiles').run();
     db.prepare('DELETE FROM site_rooms').run();
@@ -61,13 +63,13 @@ export function replaceChurch(input) {
       'INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
     ).run(INSTITUTION_KEY, JSON.stringify({ name: clean.name }));
 
-    const addSite = db.prepare('INSERT INTO sites (id, name, status, position) VALUES (?, ?, ?, ?)');
+    const addSite = db.prepare('INSERT INTO sites (id, name, status, position, timezone) VALUES (?, ?, ?, ?, ?)');
     const addRoom = db.prepare('INSERT INTO site_rooms (id, site_id, name, position) VALUES (?, ?, ?, ?)');
     const addTile = db.prepare(
       'INSERT INTO tiles (id, room_id, type, label, note, icon, config, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     );
     clean.sites.forEach((site, si) => {
-      addSite.run(site.id, site.name, site.status, si);
+      addSite.run(site.id, site.name, site.status, si, site.timezone ?? oldZones.get(site.id) ?? null);
       site.auditoriums.forEach((room, ri) => {
         addRoom.run(room.id, site.id, room.name, ri);
         room.tiles.forEach((tile, ti) => {

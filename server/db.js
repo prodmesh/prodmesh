@@ -397,6 +397,42 @@ const MIGRATIONS = [
       addColumn(d, 'spl_samples', 'peak', 'REAL');
     },
   },
+  {
+    name: 'sunday-team-messaging',
+    up(d) {
+      addColumn(d, 'sites', 'timezone', 'TEXT');
+      d.exec(`
+        CREATE TABLE IF NOT EXISTS message_threads (
+          id TEXT PRIMARY KEY, site_id TEXT NOT NULL, service_date TEXT NOT NULL,
+          service_plan_id TEXT, status TEXT NOT NULL DEFAULT 'active'
+            CHECK(status IN ('active','archived','locked')),
+          created_at INTEGER NOT NULL, archived_at INTEGER,
+          sync_status TEXT NOT NULL DEFAULT 'manual', unmatched TEXT NOT NULL DEFAULT '[]'
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS sunday_thread_date
+          ON message_threads(site_id, service_date) WHERE service_plan_id IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS sunday_thread_plan
+          ON message_threads(site_id, service_date, service_plan_id) WHERE service_plan_id IS NOT NULL;
+        CREATE TABLE IF NOT EXISTS message_thread_members (
+          thread_id TEXT NOT NULL, user_id TEXT NOT NULL,
+          membership_source TEXT NOT NULL CHECK(membership_source IN ('schedule','manual')),
+          joined_at INTEGER NOT NULL, removed_at INTEGER,
+          PRIMARY KEY(thread_id,user_id)
+        );
+        CREATE TABLE IF NOT EXISTS messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, thread_id TEXT NOT NULL,
+          sender_user_id TEXT NOT NULL, body TEXT NOT NULL CHECK(length(body) BETWEEN 1 AND 4000),
+          created_at INTEGER NOT NULL, edited_at INTEGER, deleted_at INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS messages_thread_cursor ON messages(thread_id,id);
+        CREATE TABLE IF NOT EXISTS message_reads (
+          thread_id TEXT NOT NULL, user_id TEXT NOT NULL, last_read_message_id INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY(thread_id,user_id)
+        );
+      `);
+    },
+  },
+
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

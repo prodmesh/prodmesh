@@ -1,7 +1,12 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { useTopic, roomTopic } from './stream';
 import { FakeEventSource, emitTopic, liveSource } from '../test/fakeEventSource';
+
+function Private() {
+  const revision = useTopic<{ revision: string }>('sunday:user-1');
+  return <span data-testid="revision">{revision?.revision ?? 'none'}</span>;
+}
 
 // The property this module exists for: one connection per tab, however many
 // widgets are on screen. See server/streamHub.js — browsers cap concurrent
@@ -119,4 +124,34 @@ describe('useTopic', () => {
     expect(screen.getByTestId('spl-north-main')).toHaveTextContent('77');
     expect(es.closed).toBe(false);
   });
+});
+
+it('private messaging shares the public connection and carries only an opaque ticket', async () => {
+  const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ticket: 'opaque-ticket' }), { headers: { 'Content-Type': 'application/json' } }));
+  render(<><Meter roomId="north-main" /><Private /></>);
+  const es = await liveSource();
+  expect(query(es).split(',')).toEqual(['room:north-main:spl', 'sunday:user-1']);
+  expect(new URL(es.url, 'http://x').searchParams.get('ticket')).toBe('opaque-ticket');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await emitTopic({ 'sunday:user-1': { revision: 'new' } });
+  expect(screen.getByTestId('revision')).toHaveTextContent('new');
+});
+it('identity changes erase private cache and reconnect with a fresh ticket', async () => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({ ticket: 'opaque-ticket' }), { headers: { 'Content-Type': 'application/json' } }));
+  render(<Private />);
+  const es = await liveSource();
+  await emitTopic({ 'sunday:user-1': { revision: 'secret-cache' } });
+  act(() => { window.dispatchEvent(new Event('prodmesh:auth-changed')); });
+  expect(screen.getByTestId('revision')).toHaveTextContent('none');
+  await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+  expect(es.closed).toBe(true);
+});
+
+it('a private-ticket failure leaves public operational topics connected', async () => {
+  vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ticket unavailable'));
+  render(<><Meter roomId="north-main" /><Private /></>);
+  const es = await liveSource();
+  expect(query(es)).toBe('room:north-main:spl');
+  await emitTopic({ 'room:north-main:spl': { current: 90 } });
+  expect(screen.getByTestId('spl-north-main')).toHaveTextContent('90');
 });

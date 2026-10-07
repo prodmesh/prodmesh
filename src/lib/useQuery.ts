@@ -22,6 +22,7 @@ interface Entry<T = unknown> {
   snapshot: Snapshot<T>;
   updatedAt: number; // 0 = never fetched / invalidated
   promise: Promise<void> | null;
+  refetchAfter: boolean;
   subs: Set<() => void>;
   timer: ReturnType<typeof setInterval> | null;
   fetcher: () => Promise<T>;
@@ -38,6 +39,7 @@ function entryFor(key: string): Entry {
       snapshot: { ...EMPTY },
       updatedAt: 0,
       promise: null,
+      refetchAfter: false,
       subs: new Set(),
       timer: null,
       fetcher: () => Promise.reject(new Error('no fetcher')),
@@ -73,6 +75,10 @@ function refetch(key: string): Promise<void> {
     .finally(() => {
       e.promise = null;
       notify(e);
+      if (e.refetchAfter) {
+        e.refetchAfter = false;
+        if (e.subs.size) void refetch(key);
+      }
     });
   return e.promise;
 }
@@ -82,6 +88,7 @@ export function invalidate(prefix = '') {
   for (const [key, e] of cache) {
     if (!key.startsWith(prefix)) continue;
     e.updatedAt = 0;
+    if (e.promise) e.refetchAfter = true;
     if (e.subs.size) refetch(key);
   }
 }

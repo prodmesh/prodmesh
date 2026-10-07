@@ -1777,6 +1777,10 @@ export function CampusesPanel() {
               <input className="field" value={site.name}
                 onChange={(e) => update((n) => { n.sites.find((s) => s.id === site.id)!.name = e.target.value; })} />
             </label>
+            <label className="lfield"><span>Site timezone</span>
+              <input className="field" value={site.timezone ?? 'UTC'} placeholder="America/New_York"
+                onChange={(e) => update((n) => { n.sites.find((s) => s.id === site.id)!.timezone = e.target.value; })} />
+            </label>
             <label className="lfield"><span>Status</span>
               <SelectField value={site.status}
                 onChange={(e) => update((n) => { n.sites.find((s) => s.id === site.id)!.status = e.target.value as Site['status']; })}>
