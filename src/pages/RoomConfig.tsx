@@ -394,9 +394,9 @@ function ConfigCard({ title, section, integration, status, lines, onOpen }: {
 const hostPort = (host: string, port?: number | null) => (port != null ? `${host}:${port}` : host);
 
 function companionLines(c: CompanionConfig | null): ReactNode[] {
-  if (!c || c.mock) return ['Simulated — room state kept in memory.', modeDots(c?.modes ?? [])];
+  if (!c || !c.host) return ['Not configured.', ''];
   return [
-    c.host ? `${hostPort(c.host, c.port)}${c.variable ? ` · $(${c.variable})` : ''}` : 'No host set.',
+    `${hostPort(c.host, c.port)}${c.variable ? ` · $(${c.variable})` : ''}`,
     modeDots(c.modes ?? []),
   ];
 }
@@ -1111,7 +1111,6 @@ interface ModeDraft {
 }
 
 interface CompanionDraft {
-  mock: boolean;
   roomMode: boolean;
   surface: boolean;
   host: string;
@@ -1136,7 +1135,6 @@ function toModeDraft(m: ModeConfig): ModeDraft {
 
 function toCompanionDraft(cfg: CompanionConfig | null): CompanionDraft {
   return {
-    mock: cfg ? cfg.mock : true,
     roomMode: cfg?.roomMode !== false,
     surface: cfg?.surface === true,
     host: cfg?.host ?? '',
@@ -1148,34 +1146,38 @@ function toCompanionDraft(cfg: CompanionConfig | null): CompanionDraft {
 }
 
 function CompanionDialog({ roomId, initial, onSaved, onClose }: {
-  roomId: string; initial: CompanionConfig | null; onSaved: (cfg: CompanionConfig) => void; onClose: () => void;
+  roomId: string; initial: CompanionConfig | null; onSaved: (cfg: CompanionConfig | null) => void; onClose: () => void;
 }) {
   const f = useDraft(toCompanionDraft(initial), async (d) => {
-    const stored = await saveCompanion(roomId, {
-      mock: d.mock,
-      ...(d.roomMode ? {} : { roomMode: false }),
-      ...(d.surface ? { surface: true } : {}),
-      host: d.host || undefined,
-      port: d.port === '' ? undefined : Number(d.port),
-      variable: d.variable || undefined,
-      ...(d.emulator ? { emulator: d.emulator } : {}),
-      modes: d.modes.map((m) => ({
-        id: m.id,
-        label: m.label,
-        color: m.color,
-        match: m.match,
-        ...(m.page === '' && m.row === '' && m.column === ''
-          ? {}
-          : { press: { page: Number(m.page), row: Number(m.row), column: Number(m.column) } }),
-        ...(m.isStandby ? { isStandby: true } : {}),
-      })),
-    });
+    // An empty host means "no Companion for this room" — the opposite of a
+    // failed connection. Clear the room's Companion rather than saving a
+    // config that can never connect.
+    const stored = !d.host
+      ? await saveCompanion(roomId, null)
+      : await saveCompanion(roomId, {
+          ...(d.roomMode ? {} : { roomMode: false }),
+          ...(d.surface ? { surface: true } : {}),
+          host: d.host,
+          port: d.port === '' ? undefined : Number(d.port),
+          variable: d.variable || undefined,
+          ...(d.emulator ? { emulator: d.emulator } : {}),
+          modes: d.modes.map((m) => ({
+            id: m.id,
+            label: m.label,
+            color: m.color,
+            match: m.match,
+            ...(m.page === '' && m.row === '' && m.column === ''
+              ? {}
+              : { press: { page: Number(m.page), row: Number(m.row), column: Number(m.column) } }),
+            ...(m.isStandby ? { isStandby: true } : {}),
+          })),
+        });
     onSaved(stored);
     return toCompanionDraft(stored);
   });
   const { draft } = f;
   const emulatorQuery = useQuery(
-    draft.host && !draft.mock ? `companion-emulators:${roomId}:${draft.host}:${draft.port}` : null,
+    draft.host ? `companion-emulators:${roomId}:${draft.host}:${draft.port}` : null,
     () => getCompanionEmulators(roomId),
     { staleMs: 30_000 },
   );
@@ -1229,7 +1231,7 @@ function CompanionDialog({ roomId, initial, onSaved, onClose }: {
       </FormRow>
       <FormRow>
         <Field label="Companion emulator">
-          <select className="field" value={draft.emulator} disabled={!draft.host || draft.mock || emulatorQuery.loading}
+          <select className="field" value={draft.emulator} disabled={!draft.host || emulatorQuery.loading}
             onChange={(e) => f.patch({ emulator: e.target.value })}>
             <option value="">{emulatorQuery.loading ? 'Loading emulators…' : 'Choose an emulator'}</option>
             {draft.emulator && !emulators.some((emulator) => emulator.id === draft.emulator) &&

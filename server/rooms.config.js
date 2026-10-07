@@ -15,10 +15,10 @@
 //  from a Companion CUSTOM VARIABLE and matched (case-insensitively) against each
 //  mode's `match` value.
 //
-//  TO GO LIVE for a room: confirm the variable name + button locations match that
-//  room's Companion, then untick "Simulated" on the room configuration page.
-//  While simulated (mock), the proxy ignores Companion and keeps state in memory
-//  so the screens are fully demoable.
+//  A room has Companion configured when it has a host; without one it has no
+//  rooms to show any Companion data, and the UI says exactly that. Modes are
+//  the operator's mapping of the building's own Companion buttons — nothing
+//  here is invented for the screens' sake.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Standard mode set. `match` = the roomState value that means this mode is active
@@ -48,7 +48,6 @@ const localTest = {
     name: 'Local Test (this Mac)',
     site: 'north',
     devFixture: true, // exists as a room without a site_rooms topology row
-    mock: false, // live — talks to the Companion on 127.0.0.1:8000
     companion: { host: '127.0.0.1', port: 8000 },
     state: { variable: 'roomState' },
     // Planning Center service type(s) whose plans feed this room. A room can
@@ -75,13 +74,10 @@ const localTest = {
 export const rooms = {
   ...(process.env.PRODMESH_LOCAL_TEST === '1' ? localTest : {}),
 
-  // ── north rooms (pre-filled with the standard convention; flip mock when ──
-  //    each room's Companion has the roomState variable + row-3 buttons set up) ─
   'north-main': {
     id: 'north-main',
     name: 'North Campus · Main Auditorium',
     site: 'north',
-    mock: false, // LIVE — Companion runs on this same (Producer) Mac in production
     companion: { host: '192.0.2.10', port: 8000 }, // the producer machine
     state: { variable: 'roomState' },
     planningCenter: {
@@ -121,21 +117,20 @@ export const rooms = {
     id: 'north-youth',
     name: 'North Campus · Youth Room',
     site: 'north',
-    mock: true,
+    // Companion exists on the lighting machine, but its real buttons are
+    // unknown — no modes until the room's Companion has them. Fresh-install
+    // seed only; after first boot this lives in SQLite.
     companion: { host: '192.0.2.22', port: 8000 }, // Lighting machine
-    state: { variable: 'roomState' },
     planningCenter: { serviceTypes: [{ id: '500005', name: 'Youth Service' }] },
-    modes: standardModes(),
+    modes: [],
   },
 
   'north-chapel': {
     id: 'north-chapel',
     name: 'North Campus · Chapel',
     site: 'north',
-    mock: true,
     companion: { host: '192.0.2.18', port: 8000 }, // the chapel's ProPresenter machine
-    state: { variable: 'roomState' },
     planningCenter: { serviceTypes: [{ id: '500006', name: 'Chapel Service' }] },
-    modes: standardModes(),
+    modes: [],
   },
 };

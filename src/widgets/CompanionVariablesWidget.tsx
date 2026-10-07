@@ -26,13 +26,13 @@ import type { CompanionVariableRow, WidgetProps } from './types';
  *  and the three failures are different jobs for whoever has to fix them. */
 interface VariableState {
   value: string | null;
-  status: 'ok' | 'missing' | 'offline' | 'simulated';
+  status: 'ok' | 'missing' | 'offline' | 'unconfigured';
 }
 
 const NO_VALUE: Record<Exclude<VariableState['status'], 'ok'>, string> = {
   missing: 'No such variable',
   offline: 'Companion offline',
-  simulated: 'Simulated',
+  unconfigured: 'Not configured',
 };
 
 type Zone = 'ok' | 'warn' | 'bad' | 'none';

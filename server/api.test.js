@@ -4,6 +4,8 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { listenOnLoopback } from './testServer.js';
+import http from 'node:http';
+import { standardModes } from './rooms.config.js';
 
 // Isolated store + import the app (which won't listen on its own).
 process.env.PRODMESH_DATA_DIR = mkdtempSync(join(tmpdir(), 'prodmesh-api-'));
@@ -16,7 +18,7 @@ const { app } = await import('./index.js');
 const settings = await import('./settings.js');
 const auth = await import('./authStore.js');
 
-// north-youth is mock:true, so mode presses resolve in-memory (no Companion).
+// Exercise the real HTTP transport against a loopback Companion fixture.
 const ROOM = 'north-youth';
 settings.setPins({ admin: 'admin1234', override: '9999' });
 settings.setSchedules({
@@ -29,12 +31,21 @@ const station = auth.registerStation({ name: 'API Test Station' });
 let base;
 let server;
 let operatorToken;
+let companionServer;
 before(async () => {
+  const fixture = await listenOnLoopback(http.createServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/api/custom-variable/roomState/value') res.end('SUNDAY');
+    else if (req.method === 'POST' && /^\/api\/location\/1\/3\/[1-4]\/press$/.test(req.url)) res.end('OK');
+    else { res.statusCode = 404; res.end(); }
+  }));
+  companionServer = fixture.server;
+  const conn = await import('./connectivity.js');
+  conn.setCompanion(ROOM, { host: '127.0.0.1', port: companionServer.address().port, variable: 'roomState', modes: standardModes() });
   ({ server, base } = await listenOnLoopback(app));
   const login = await post('/api/auth/login', { username: 'operator', pin: '2468' }, null, station.token);
   operatorToken = (await login.json()).token;
 });
-after(() => server.close());
+after(() => { server.close(); companionServer.closeAllConnections(); companionServer.close(); });
 
 function post(path, body, token, stationToken = null) {
   return fetch(base + path, {
@@ -371,7 +382,7 @@ test('analysis source: config.manage write, password never read back', async () 
   assert.equal((await cleared.json()).analysis, null);
 });
 
-test('Companion connectivity: config.manage write, decomposes live, never clears', async () => {
+test('Companion connectivity: config.manage write, decomposes live, clears', async () => {
   const denied = await apiRequest(`/api/config/rooms/${ROOM}/connectivity/companion`, {
     method: 'PUT', body: { companion: null }, token: operatorToken, stationToken: station.token,
   });
@@ -385,8 +396,7 @@ test('Companion connectivity: config.manage write, decomposes live, never clears
     method: 'PUT',
     body: {
       companion: {
-        mock: true,
-        host: '10.0.0.20',
+        host: '192.0.2.20',
         variable: 'youthState',
         modes: [
           { id: 'service', label: 'Service', color: '#34c759', match: 'SERVICE', press: { page: 2, row: 0, column: 1 } },
@@ -404,11 +414,14 @@ test('Companion connectivity: config.manage write, decomposes live, never clears
   const listed = (await (await fetch(`${base}/api/rooms`)).json()).find((r) => r.id === ROOM);
   assert.deepEqual(listed.modes.map((m) => m.id), ['service', 'standby']);
 
-  // Clearing is not a thing — a room always keeps its modes.
+  // Clearing removes both persisted connectivity and live room modes.
   const cleared = await apiRequest(`/api/config/rooms/${ROOM}/connectivity/companion`, {
     method: 'PUT', body: { companion: null }, token,
   });
-  assert.equal(cleared.status, 400);
+  assert.equal(cleared.status, 200);
+  assert.equal((await cleared.json()).companion, null);
+  const unconfigured = (await (await fetch(`${base}/api/rooms`)).json()).find(r => r.id === ROOM);
+  assert.deepEqual(unconfigured.modes, []);
 
   // Restore the original so later tests see the seeded modes.
   const restored = await apiRequest(`/api/config/rooms/${ROOM}/connectivity/companion`, {

@@ -7,8 +7,10 @@ export function publicRoom(room) {
     id: room.id,
     name: room.name,
     site: room.site ?? null,
-    hasCompanion: Boolean(room.companion?.host) && !room.mock,
-    roomModeEnabled: room.roomMode !== false,
+    hasCompanion: Boolean(room.companion?.host),
+    // A room with no Companion has nothing to set a mode on; its operator
+    // surface (and any room-mode widget) stay hidden until one is configured.
+    roomModeEnabled: room.roomMode !== false && Boolean(room.companion?.host),
     // Off unless an admin turned it on — see validateCompanion for why the two
     // switches are independent.
     companionSurfaceEnabled: room.companionSurface === true,

@@ -36,7 +36,8 @@ export interface RoomState {
   mode: string | null;
   raw: string;
   online: boolean;
-  source: 'companion' | 'mock';
+  /** Always 'companion' — there is no other provenance for a room's mode. */
+  source: 'companion';
   protection: Protection;
   error?: string;
 }
@@ -738,7 +739,6 @@ export interface ModeConfig {
 }
 
 export interface CompanionConfig {
-  mock: boolean;
   host?: string;
   port?: number;
   variable?: string;
@@ -750,6 +750,21 @@ export interface CompanionConfig {
    *  its presses skip the permission, lockout and audit a mode change gets. */
   surface?: boolean;
   modes: ModeConfig[];
+}
+
+/** Save a room's Companion config. `null` removes Companion from the room —
+ *  no simulated state takes its place: the room simply has no Companion. */
+export async function saveCompanion(
+  roomId: string,
+  companion: CompanionConfig | null,
+): Promise<CompanionConfig | null> {
+  const res = await fetch(`/api/config/rooms/${roomId}/connectivity/companion`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...requestHeaders() },
+    body: JSON.stringify({ companion }),
+  });
+  await requireOk(res);
+  return (await res.json()).companion;
 }
 
 /** Where a room's livestream lives. The room owns the CHANNEL; which video a
@@ -892,19 +907,6 @@ export async function saveProPresenter(
   });
   await requireOk(res);
   return (await res.json()).proPresenter;
-}
-
-export async function saveCompanion(
-  roomId: string,
-  companion: CompanionConfig,
-): Promise<CompanionConfig> {
-  const res = await fetch(`/api/config/rooms/${roomId}/connectivity/companion`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...requestHeaders() },
-    body: JSON.stringify({ companion }),
-  });
-  await requireOk(res);
-  return (await res.json()).companion;
 }
 
 export async function saveObs(roomId: string, obs: ObsConfig | null): Promise<ObsConfig | null> {

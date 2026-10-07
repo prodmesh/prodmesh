@@ -81,20 +81,19 @@ test('a room created in Admin → Campuses is a live server room', async () => {
     site.auditoriums.push({ id: CHAPEL, name: 'North Campus · Prayer Room', tiles: [] });
   });
 
-  // New rooms start simulated without Room Mode. An administrator enables it
-  // and adds only the controls this room actually needs.
+  // New rooms start with no Companion at all, so Room Mode stays hidden. An
+  // administrator configures a Companion and adds only the controls this room
+  // actually needs.
   const listed = (await getRooms()).find((r) => r.id === CHAPEL);
   assert.ok(listed, 'chapel should be listed');
   assert.deepEqual(listed.modes, []);
   assert.equal(listed.roomModeEnabled, false);
-  assert.equal(listed.hasCompanion, false); // simulated
+  assert.equal(listed.hasCompanion, false);
 
-  // The room configuration page opens with the same optional Room Mode state.
+  // The room configuration page shows the same unconfigured state.
   const conn = await getConn(CHAPEL);
   assert.equal(conn.hasServerRoom, true);
-  assert.equal(conn.companion.mock, true);
-  assert.equal(conn.companion.roomMode, false);
-  assert.deepEqual(conn.companion.modes, []);
+  assert.equal(conn.companion, null);
   assert.deepEqual(conn.planningCenter, { serviceTypes: [] });
 
   // A disabled Room Mode cannot be changed through its old endpoint.
@@ -104,7 +103,8 @@ test('a room created in Admin → Campuses is a live server room', async () => {
   // Enabling it and adding controls makes the room mode-capable.
   const saved = await put(`/api/config/rooms/${CHAPEL}/connectivity/companion`, {
     companion: {
-      mock: true,
+      host: '192.0.2.22',
+      variable: 'roomState',
       roomMode: true,
       modes: [
         { id: 'service', label: 'Service', color: '#34c759', match: 'SERVICE' },

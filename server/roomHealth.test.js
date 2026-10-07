@@ -61,18 +61,19 @@ test('an unconfigured integration is absent, not a grey dot', () => {
 });
 
 test('mock and never-contacted are distinct from down', () => {
-  // Three different claims. Calling a simulated dev room "down" would train
+  // Three different claims. Calling a simulated meter "down" would train
   // people to ignore red; calling an uncontacted one down sends somebody to
-  // the booth for nothing.
+  // the booth for nothing. Companion has no simulated state — a room either
+  // answers or is uncontacted/down.
   const out = publicHealth(room(), {
     planningCenter: { ok: null, at: AT, detail: 'Not contacted since server start' },
     proPresenter: null,
-    companion: { ok: null, mock: true, at: AT, detail: 'Simulated' },
-    analysis: { ok: false, at: AT, detail: 'nope' },
+    companion: { ok: null, at: AT, detail: 'Not contacted since server start' },
+    analysis: { ok: null, mock: true, at: AT, detail: 'Simulated' },
   }, AT);
   assert.deepEqual(
     out.integrations.map((i) => [i.id, i.state]),
-    [['planningCenter', 'unknown'], ['companion', 'mock'], ['analysis', 'down']],
+    [['planningCenter', 'unknown'], ['companion', 'unknown'], ['analysis', 'mock']],
   );
 });
 

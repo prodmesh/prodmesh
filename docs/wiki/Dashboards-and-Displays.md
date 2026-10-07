@@ -195,7 +195,7 @@ set up is absent rather than permanently grey. The colours are:
 |---|---|
 | **Green** | Answered the last check |
 | **Red** | Did not answer |
-| **Blue** | Simulated — a mock room, working exactly as configured |
+| **Blue** | Simulated — a dev-fixture integration (analysis/YouTube), working exactly as configured |
 | **Grey** | Configured but not contacted yet |
 
 Rows are sorted worst-first, so at 1×1 — which fits about four — anything

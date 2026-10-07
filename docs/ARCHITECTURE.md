@@ -89,9 +89,13 @@ Express server (server/)
    `integrations/planningCenter.js` as the reference. The next integration
    (Calendar, ProPresenter) drops in the same way.
 
-5. **Mock-first everywhere.** Companion rooms have `mock: true`; integrations fall
-   back to realistic sample data with no credentials. The whole app is demoable
-   with zero external wiring, and degrades gracefully when a service is down.
+5. **Mock-first for data integrations.** Smaart/analysis, Planning Center and
+   YouTube fall back to realistic sample data with no credentials; the app is
+   demoable with zero external wiring and degrades gracefully when a service
+   is down. Companion is the exception — a room's modes are the room's actual
+   control surface, so a room either has a Companion or is simply unconfigured;
+   there is no simulated mode state. (A `local-test` room under
+   `PRODMESH_LOCAL_TEST=1` exists for demoing room controls hands-free.)
 
 6. **Server-side enforcement.** Anything that must not be bypassable (admin auth,
    mode lockouts) is checked on the server. The browser is never trusted.

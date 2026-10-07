@@ -44,7 +44,6 @@ async function proPresenterStatus(pp) {
 }
 
 async function companionStatus(cfg) {
-  if (cfg?.mock) return { ok: null, mock: true, detail: 'Simulated — room state kept in memory' };
   if (!cfg?.host) return null;
   try {
     return { ok: true, detail: await companion.ping(cfg) };

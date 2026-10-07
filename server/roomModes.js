@@ -1,35 +1,36 @@
 // Room-mode domain service: current-state reads, mode changes, and the
 // lockout-override check shared by the mode endpoint and checklist actions.
+//
+// There is no simulated Companion state here on purpose. The read either came
+// back from the room's real Companion or it did not — when it did not, the
+// payload says so with `online: false` and an error, and `mode` is null rather
+// than a value no Companion reported. A mode change either pressed the real
+// button or it threw. Nothing in this module invents a mode to keep a screen
+// populated.
 
 import { readCustomVariable, pressButton } from './companion.js';
 import { rawToModeId } from './roomModel.js';
 import * as settings from './settings.js';
 import * as auth from './authStore.js';
 
-// In-memory state used when a room is in mock mode or Companion is unreachable.
-// Lazily keyed (?? 'standby' at reads) so rooms created after boot just work.
-const mockState = Object.create(null);
-
-// Current room mode (the body of GET /api/rooms/:id/state).
+// Current room mode (the body of GET /api/rooms/:id/state). A room with no
+// Companion configured has no mode to report, and that is the truth it shows.
 export async function readRoomState(room) {
   const protection = settings.computeProtection(room.id);
 
-  if (room.mock || !room.companion?.host) {
-    const raw = mockState[room.id] ?? 'standby';
-    return { mode: rawToModeId(room, raw), raw, online: false, source: 'mock', protection };
+  if (!room.companion?.host) {
+    return { mode: null, raw: '', online: false, source: 'companion', protection, error: 'No Companion configured' };
   }
 
   try {
     const raw = await readCustomVariable(room.companion, room.state.variable);
     return { mode: rawToModeId(room, raw), raw, online: true, source: 'companion', protection };
   } catch (err) {
-    // Fall back to last-known mock state so the page degrades gracefully.
-    const raw = mockState[room.id] ?? 'standby';
     return {
-      mode: rawToModeId(room, raw),
-      raw,
+      mode: null,
+      raw: '',
       online: false,
-      source: 'mock',
+      source: 'companion',
       protection,
       error: String(err.message ?? err),
     };
@@ -37,11 +38,11 @@ export async function readRoomState(room) {
 }
 
 // Set a room's mode: presses the mapped Companion button. Shared by the mode
-// endpoint and automated checklist items. Throws if Companion is unreachable.
+// endpoint and automated checklist items. Throws if Companion is unreachable
+// or the room has no Companion configured — nothing is recorded as pressed
+// that was not actually pressed.
 export async function applyMode(room, mode) {
-  // Update mock state regardless, so the UI reflects intent if Companion is down.
-  mockState[room.id] = mode.match ?? mode.id;
-  if (room.mock || !room.companion?.host) return { online: false, source: 'mock' };
+  if (!room.companion?.host) throw new Error('No Companion configured for this room');
   if (mode.press) await pressButton(room.companion, mode.press);
   return { online: true, source: 'companion' };
 }

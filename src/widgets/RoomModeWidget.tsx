@@ -43,14 +43,11 @@ export function RoomModeWidget({ roomId }: WidgetProps) {
       ? state.raw || 'Unknown mode'
       : 'Connecting…';
 
-  // `error` is the ONLY reliable signal, and the obvious tests are both wrong:
-  // readRoomState falls back to `source: 'mock', online: false` when a live
-  // room's Companion throws, so a broken room and a mock room are otherwise
-  // indistinguishable. `error` is set on that fallback path alone.
-  //
-  // Worth calling out loudly rather than quietly, because the mode shown
-  // BESIDE it is then the last-known mock value — a plausible word the room is
-  // not necessarily in.
+  // `error` is the only reliable signal: readRoomState returns
+  // { online: false, error: … } when Companion is unreachable or not
+  // configured — the mode is the last-known value, which may be stale.
+  // Worth calling out loudly, because the mode shown BESIDE it is then the
+  // last-known value — a plausible word the room is not necessarily in.
   const offline = Boolean(state?.error);
 
   const detail = offline

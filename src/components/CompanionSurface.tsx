@@ -14,7 +14,7 @@ export function CompanionSurface({ roomId, className = '' }: { roomId: string; c
   const connection = useQuery(`room-connectivity:${roomId}`, () => getRoomConnectivity(roomId), { staleMs: 15_000 }).data?.companion;
   const url = companionEmulatorUrl(connection?.host, connection?.port, connection?.emulator);
 
-  if (!connection || connection.mock || !url) {
+  if (!connection?.host || !url) {
     return (
       <div className={`companion-surface companion-surface--empty ${className}`.trim()}>
         <WifiOff size={18} aria-hidden />

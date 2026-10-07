@@ -47,7 +47,7 @@ test('roomStatus probes every configured integration', async () => {
   try {
     const status = await roomStatus({
       proPresenter: { host: '127.0.0.1', port: pp.port() },
-      companion: { mock: false, host: '127.0.0.1', port: companion.port(), variable: 'roomState' },
+      companion: { host: '127.0.0.1', port: companion.port(), variable: 'roomState' },
       analysis: { source: 'rta', host: '127.0.0.1', port: rtaPort.port() },
       planningCenter: { serviceTypes: [{ id: '1', name: 'Sunday' }] },
     });
@@ -70,7 +70,7 @@ test('roomStatus reports failures with the reason, and skips the unconfigured', 
   const port = await deadPort();
   const status = await roomStatus({
     proPresenter: { host: '127.0.0.1', port },
-    companion: { mock: false, host: '127.0.0.1', port, variable: 'roomState' },
+    companion: { host: '127.0.0.1', port, variable: 'roomState' },
     analysis: { source: 'smaart', host: '127.0.0.1', port },
     planningCenter: { serviceTypes: [] },
   });
@@ -81,15 +81,17 @@ test('roomStatus reports failures with the reason, and skips the unconfigured', 
   assert.equal(status.planningCenter, null, 'no service types → nothing to report');
 });
 
-test('roomStatus marks simulated integrations instead of probing them', async () => {
+test('roomStatus marks simulated analysis sources instead of probing them', async () => {
   const status = await roomStatus({
-    companion: { mock: true, host: '192.0.2.1', variable: 'roomState' },
     analysis: { mock: true },
   });
   assert.deepEqual(
-    { companion: status.companion.mock, analysis: status.analysis.mock },
-    { companion: true, analysis: true },
+    { analysis: status.analysis.mock },
+    { analysis: true },
   );
-  assert.equal(status.companion.ok, null);
+  assert.equal(status.analysis.ok, null);
+  // There is no simulated Companion — an integration without a host is skipped
+  // (not probed, not "simulated"), and one with a host gets probed.
+  assert.equal(status.companion, null);
   assert.equal(status.proPresenter, null);
 });

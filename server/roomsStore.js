@@ -18,13 +18,14 @@ import { rooms as seedRooms } from './rooms.config.js';
 
 export const rooms = Object.create(null);
 
-// A room the seed file doesn't know starts simulated with the standard mode
-// set; the room configuration page takes it from there (connectivity.js
-// overwrites these keys from the database on apply).
+// A room the seed file doesn't know starts with no Companion at all; the room
+// configuration page takes it from there (connectivity.js overwrites these
+// keys from the database on apply). No Companion configured → no modes, no
+// room-mode control, and nothing fabricated for the screens.
 function makeRoom(row, seed) {
   const base = seed
     ? structuredClone(seed)
-    : { mock: true, companion: {}, state: { variable: 'roomState' }, roomMode: false, modes: [] };
+    : { companion: {}, state: {}, roomMode: false, modes: [] };
   return { ...base, id: row.id, name: row.name, site: row.siteId };
 }
 

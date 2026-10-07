@@ -5,7 +5,6 @@ import { publicRoom, rawToModeId } from './roomModel.js';
 const room = {
   id: 'r1',
   name: 'Room One',
-  mock: false,
   companion: { host: '10.0.0.5', port: 8000 },
   analysis: { source: 'open-sound-meter' },
   state: { variable: 'roomState' },
@@ -38,6 +37,7 @@ test('publicRoom hides button locations and match values', () => {
   assert.equal(pub.modes[2].isStandby, true);
 });
 
-test('publicRoom marks mock rooms as not-live', () => {
-  assert.equal(publicRoom({ ...room, mock: true }).hasCompanion, false);
+test('publicRoom reports a room without a Companion as not-live', () => {
+  assert.equal(publicRoom({ ...room, companion: {} }).hasCompanion, false);
+  assert.equal(publicRoom({ ...room, roomMode: true, companion: {} }).roomModeEnabled, false);
 });

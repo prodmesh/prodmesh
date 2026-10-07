@@ -372,7 +372,7 @@ describe('Campuses', () => {
       analysis: { source: 'smaart', host: '192.0.2.40', port: 26000, hasPassword: false, target: 90, limit: 95 },
       proPresenter: { host: '192.0.2.15', port: 62202 },
       companion: {
-        mock: false, host: '192.0.2.51', port: 8000, variable: 'roomState',
+        host: '192.0.2.51', port: 8000, variable: 'roomState',
         modes: [
           { id: 'sunday', label: 'Sunday', color: '#34c759', match: 'SUNDAY', press: { page: 1, row: 3, column: 1 } },
           { id: 'standby', label: 'Standby', color: '#8b97a8', match: 'STANDBY', press: { page: 1, row: 3, column: 4 }, isStandby: true },
@@ -661,7 +661,7 @@ describe('Campuses', () => {
 
     await user.click(dialog().getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(api.saveCompanion).toHaveBeenCalledWith('north-main', {
-      mock: false, host: '192.0.2.51', port: 8000, variable: 'roomState',
+      host: '192.0.2.51', port: 8000, variable: 'roomState',
       modes: [
         { id: 'sunday', label: 'Sunday', color: '#34c759', match: 'SUNDAY', press: { page: 3, row: 0, column: 1 } },
         { id: 'standby', label: 'Standby', color: '#8b97a8', match: 'STANDBY', press: { page: 1, row: 3, column: 4 }, isStandby: true },

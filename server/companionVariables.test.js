@@ -15,8 +15,8 @@ const { rooms } = await import('./roomsStore.js');
 const cvars = await import('./companionVariables.js');
 const views = await import('./views.js');
 
-// north-youth ships simulated and has no ProPresenter or analysis, so nothing
-// else in the process starts polling because of these tests.
+// north-youth has no ProPresenter or analysis, so nothing else in the process
+// starts polling because of these tests.
 const ROOM = 'north-youth';
 
 /** A fake Companion that answers from `values`; unknown names 404 the way the
@@ -33,7 +33,6 @@ async function fakeCompanion(values) {
     res.end(String(values[name]));
   });
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
-  rooms[ROOM].mock = false;
   rooms[ROOM].companion = { host: '127.0.0.1', port: srv.address().port };
   return {
     seen,
@@ -80,7 +79,6 @@ async function until(check, timeout = 4000) {
 
 afterEach(() => {
   cvars.stopAll();
-  rooms[ROOM].mock = true;
   rooms[ROOM].companion = {};
 });
 
@@ -179,15 +177,15 @@ test('a variable that does not exist reads as missing, not as a dead Companion',
   }
 });
 
-test('a simulated room says so once and polls nothing', async () => {
+test('a room with no Companion says so once and polls nothing', async () => {
   const srv = await fakeCompanion({ roomState: 'SUNDAY' });
-  rooms[ROOM].mock = true; // configured, but the room is in mock mode
+  rooms[ROOM].companion = {}; // unconfigured — no Companion host
   const res = fakeRes();
   try {
     hub.subscribe(res, [topic('custom', 'roomState')]);
     await until(() => res.frames('custom', 'roomState').length === 1);
-    assert.deepEqual(res.frames('custom', 'roomState'), [{ value: null, status: 'simulated' }]);
-    assert.deepEqual(srv.seen, [], 'a mock room never reaches the network');
+    assert.deepEqual(res.frames('custom', 'roomState'), [{ value: null, status: 'unconfigured' }]);
+    assert.deepEqual(srv.seen, [], 'a room without a Companion never reaches the network');
   } finally {
     hub.unsubscribe(res);
     await srv.close();

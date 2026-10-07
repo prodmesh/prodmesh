@@ -144,13 +144,17 @@ not yet open, no rooms wired yet.
 | Room | Companion | Modes | Planning Center |
 |---|---|---|---|
 | Auditorium (`north-main`) | **live** — 192.0.2.10, var `roomState`, buttons pg3 | Sunday/Second/Midweek/Evening/Event/Standby (real) | **live** — Sunday, Second Service, Midweek, Evening |
-| Youth Room (`north-youth`) | mock — 192.0.2.22 (config ready) | standard set (Sunday/Mid-Week/Event/Standby) — **real modes unknown** | **live** — Youth Service |
-| Chapel (`north-chapel`) | mock — 192.0.2.18 (config ready) | standard set — **real modes unknown** | **live** — Chapel Service |
+| Youth Room (`north-youth`) | live — 192.0.2.22 (config) — **no modes yet** | standard set — **real modes unknown** | **live** — Youth Service |
+| Chapel (`north-chapel`) | live — 192.0.2.18 (config) — **no modes yet** | standard set — **real modes unknown** | **live** — Chapel Service |
 | Local Test (`local-test`) | live — 127.0.0.1 (dev fixture; **opt-in via `PRODMESH_LOCAL_TEST=1`**, set by the npm dev scripts — hidden in production) | standard set | live — Sunday (demo) |
 
 Notes:
-- Companion "live" means `mock: false`; it only actually reaches Companion when the
-  server runs on/with network access to that host.
+- Companion config for a room is whole: there is no "simulated" mode. A room
+  either has a Companion host (only "live" when the server can reach it) or no
+  Companion at all. Youth Room/Chapel keep their hosts but have **no modes**
+  until their real buttons are mapped; legacy databases whose rows carried
+  `mock: true` were migrated on boot — those rooms now have no Companion until
+  one is configured.
 - Youth Room/Chapel use placeholder button locations (pg1/row3/1-4) and the standard mode set
   until their real modes + button locations are provided (Auditorium's are real).
 
@@ -158,7 +162,7 @@ Notes:
 
 | Integration | Status |
 |---|---|
-| Bitfocus Companion (per room) | Live for Auditorium; Youth Room/Chapel mock pending real setup. Since 1.4.0-dev also: a variables widget, and an optional embedded **emulator surface** whose picker reads Companion's tRPC API (`surfaces.emulatorList`, probed live on Companion 4). Room Mode is optional per room. The surface is off by default because its presses skip our permission, lockout and audit path — Companion has no auth of its own |
+| Bitfocus Companion (per room) | Live for Auditorium; Youth Room/Chapel have hosts but **no modes yet** (their simulated config was removed — there is no longer a mock mode). Since 1.4.0-dev also: a variables widget, and an optional embedded **emulator surface** whose picker reads Companion's tRPC API (`surfaces.emulatorList`, probed live on Companion 4). Room Mode is optional per room. The surface is off by default because its presses skip our permission, lockout and audit path — Companion has no auth of its own |
 | **OBS Studio** (per room) | **Implemented, not verified.** Per-room host/port/password; read-only health widget over obs-websocket. Nobody here has run it against a real OBS — it is exercised only against its unconfigured and error paths, and it is *not* currently labelled Beta though the rule says it should be |
 | **ProdMesh RTA** | **Live** — the free analyzer (`github.com/prodmesh/prodmesh-rta`) as an analysis source, plus a 1/3-octave spectrum widget since 1.4.0-dev. Frame contract probed live 2026-09-07/08: bands arrive already calibrated to dB SPL (31 bands summed to 50.1 dB against a reported LAF of 50.3), `cal_db` is the SPL at 0 dBFS so it doubles as the plot ceiling, and program (loudness) mode reports `cal_db: 0` with dBFS bands. Streams at a rate configured in the app — ~5 Hz on the instance tested, not the 20 Hz the widget was designed around |
 | Planning Center **Services** | **Live** — plan display + order of service, PAT in `server/data/secrets.json` |
@@ -314,7 +318,7 @@ Notes:
   (`server/companionVariables.js`); names are shape-checked and a room may have
   at most 24 distinct variables watched at once, because subscribing starts
   work and the names come from stored config. A missing variable, an
-  unreachable Companion and a simulated room read as three different lines,
+  unreachable Companion and an unconfigured room read as three different lines,
   since they send whoever is fixing it to three different places.
   **Verified live 2026-09-01** against a real Companion (module and custom
   variables, a 404 typo, two racks side by side, bars tracking a moving value);
@@ -594,24 +598,25 @@ Notes:
    = room has none) also made autostart eligibility per-cycle instead of
    per-boot, so connectivity edits enable/disable autostart without a restart.
    Companion is the special one: stored as one blob (host/port, state
-   variable, mock, and the room's MODES — every Companion lays its buttons out
+   variable, and the room's MODES — every Companion lays its buttons out
    differently, so each mode's page/row/column is per-room) and decomposed
-   onto the four legacy room keys (`companion`/`state`/`mock`/`modes`).
-   It can never be cleared — a room always keeps modes; "no Companion" is
-   the Simulated (mock) checkbox. **Rooms-from-SQLite (2026-07-23)** finished
+   onto the four legacy room keys (`companion`/`state`/`modes`, and the
+   config flags). A null config *removes* Companion from the room — the
+   room is then unconfigured, with no simulated state taking its place.
+   **Rooms-from-SQLite (2026-07-23)** finished
    the migration: the live rooms map is built from `site_rooms` +
    `room_connectivity` (`server/roomsStore.js`, rebuilt in place on every
    topology save; `show.syncAutomation()` reconciles watchers, deleted rooms
    lose their streams/shows). rooms.config.js is now *entirely* a
    fresh-install seed (plus the PRODMESH_LOCAL_TEST dev fixture) — creating a
-   room in Admin → Campuses yields a real server room with simulated standard
+   room in Admin → Campuses yields a real server room with standard
    modes, ready to configure on its room page. New rooms with no stored
    Companion row show their live defaults in the editor (`companionFromRoom`).
 3. **PC Calendar integration** — authoritative event→room→time. Unlocks:
    auto-populating lockout windows from real bookings (retire manual schedules),
    and confidently mapping "Special Events" to the right room.
 4. **Youth Room/Chapel go live** — get their real modes + Companion button locations,
-   enter them on the room page and untick Simulated. All in the browser now.
+   enter them on the room page. All in the browser now.
    (Auditorium is the template.)
 5. **Room-Mac browser homepages** — set each room Mac to `http://<box>:8080/room/<id>`.
 6. ~~Confirm production deployment on the Producer Mac~~ **Done 2026-07-14**:

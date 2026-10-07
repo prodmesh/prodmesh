@@ -148,7 +148,6 @@ test('setProPresenter rejects bad input without changing anything', () => {
 
 test('first boot seeds Companion + modes from rooms.config.js', () => {
   const main = conn.getCompanion('north-main');
-  assert.equal(main.mock, false);
   assert.equal(main.host, '192.0.2.10');
   assert.equal(main.port, 8000);
   assert.equal(main.variable, 'roomState');
@@ -157,14 +156,16 @@ test('first boot seeds Companion + modes from rooms.config.js', () => {
     id: 'sunday', label: 'Sunday', color: '#34c759', match: 'SUNDAY', press: { page: 3, row: 0, column: 1 },
   });
   assert.equal(main.modes[5].isStandby, true);
-  // Mock rooms seed too — their simulated state machine needs modes.
-  assert.equal(conn.getCompanion('north-youth').mock, true);
-  assert.equal(conn.getCompanion('north-youth').modes.length, 4);
+  // No mock field is ever stored — a room with a host is a Companion room,
+  // full stop; a room without one keeps no row at all.
+  assert.equal('mock' in main, false);
+  // Youth/Chapel seed with a host but no modes yet.
+  assert.equal(conn.getCompanion('north-youth').host, '192.0.2.22');
+  assert.deepEqual(conn.getCompanion('north-youth').modes, []);
 });
 
-test('setCompanion persists and decomposes onto the four legacy room keys', () => {
+test('setCompanion persists and decomposes onto the live room keys', () => {
   const clean = conn.setCompanion('north-youth', {
-    mock: false,
     host: '192.0.2.22',
     port: '8000',
     variable: 'youthState',
@@ -178,48 +179,80 @@ test('setCompanion persists and decomposes onto the four legacy room keys', () =
   assert.equal(clean.modes[1].press, undefined); // buttonless mode is allowed
   // Decomposed onto the live room object every consumer reads.
   const room = rooms['north-youth'];
-  assert.equal(room.mock, false);
   assert.deepEqual(room.companion, { host: '192.0.2.22', port: 8000 });
   assert.equal(room.state.variable, 'youthState');
   assert.equal(room.modes.length, 2);
-  // Back to simulated: host becomes optional.
-  conn.setCompanion('north-youth', { mock: true, modes: clean.modes });
-  assert.equal(rooms['north-youth'].mock, true);
+  // Clearing removes the row and the decom positions: an unconfigured room
+  // has no Companion, no state, no controls and no modes.
+  conn.setCompanion('north-youth', null);
+  assert.equal(conn.getCompanion('north-youth'), null);
   assert.deepEqual(rooms['north-youth'].companion, {});
+  assert.deepEqual(rooms['north-youth'].state, {});
+  assert.equal(rooms['north-youth'].roomMode, false);
+  assert.equal(rooms['north-youth'].companionSurface, false);
+  assert.deepEqual(rooms['north-youth'].modes, []);
+});
+
+test('a cleared Companion stays cleared across applyConnectivity', () => {
+  // north-main declares a Companion block in rooms.config.js; once cleared,
+  // the seeded marker keeps the file entry from resurrecting it.
+  conn.setCompanion('north-main', null);
+  conn.applyConnectivity();
+  assert.equal(conn.getCompanion('north-main'), null);
+  assert.deepEqual(rooms['north-main'].modes, []);
+  // Restore for any later tests.
+  conn.setCompanion('north-main', {
+    host: '192.0.2.10', port: 8000, variable: 'roomState', modes: [
+      { id: 'sunday', label: 'Sunday', color: '#34c759', match: 'SUNDAY', press: { page: 3, row: 0, column: 1 } },
+      { id: 'second', label: 'Second Service', color: '#ff9f0a', match: 'SECOND', press: { page: 3, row: 0, column: 2 } },
+      { id: 'midweek', label: 'Midweek', color: '#ff6fae', match: 'MIDWEEK', press: { page: 3, row: 0, column: 3 } },
+      { id: 'evening', label: 'Evening', color: '#32ade6', match: 'EVENING', press: { page: 3, row: 0, column: 4 } },
+      { id: 'event', label: 'Event', color: '#af7bf0', match: 'EVENT', press: { page: 3, row: 0, column: 5 } },
+      { id: 'standby', label: 'Standby', color: '#8b97a8', match: 'STANDBY', press: { page: 3, row: 3, column: 1 }, isStandby: true },
+    ],
+  });
 });
 
 test('setCompanion rejects bad input without changing anything', () => {
+  conn.setCompanion('north-youth', {
+    host: '192.0.2.22', port: 8000, variable: 'youthState', modes: [],
+  });
   const before = conn.getCompanion('north-youth');
-  const modes = before.modes;
-  assert.throws(() => conn.setCompanion('north-youth', null), /must be an object/);
-  assert.throws(() => conn.setCompanion('north-youth', { mock: false, variable: 'v', modes }), /needs a Companion host/);
-  assert.throws(() => conn.setCompanion('north-youth', { mock: false, host: 'x', modes }), /needs a state variable/);
+  const modes = conn.getCompanion('north-main').modes;
+  assert.throws(() => conn.setCompanion('north-youth', {}), /needs a host/);
   assert.throws(
-    () => conn.setCompanion('north-youth', { mock: true, modes: [modes[0], modes[0]] }),
+    () => conn.setCompanion('north-youth', { host: '192.0.2.10', modes }),
+    /needs a state variable/,
+  );
+  assert.throws(
+    () => conn.setCompanion('north-youth', { host: '192.0.2.10', modes: [modes[0], modes[0]] }),
     /Duplicate mode id/,
   );
   assert.throws(
-    () => conn.setCompanion('north-youth', { mock: true, modes: [{ ...modes[0], color: 'green' }] }),
+    () => conn.setCompanion('north-youth', { host: '192.0.2.10', modes: [{ ...modes[0], color: 'green' }] }),
     /color must be/,
   );
   assert.throws(
-    () => conn.setCompanion('north-youth', { mock: true, modes: [{ ...modes[0], match: '' }] }),
+    () => conn.setCompanion('north-youth', { host: '192.0.2.10', modes: [{ ...modes[0], match: '' }] }),
     /needs a match value/,
   );
   assert.throws(
-    () => conn.setCompanion('north-youth', { mock: true, modes: [{ ...modes[0], press: { page: 0, row: 0, column: 1 } }] }),
+    () => conn.setCompanion('north-youth', { host: '192.0.2.10', modes: [{ ...modes[0], press: { page: 0, row: 0, column: 1 } }] }),
     /page must be at least 1/,
   );
   assert.throws(
-    () => conn.setCompanion('north-youth', { mock: true, modes: [{ ...modes[0], press: { page: 1, row: 'x', column: 1 } }] }),
+    () => conn.setCompanion('north-youth', { host: '192.0.2.10', modes: [{ ...modes[0], press: { page: 1, row: 'x', column: 1 } }] }),
     /integer page\/row\/column/,
   );
+  assert.throws(() => conn.setCompanion('nope', null), /Unknown room/);
+  assert.throws(() => conn.setCompanion('north-youth', 'host'), /must be an object/);
   assert.deepEqual(conn.getCompanion('north-youth'), before);
 });
 
 test('Companion can keep a blank mode list while Room Mode is disabled', () => {
-  const clean = conn.setCompanion('north-youth', { mock: true, roomMode: false, modes: [] });
-  assert.deepEqual(clean, { mock: true, roomMode: false, surface: false, modes: [] });
+  conn.setCompanion('north-youth', null);
+  const clean = conn.setCompanion('north-youth', { host: '192.0.2.22', roomMode: false, modes: [] });
+  assert.deepEqual(clean, { host: '192.0.2.22', roomMode: false, surface: false, modes: [] });
   assert.equal(rooms['north-youth'].roomMode, false);
   assert.deepEqual(rooms['north-youth'].modes, []);
 });
@@ -229,10 +262,10 @@ test('the Companion surface is off unless a room asks for it', () => {
   // check, the schedule lockout and the audit row that a Room Mode change goes
   // through. An upgrade must never add that to a room's page on its own.
   const modes = conn.getCompanion('north-chapel').modes;
-  assert.equal(conn.setCompanion('north-chapel', { mock: true, modes }).surface, false);
+  assert.equal(conn.setCompanion('north-chapel', { host: '192.0.2.18', modes }).surface, false);
   assert.equal(rooms['north-chapel'].companionSurface, false);
 
-  const on = conn.setCompanion('north-chapel', { mock: true, surface: true, modes });
+  const on = conn.setCompanion('north-chapel', { host: '192.0.2.18', surface: true, modes });
   assert.equal(on.surface, true);
   assert.equal(rooms['north-chapel'].companionSurface, true);
   // Independent of Room Mode: a church may run either, both, or neither.
@@ -240,22 +273,23 @@ test('the Companion surface is off unless a room asks for it', () => {
 });
 
 test('a state variable is only required by the feature that reads it', () => {
-  const modes = conn.getCompanion('north-chapel').modes;
-  // Room Mode on (the default) still needs the variable it reads back.
+  const modes = conn.getCompanion('north-main').modes;
+  // Room Mode on (the default) with at least one mode still needs the variable
+  // it reads back.
   assert.throws(
-    () => conn.setCompanion('north-chapel', { mock: false, host: '192.0.2.10', modes }),
+    () => conn.setCompanion('north-chapel', { host: '192.0.2.10', modes }),
     /needs a state variable/,
   );
   // Off, and the room is no longer asked to invent one.
-  const clean = conn.setCompanion('north-chapel', { mock: false, host: '192.0.2.10', roomMode: false, modes: [] });
+  const clean = conn.setCompanion('north-chapel', { host: '192.0.2.10', roomMode: false, modes: [] });
   assert.equal(clean.roomMode, false);
   assert.equal(clean.variable, undefined);
 });
 
 test('modes stay capped at what the room page can lay out', () => {
-  const one = conn.getCompanion('north-chapel').modes[0];
+  const one = conn.getCompanion('north-main').modes[0];
   const many = Array.from({ length: 13 }, (_, i) => ({ ...one, id: `m${i}`, match: `m${i}` }));
-  assert.throws(() => conn.setCompanion('north-chapel', { mock: true, modes: many }), /max 12/);
+  assert.throws(() => conn.setCompanion('north-chapel', { host: '192.0.2.18', modes: many }), /max 12/);
 });
 
 test('setPlanningCenter rejects bad input without changing anything', () => {

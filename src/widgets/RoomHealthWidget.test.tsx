@@ -45,10 +45,10 @@ describe('RoomHealthWidget', () => {
     // see has to be at the top rather than wherever it happened to land.
     show();
     await push(at([
-      i('planningCenter', 'Planning Center', 'ok'),
-      i('companion', 'Companion', 'mock'),
-      i('analysis', 'Analysis', 'unknown'),
       i('proPresenter', 'ProPresenter', 'down'),
+      i('planningCenter', 'Planning Center', 'ok'),
+      i('analysis', 'Analysis', 'unknown'),
+      i('companion', 'Companion', 'unknown'),
     ]));
     await screen.findByText('1 down');
     expect(names()).toEqual(['ProPresenter', 'Analysis', 'Companion', 'Planning Center']);

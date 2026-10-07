@@ -392,6 +392,7 @@ router.get('/api/config/rooms/:roomId/connectivity/companion/emulators', require
   const room = rooms[req.params.roomId];
   if (!room) return res.status(404).json({ error: 'unknown room' });
   const cfg = connectivity.getCompanion(room.id) ?? connectivity.companionFromRoom(room);
+  if (!cfg?.host) return res.json({ emulators: [] });
   try {
     res.json({ emulators: await listCompanionEmulators(cfg) });
   } catch (err) {
@@ -511,7 +512,7 @@ router.put('/api/config/rooms/:roomId/connectivity/companion', requirePermission
       resourceType: 'room-connectivity',
       resourceId: req.params.roomId,
       roomId: req.params.roomId,
-      details: { integration: 'companion', mock: clean.mock, modes: clean.modes.length },
+      details: { integration: 'companion', modes: clean?.modes?.length ?? 0 },
     });
     res.json({ companion: clean });
   } catch (err) {

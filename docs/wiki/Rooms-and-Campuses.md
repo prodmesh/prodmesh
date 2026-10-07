@@ -60,13 +60,16 @@ adds one; the up/down/trash icons on each tile reorder or remove it.
 ### Integrations (connectivity)
 
 Below tiles, **Integrations** holds every live connection the room has, each
-in its own editor with a status chip (Connected / Unreachable / Simulated) and
+in its own editor with a status chip (Connected / Unreachable / Not checked) and
 a manual refresh. This section only appears once the room exists on the
 server — save the topology above first if you just added the room.
 
 - **Companion & modes** — the room's Bitfocus Companion install (host, port,
   the Companion custom variable that reports current state) and the room's
-  list of **modes** (Sunday, Mid-Week, Standby, …). Each mode has a label, an
+  modes (each with its Companion button page/row/column and its colour,
+  plus optionally a *match* value and a *standby* flag — see below).
+  Leave the host blank and save to remove Companion from this room entirely.
+  Below the host is the list of **modes** (Sunday, Mid-Week, Standby, …). Each mode has a label, an
   id, a color, the raw value that variable reports when that mode is active
   (**Match**), and — optionally — the Companion button (page/row/column) that
   puts the room into it. A mode can be flagged **Standby** — while the room is
@@ -102,16 +105,15 @@ server — save the topology above first if you just added the room.
   countdown widget should prefer. Leave the host blank if the room has no
   ProPresenter.
 
-### "Simulated" rooms
+### Rooms without a Companion
 
-A room with **Simulated** checked under Companion & modes has no Companion at
-all — its mode state lives in the server's memory instead of a real device.
-Every screen still works: mode buttons, the checklist's automated items, Run
-of Show — they all function against that in-memory state instead of pressing
-anything real. This is how a new room works by default before its Companion
-is wired up, and it's also useful for a local test/demo room. Uncheck
-Simulated once the room's Companion has the state variable and buttons set
-up.
+A room with **no host set** under Companion & modes has no Companion at all.
+Its mode controls stay hidden until a Companion is configured for the room —
+there is no simulated state for a room's mode to live in. Add the room's
+Companion host, the state variable its mode buttons change, and the modes
+themselves, and the room goes live. Use a local-test room
+(`PRODMESH_LOCAL_TEST=1`) when you want to exercise the UI without a real
+Companion on the network.
 
 ## Room modes and schedule-based lockouts
 

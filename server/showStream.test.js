@@ -15,8 +15,8 @@ const sm = await import('./showManager.js');
 const conn = await import('./connectivity.js');
 const settings = await import('./settings.js');
 
-// north-youth: mock Companion, no ProPresenter/analysis → subscribing starts no
-// watchers, so the stream test observes pure fan-out.
+// north-youth: no ProPresenter/analysis → subscribing starts no watchers, so
+// the stream test observes pure fan-out.
 const ROOM = 'north-youth';
 const PLAN = 'mock-500005-0';
 settings.setPins({ admin: 'admin1234', override: '9999' });
@@ -139,27 +139,30 @@ test('SSE stream: state on connect, push on startShow, clean disconnect', async 
   }
 });
 
-test('Companion down: mode change → 502, state read → 200 with mock fallback + error', async () => {
+test('Companion down: mode change → 502, state read → online:false + error, mode:null', async () => {
   // A port that is guaranteed dead: bind, read it, close.
   const probe = http.createServer();
   await new Promise((r) => probe.listen(0, '127.0.0.1', r));
   const deadPort = probe.address().port;
   await new Promise((r) => probe.close(r));
 
-  // Make the mock room live, pointed at the dead port (validateCompanion
-  // requires host+variable when mock:false).
+  // Point the room's Companion at the dead port. There is no mock fallback:
+  // the room has a host, so it is a live Companion room and the read must
+  // answer honestly rather than invent a mode.
   const original = conn.getCompanion(ROOM);
-  assert.equal(original.mock, true); // north-youth is the simulated room
-  conn.setCompanion(ROOM, { ...original, mock: false, host: '127.0.0.1', port: deadPort });
+  conn.setCompanion(ROOM, {
+    host: '127.0.0.1', port: deadPort, variable: 'roomState',
+    modes: [{ id: 'sunday', label: 'Sunday', color: '#34c759', match: 'SUNDAY', press: { page: 1, row: 1, column: 1 } }],
+  });
   try {
-    // GET state degrades gracefully: 200, mock fallback, error surfaced.
+    // GET state: 200 with the failure surfaced and NO fabricated mode.
     const stateRes = await fetch(`${base}/api/rooms/${ROOM}/state`);
     assert.equal(stateRes.status, 200);
     const state = await stateRes.json();
-    assert.equal(state.source, 'mock');
+    assert.equal(state.source, 'companion');
     assert.equal(state.online, false);
     assert.ok(state.error, 'the Companion failure must be surfaced');
-    assert.ok(state.mode, 'still reports a mode from mock state');
+    assert.equal(state.mode, null, 'no mode invented for a Companion that did not answer');
 
     // POST mode: the button press fails → 502 with the failure in the body.
     const { token } = await (
@@ -181,7 +184,7 @@ test('Companion down: mode change → 502, state read → 200 with mock fallback
     assert.equal(body.online, false);
     assert.ok(body.error);
   } finally {
-    conn.setCompanion(ROOM, original); // back to simulated
+    conn.setCompanion(ROOM, original); // restore the seeded config
   }
-  assert.equal((await (await fetch(`${base}/api/rooms/${ROOM}/state`)).json()).source, 'mock');
+  assert.equal((await (await fetch(`${base}/api/rooms/${ROOM}/state`)).json()).source, 'companion');
 });

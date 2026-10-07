@@ -8,8 +8,9 @@
 //    proPresenter   — the room's ProPresenter API (host/port, optional timer)
 //    companion      — Companion host/port + state variable + the room's MODES
 //                     (stored as one blob; applied onto the legacy room keys
-//                     `companion`/`state`/`mock`/`modes` so consumers never
-//                     change; never cleared — "no Companion" is mock:true)
+//                     `companion`/`state`/`roomMode`/`modes` so consumers never
+//                     change. The row may be cleared (null) for a room with no
+//                     Companion at all — a simulated Companion no longer exists)
 //
 //  On first boot each integration seeds from what rooms.config.js declares;
 //  after that the database owns it and the file entry is only a fresh-install
@@ -303,14 +304,16 @@ export function validateProPresenter(input) {
   return out;
 }
 
-// Normalize + validate a Companion config. "no Companion" is mock:true,
-// which keeps state in memory instead. Room Mode is deliberately optional:
-// Companion itself is useful even in rooms that do not need a mode picker.
+// Normalize + validate a Companion config. null clears it — this room has no
+// Companion at all, and no Companion data of any kind. Room Mode is
+// deliberately optional: Companion itself is useful even in rooms that do not
+// need a mode picker.
 const MODE_ID = /^[a-z0-9][a-z0-9_-]{0,29}$/i;
 const COLOR = /^#[0-9a-f]{6}$/i;
 export function validateCompanion(input) {
-  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
-    throw new Error('companion must be an object (rooms cannot clear it — use Simulated instead)');
+  if (input === null) return null;
+  if (typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('companion must be an object, or null to remove it from the room');
   }
   // Two independent switches, deliberately not one three-way choice. Room Mode
   // is prodmesh's opinionated model — gated by `rooms.mode.change`, lockable on
@@ -323,14 +326,15 @@ export function validateCompanion(input) {
   // this stays two booleans. `surface` defaults OFF (=== true, not !== false)
   // so upgrading never silently adds an ungated control to a room's page.
   const out = {
-    mock: input.mock === true,
     roomMode: input.roomMode !== false,
     surface: input.surface === true,
   };
-  // Optional here: a simulated room has no Companion at all. Validated the
-  // same way when present.
+  // The host is what makes this a Companion room. Without one there is no
+  // Companion, and the right answer is to clear the config (null), not to
+  // keep a half-set-up row pointing at nothing.
   const host = String(input.host ?? '').trim();
-  if (host) out.host = validateHost(host, 'Companion host');
+  if (!host) throw new Error('A Companion config needs a host (send null to remove Companion from the room)');
+  out.host = validateHost(host, 'Companion host');
   const port = input.port === '' || input.port == null ? null : Number(input.port);
   if (port != null) {
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Port must be 1–65535');
@@ -338,19 +342,11 @@ export function validateCompanion(input) {
   }
   const variable = String(input.variable ?? '').trim();
   if (variable.length > 60) throw new Error('variable must be at most 60 characters');
-  if (variable) out.variable = variable;
   const emulator = String(input.emulator ?? '').trim();
   if (emulator && !/^[a-z0-9_-]{1,80}$/i.test(emulator)) {
     throw new Error('Companion emulator ID must be letters, digits, - or _ (max 80)');
   }
   if (emulator) out.emulator = emulator;
-  if (!out.mock) {
-    if (!out.host) throw new Error('A live (non-simulated) room needs a Companion host');
-    // The state variable exists only so Room Mode can read the room's current
-    // mode back. Requiring it with Room Mode switched off made a room that had
-    // opted out of the feature invent a variable name for it anyway.
-    if (out.roomMode && !out.variable) throw new Error('A live (non-simulated) room needs a state variable');
-  }
   if (!Array.isArray(input.modes)) throw new Error('modes must be an array');
   // Modes render as buttons on the room's own page, so the cap is a layout
   // limit rather than a storage one.
@@ -380,31 +376,45 @@ export function validateCompanion(input) {
     if (m.isStandby) mode.isStandby = true;
     return mode;
   });
+  // The state variable exists only so Room Mode can read the room's current
+  // mode back. Requiring it with Room Mode switched off made a room that had
+  // opted out of the feature invent a variable name for it anyway; and a room
+  // in transition (host configured, modes not yet added) has nothing to read.
+  if (out.roomMode && out.modes.length && !variable) {
+    throw new Error('A Companion room with Room Mode needs a state variable');
+  }
+  if (variable) out.variable = variable;
   return out;
 }
 
-/** The stored Companion config for a room (null only pre-seed). */
+/** The stored Companion config for a room (null if the room has none). */
 export function getCompanion(roomId) {
   return readRow(roomId, COMPANION);
 }
 
-/** Validate + store a room's Companion config (never null), apply live. */
+/** Validate + store a room's Companion config (null removes it), apply live. */
 export function setCompanion(roomId, config) {
   if (!rooms[roomId]) throw new Error(`Unknown room "${roomId}"`);
   const clean = validateCompanion(config);
-  writeRow(roomId, COMPANION, clean);
+  if (clean === null) {
+    deleteRow(roomId, COMPANION);
+    clearCompanion(rooms[roomId]);
+  } else {
+    writeRow(roomId, COMPANION, clean);
+  }
   applyConnectivity();
   notifyChange(roomId, COMPANION);
   return clean;
 }
 
-/** A room's effective Companion config in stored-blob shape — used to seed
- *  first boots and to show a room that has no row yet (a room created in
- *  Admin → Campuses) with its live defaults ready to edit. */
+/** A room's effective Companion config in stored-blob shape, or null when the
+ *  room has no Companion — used to seed first boots and to show a room that
+ *  has no row yet (a room created in Admin → Campuses) with its live defaults
+ *  ready to edit. */
 export function companionFromRoom(room) {
+  if (!room.companion?.host) return null;
   return {
-    mock: Boolean(room.mock),
-    ...(room.companion?.host ? { host: room.companion.host } : {}),
+    ...(room.companion.host ? { host: room.companion.host } : {}),
     ...(room.companion?.port != null ? { port: room.companion.port } : {}),
     ...(room.state?.variable ? { variable: room.state.variable } : {}),
     ...(room.companion?.emulator ? { emulator: room.companion.emulator } : {}),
@@ -416,14 +426,22 @@ export function companionFromRoom(room) {
 
 // Companion is stored as one blob but lives on four legacy room keys.
 function applyCompanion(room, stored) {
-  room.mock = stored.mock;
   room.companion = stored.host
     ? { host: stored.host, ...(stored.port != null ? { port: stored.port } : {}), ...(stored.emulator ? { emulator: stored.emulator } : {}) }
     : {};
-  room.state = { variable: stored.variable };
+  room.state = stored.variable ? { variable: stored.variable } : {};
   room.roomMode = stored.roomMode;
   room.companionSurface = stored.surface;
   room.modes = stored.modes;
+}
+
+// A room with no Companion: no host, no mode state, no controls, no modes.
+function clearCompanion(room) {
+  room.companion = {};
+  room.state = {};
+  room.roomMode = false;
+  room.companionSurface = false;
+  room.modes = [];
 }
 
 /** The stored ProPresenter config for a room (null if the room has none). */
@@ -507,8 +525,11 @@ export function applyConnectivity() {
         if (integration === COMPANION) applyCompanion(room, stored);
         else room[integration] = stored;
       } else if (seeded && integration !== COMPANION) {
-        // Companion rows are never deleted, so a missing row just means this
-        // room predates the migration — leave its file config in place.
+        // Companion rows CAN be cleared now; a missing row means the room had
+        // it removed (already cleared in-memory by setCompanion) or predates
+        // the companion migration entirely — and a room that predates it is
+        // running a working config that must not be dropped on an upgrade, so
+        // leave its file/default config in place.
         delete room[integration];
       }
     }
@@ -558,4 +579,27 @@ function seedIfEmpty() {
 }
 
 seedIfEmpty();
+
+// Legacy "Simulated" rooms. Before simulated Companion state was removed, a
+// stored mock:true meant "no Companion at all — keep room state in the
+// server's memory". Those rooms now simply have no Companion: their row is
+// dropped so the room shows its unconfigured state, and the mock key is
+// stripped from any surviving row so older stores cannot be misread as config.
+function migrateCompanion() {
+  for (const room of Object.values(rooms)) {
+    const stored = readRow(room.id, COMPANION);
+    if (!stored) continue;
+    if (stored.mock === true) {
+      deleteRow(room.id, COMPANION);
+      continue;
+    }
+    if ('mock' in stored) {
+      const clean = { ...stored };
+      delete clean.mock;
+      writeRow(room.id, COMPANION, clean, Date.now());
+    }
+  }
+}
+
+migrateCompanion();
 applyConnectivity();

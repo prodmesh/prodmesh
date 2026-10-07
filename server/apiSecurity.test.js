@@ -8,6 +8,8 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { listenOnLoopback } from './testServer.js';
+import http from 'node:http';
+import { standardModes } from './rooms.config.js';
 
 process.env.PRODMESH_DATA_DIR = mkdtempSync(join(tmpdir(), 'prodmesh-sec-'));
 const { app } = await import('./index.js');
@@ -15,7 +17,7 @@ const settings = await import('./settings.js');
 const auth = await import('./authStore.js');
 const chkTemplates = await import('./checklistTemplates.js');
 
-// north-youth is mock:true (no Companion network calls) with PC service type 500005.
+// Exercise the real HTTP transport against a loopback Companion fixture.
 const ROOM = 'north-youth';
 
 const operatorGroup = auth.createGroup({ name: 'Mode Operators', permissions: ['rooms.mode.change'] });
@@ -29,9 +31,18 @@ const station = auth.registerStation({ name: 'Security Test Station' });
 let base;
 let server;
 let operatorToken;
+let companionServer;
 let checkerToken;
 let runnerToken;
 before(async () => {
+  const fixture = await listenOnLoopback(http.createServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/api/custom-variable/roomState/value') res.end('SUNDAY');
+    else if (req.method === 'POST' && /^\/api\/location\/1\/3\/[1-4]\/press$/.test(req.url)) res.end('OK');
+    else { res.statusCode = 404; res.end(); }
+  }));
+  companionServer = fixture.server;
+  const conn = await import('./connectivity.js');
+  conn.setCompanion(ROOM, { host: '127.0.0.1', port: companionServer.address().port, variable: 'roomState', modes: standardModes() });
   ({ server, base } = await listenOnLoopback(app));
   const login = async (username, pin) => {
     const res = await post('/api/auth/login', { username, pin }, null, station.token);
@@ -41,7 +52,7 @@ before(async () => {
   checkerToken = await login('checker', '3579');
   runnerToken = await login('runner', '4680');
 });
-after(() => server.close());
+after(() => { server.close(); companionServer.closeAllConnections(); companionServer.close(); });
 
 function post(path, body, token, stationToken = null) {
   return fetch(base + path, {

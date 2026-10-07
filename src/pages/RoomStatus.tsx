@@ -210,7 +210,7 @@ export function RoomStatus() {
               {state.online ? (
                 <><Wifi size={13} /> Companion live</>
               ) : (
-                <><WifiOff size={13} /> Demo mode</>
+                <><WifiOff size={13} /> Companion offline</>
               )}
             </span>
           </>

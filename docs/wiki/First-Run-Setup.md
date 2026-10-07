@@ -87,9 +87,10 @@ A realistic order:
    just finished setup on.
 2. **Connect each room's gear**, at **Admin → Campuses → Configure**:
    Bitfocus Companion for mode control, ProPresenter for Run of Show, and
-   whatever else that room uses. Every integration is optional and mock-first
-   — a room works before any hardware is wired up, so this can happen
-   gradually.
+   whatever else that room uses. Every integration is optional — a room works
+   before any hardware is wired up, so this can happen gradually. Companion is
+   the exception to any "sample data" pattern: a room with no Companion just
+   has no mode controls until its Companion is configured.
 3. **Add your team**, at **Admin → Users** — individual logins so people
    aren't sharing the one admin PIN, and so you can hand out narrower
    permissions than "everything."

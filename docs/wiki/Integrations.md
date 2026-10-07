@@ -64,9 +64,11 @@ driving real hardware.
   Optionally mark one mode **Standby**.
 
 Every church lays out its Companion buttons differently, so page/row/column
-is set per mode, per room — there's no shared default. Tick **Simulated** to
-keep a room working with an in-memory mode while its Companion install isn't
-ready yet.
+is set per mode, per room — there's no shared default. Leave the host blank
+to remove Companion from the room entirely; a room with Companion configured
+reports its modes live, and a room without it simply shows no mode controls.
+There is no simulated room mode — to exercise the UI without a real Companion
+on the network, run the dev server with `PRODMESH_LOCAL_TEST=1`.
 
 ## ProPresenter
 

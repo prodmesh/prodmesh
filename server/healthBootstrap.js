@@ -32,7 +32,7 @@ export function declareConfiguredIntegrations() {
   if (slack.isConfigured()) declare('slack');
   for (const room of Object.values(rooms)) {
     if (ppro.isConfigured(room.proPresenter)) declare(ppro.healthKey(room.proPresenter));
-    if (room.companion?.host && !room.companion.mock) declare(companion.healthKey(room.companion));
+    if (room.companion?.host) declare(companion.healthKey(room.companion));
     const a = room.analysis;
     if ((a?.host || a?.source === 'open-sound-meter') && !a.mock) {
       declare(a.source === 'rta' ? rta.healthKey(a) : a.source === 'open-sound-meter' ? openSoundMeter.healthKey(a) : smaart.healthKey(a));

@@ -20,9 +20,12 @@ export function validateRooms(rooms) {
       fail(`${where} must have a modes array.`);
     }
 
-    if (!room.mock) {
-      if (!room.companion?.host) fail(`${where} is live (mock:false) but has no companion.host.`);
-      if (!room.state?.variable) fail(`${where} is live but has no state.variable.`);
+    const hasCompanion = Boolean(room.companion?.host);
+    if (!hasCompanion && room.modes.some((m) => m.press)) {
+      fail(`${where} has Companion button locations but no companion.host.`);
+    }
+    if (hasCompanion && room.roomMode !== false && room.modes.length && !room.state?.variable) {
+      fail(`${where} has Companion Room Mode modes but no state.variable.`);
     }
 
     const ids = new Set();

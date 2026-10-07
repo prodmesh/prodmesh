@@ -95,20 +95,20 @@ describe('CompanionVariablesWidget', () => {
     show([
       { variable: 'custom:typo', label: 'Typo' },
       { variable: 'custom:doors', label: 'Doors' },
-      { variable: 'custom:sim', label: 'Sim' },
+      { variable: 'custom:uncfg', label: 'Unconfigured' },
       { variable: 'custom:quiet', label: 'Quiet' },
     ]);
     await push({
       [topic('custom', 'typo')]: { value: null, status: 'missing' },
       [topic('custom', 'doors')]: { value: null, status: 'offline' },
-      [topic('custom', 'sim')]: { value: null, status: 'simulated' },
+      [topic('custom', 'uncfg')]: { value: null, status: 'unconfigured' },
     });
 
     // Settings, machine, and "this room has no Companion" — collapsing these
     // into one dash would send somebody to the wrong place mid-service.
     expect(screen.getByText('No such variable')).toBeInTheDocument();
     expect(screen.getByText('Companion offline')).toBeInTheDocument();
-    expect(screen.getByText('Simulated')).toBeInTheDocument();
+    expect(screen.getByText('Not configured')).toBeInTheDocument();
     // No frame yet is the normal first second — subscribing is what starts the
     // poller — so it is not dressed up as a fault.
     expect(screen.getByText('…')).toBeInTheDocument();

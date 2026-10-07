@@ -6,6 +6,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import { standardModes } from './rooms.config.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,8 +20,7 @@ const health = await import('./health.js');
 const { readActive } = await import('./integrations/proPresenter.js');
 const { fakeProPresenter } = await import('./integrations/fakeProPresenter.js');
 
-// north-youth is the simulated room — flipped live (mock:false) to exercise
-// the Companion-down path, exactly like showStream.test.js does.
+// Configure an unused loopback port to exercise Companion transport failure.
 const ROOM = 'north-youth';
 settings.setPins({ admin: 'admin1234', override: '9999' });
 
@@ -101,8 +101,7 @@ test('GET /api/system/health: starts empty, shows a dead Companion after a faile
   await new Promise((r) => probe.close(r));
 
   const original = conn.getCompanion(ROOM);
-  assert.equal(original.mock, true);
-  conn.setCompanion(ROOM, { ...original, mock: false, host: '127.0.0.1', port: deadPort });
+  conn.setCompanion(ROOM, { host: '127.0.0.1', port: deadPort, variable: 'roomState', modes: standardModes() });
   try {
     const { token } = await (
       await fetch(`${base}/api/auth/admin`, {

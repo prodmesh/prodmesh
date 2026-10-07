@@ -59,30 +59,32 @@ describe('RoomModeWidget', () => {
 
   it('calls out a Companion that has stopped answering', async () => {
     // EXACTLY the shape readRoomState emits on that path, which is the whole
-    // point of this test: it falls back to `source: 'mock', online: false` and
-    // to the last-known mode, so the only thing distinguishing a broken room
-    // from a dev room is `error`. An earlier version of this widget checked
-    // source+online instead, which the server never produces together — it
-    // passed against an invented fixture and did nothing in the building.
+    // point of this test: source is always 'companion' now (there is no mock
+    // mode), and a Companion that stopped answering reports online:false, a
+    // null mode and an error — no mode is invented for it.
     show();
     await push(state({
-      online: false, source: 'mock', raw: 'standby', mode: 'standby',
+      online: false, mode: null, raw: '',
       error: 'connect ECONNREFUSED 127.0.0.1:8000',
     }));
     expect(await screen.findByText(/Companion offline/)).toBeInTheDocument();
-    // And it says the mode beside it is stale, because that mode is a
-    // plausible word the room is not necessarily in.
-    expect(screen.getByText(/last known mode/)).toBeInTheDocument();
+    // And beside it the unknown label, because there is no last-known mode to
+    // show — the room is not in whatever word is on screen.
+    expect(screen.getByText('Unknown mode')).toBeInTheDocument();
   });
 
-  it('does not call a mock room offline, because that is not a fault', async () => {
-    // A mock room reports online:false and source:'mock' as a matter of
-    // course — nothing is wired up, which is the expected state of a demo or
-    // a dev box. Same two fields as the failure above; no `error`.
-    show();
-    await push(state({ online: false, source: 'mock' }));
-    expect(await screen.findByText('Sunday Service')).toBeInTheDocument();
-    expect(screen.queryByText(/Companion offline/)).not.toBeInTheDocument();
+  it('renders nothing for a room without Room Mode, because that is not a fault', async () => {
+    // A room with no Companion configured has Room Mode disabled — nothing is
+    // wired up, which is the expected state of a new or demo room. A widget
+    // there renders nothing at all rather than a permanent offline flag.
+    api.getRoom.mockResolvedValue({
+      id: 'north-main', name: 'North Main', site: null,
+      hasCompanion: false, roomModeEnabled: false, modes: MODES,
+    });
+    const { container } = show();
+    await screen.findByText('Connecting…');
+    await push(state());
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('shows the schedule lock, with the window that caused it', async () => {
