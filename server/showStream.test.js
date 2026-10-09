@@ -139,7 +139,7 @@ test('SSE stream: state on connect, push on startShow, clean disconnect', async 
   }
 });
 
-test('Companion down: mode change → 502, state read → 200 with mock fallback + error', async () => {
+test('Companion down: mode change → 502, state read → 200, mode unknown + error', async () => {
   // A port that is guaranteed dead: bind, read it, close.
   const probe = http.createServer();
   await new Promise((r) => probe.listen(0, '127.0.0.1', r));
@@ -152,14 +152,15 @@ test('Companion down: mode change → 502, state read → 200 with mock fallback
   assert.equal(original.mock, true); // north-youth is the simulated room
   conn.setCompanion(ROOM, { ...original, mock: false, host: '127.0.0.1', port: deadPort });
   try {
-    // GET state degrades gracefully: 200, mock fallback, error surfaced.
+    // GET state degrades gracefully: 200, error surfaced — and the mode is
+    // unknown, not a guess from simulated state (#54).
     const stateRes = await fetch(`${base}/api/rooms/${ROOM}/state`);
     assert.equal(stateRes.status, 200);
     const state = await stateRes.json();
-    assert.equal(state.source, 'mock');
+    assert.equal(state.source, 'companion');
     assert.equal(state.online, false);
     assert.ok(state.error, 'the Companion failure must be surfaced');
-    assert.ok(state.mode, 'still reports a mode from mock state');
+    assert.equal(state.mode, null);
 
     // POST mode: the button press fails → 502 with the failure in the body.
     const { token } = await (

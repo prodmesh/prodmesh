@@ -209,8 +209,10 @@ export function RoomStatus() {
             <span className={`mode-hero__conn mode-hero__conn--${state.online ? 'on' : 'off'}`}>
               {state.online ? (
                 <><Wifi size={13} /> Companion live</>
+              ) : state.source === 'companion' ? (
+                <><WifiOff size={13} /> Companion offline</>
               ) : (
-                <><WifiOff size={13} /> Demo mode</>
+                <><WifiOff size={13} /> Simulated</>
               )}
             </span>
           </>

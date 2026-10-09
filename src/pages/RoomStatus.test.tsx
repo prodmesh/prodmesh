@@ -111,6 +111,24 @@ describe('mode buttons', () => {
     expect(panel.getByRole('button', { name: 'Standby' })).toBeEnabled();
   });
 
+  // A dead Companion and a simulated room are both online:false; only one is
+  // a fault (#54). Both used to read "Demo mode".
+  it('calls a live room whose Companion stopped answering offline', async () => {
+    api.getRoomState.mockResolvedValue({
+      ...baseState, mode: null, raw: '', online: false, error: 'connect ECONNREFUSED',
+    });
+    renderPage();
+    expect(await screen.findByText('Companion offline')).toBeInTheDocument();
+    expect(screen.queryByText('Simulated')).not.toBeInTheDocument();
+  });
+
+  it('calls a simulated room simulated, not offline', async () => {
+    api.getRoomState.mockResolvedValue({ ...baseState, online: false, source: 'mock' });
+    renderPage();
+    expect(await screen.findByText('Simulated')).toBeInTheDocument();
+    expect(screen.queryByText('Companion offline')).not.toBeInTheDocument();
+  });
+
   it('confirms an unlocked change and follows the mode the server pushes back', async () => {
     const next = { ...baseState, mode: 'show', raw: 'show' };
     api.setRoomMode.mockResolvedValue(next);

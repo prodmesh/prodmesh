@@ -58,21 +58,20 @@ describe('RoomModeWidget', () => {
   });
 
   it('calls out a Companion that has stopped answering', async () => {
-    // EXACTLY the shape readRoomState emits on that path, which is the whole
-    // point of this test: it falls back to `source: 'mock', online: false` and
-    // to the last-known mode, so the only thing distinguishing a broken room
-    // from a dev room is `error`. An earlier version of this widget checked
-    // source+online instead, which the server never produces together — it
-    // passed against an invented fixture and did nothing in the building.
+    // EXACTLY the shape readRoomState emits on that path (roomModes.test.js
+    // pins the server side). Keep the fixture matched to the server: an
+    // earlier version of this widget checked source+online, a pair the server
+    // never produced together — it passed against an invented fixture and did
+    // nothing in the building.
     show();
     await push(state({
-      online: false, source: 'mock', raw: 'standby', mode: 'standby',
+      online: false, source: 'companion', raw: '', mode: null,
       error: 'connect ECONNREFUSED 127.0.0.1:8000',
     }));
     expect(await screen.findByText(/Companion offline/)).toBeInTheDocument();
-    // And it says the mode beside it is stale, because that mode is a
-    // plausible word the room is not necessarily in.
-    expect(screen.getByText(/last known mode/)).toBeInTheDocument();
+    // Unknown, not a plausible word the room is not necessarily in (#54).
+    expect(screen.getByText('Unknown mode')).toBeInTheDocument();
+    expect(screen.queryByText('Sunday Service')).not.toBeInTheDocument();
   });
 
   it('does not call a mock room offline, because that is not a fault', async () => {
