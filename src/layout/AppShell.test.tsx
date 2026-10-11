@@ -7,6 +7,8 @@ import type { AuthStatus } from '../api';
 
 const api = vi.hoisted(() => ({
   getAbout: vi.fn(),
+  getSundayInbox: vi.fn(async () => ({ threads: [], manage: false })),
+  getStreamTicket: vi.fn(async () => ({ ticket: 'test-ticket' })),
   getAuthStatus: vi.fn(),
   getConfig: vi.fn(),
   logoutAdmin: vi.fn(),
@@ -70,6 +72,14 @@ describe('AppShell identity and Admin navigation', () => {
     api.logoutAdmin.mockResolvedValue(undefined);
   });
 
+  it('shows a Sunday Team navigation badge even in the collapsed rail', async () => {
+    localStorage.setItem('prodmesh.sidebar', 'rail');
+    api.getSundayInbox.mockResolvedValueOnce({ threads: [{ unread: 3 }], manage: false } as never);
+    renderShell();
+    const badge = await screen.findByLabelText('3 unread messages');
+    expect(badge.closest('a')).toHaveAttribute('href', '/messages');
+  });
+
   it('shows Admin subnavigation and the Planning Center avatar', async () => {
     renderShell();
 
@@ -78,7 +88,7 @@ describe('AppShell identity and Admin navigation', () => {
     expect(screen.getByRole('link', { name: 'Integrations' })).toHaveAttribute('href', '/admin/integrations');
     expect(screen.getByRole('link', { name: 'Stations' })).toHaveAttribute('href', '/admin/stations');
     expect(screen.getByRole('link', { name: 'Checklists' })).toHaveAttribute('href', '/admin/checklists');
-    expect(screen.getByRole('button', { name: /Sam Rivera/ }).querySelector('img')).toHaveAttribute(
+    expect((await screen.findByRole('button', { name: /Sam Rivera/ })).querySelector('img')).toHaveAttribute(
       'src',
       authenticated.user?.avatarUrl,
     );

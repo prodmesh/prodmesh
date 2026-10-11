@@ -4,6 +4,9 @@
 import express from 'express';
 
 import * as hub from '../streamHub.js';
+import { consumeStreamTicket, privateTopicAllowed } from '../messagingStream.js';
+import { resolveSession } from '../authStore.js';
+import { bearer } from '../httpAuth.js';
 
 const router = express.Router();
 
@@ -23,8 +26,14 @@ router.get('/api/stream', (req, res) => {
     .filter(Boolean)
     .slice(0, hub.MAX_TOPICS);
 
+  const token = bearer(req) || consumeStreamTicket(String(req.query.ticket ?? ''));
+  const session = resolveSession(token);
+  const permitted = requested.filter(topic => privateTopicAllowed(topic, session));
   hub.openStream(req, res);
-  hub.subscribe(res, requested);
+  hub.subscribe(res, permitted, (topic, data, render) => {
+    if (!privateTopicAllowed(topic, resolveSession(token))) return;
+    hub.send(res, topic, render ?? (() => `event: msg\ndata: ${JSON.stringify({ topic, data })}\n\n`));
+  });
 });
 
 export default router;

@@ -17,6 +17,7 @@ export interface Church {
 }
 
 export interface Site {
+  timezone?: string;
   id: string;
   name: string;
   status: SiteStatus;

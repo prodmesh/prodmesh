@@ -1596,3 +1596,42 @@ export const triggerUpdate = () =>
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json();
   });
+
+export interface SundayThread {
+  latestMessage?: { id: number; senderId: string; senderName: string; preview?: string } | null;
+  id: string; siteId: string; siteName: string; timezone: string; serviceDate: string;
+  status: 'active' | 'locked' | 'archived'; memberCount: number; unread: number;
+  canSend: boolean; isCurrent: boolean; syncStatus?: string;
+  unmatched?: Array<{ personId: string; name: string }>;
+}
+export interface SundayMessage {
+  id: number; threadId: string; senderId: string; senderName: string;
+  body: string; createdAt: number; deletedAt: number | null;
+}
+export interface SundayConversation {
+  thread: SundayThread; members: Array<{ id: string; displayName: string; source: string }>;
+  messages: SundayMessage[]; hasMore: boolean;
+}
+export const getSundayInbox = () => getJson<{ threads: SundayThread[]; manage: boolean }>('/api/messages');
+export async function getSundayConversation(id: string, cursor?: { before?: number; after?: number }): Promise<SundayConversation> {
+  const res = await fetch(`/api/messages/${encodeURIComponent(id)}?${new URLSearchParams(Object.entries(cursor ?? {}).map(([k,v]) => [k,String(v)]))}`, { headers: requestHeaders() });
+  if (!res.ok) {
+    const error = new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`) as Error & { status: number };
+    error.status = res.status; throw error;
+  }
+  return res.json();
+}
+export const sendSundayMessage = (id: string, body: string) => postJson<{ message: SundayMessage }>(`/api/messages/${id}/messages`, { body });
+export const readSunday = (id: string, messageId: number) => postJson(`/api/messages/${id}/read`, { messageId });
+export const getSundayDirectory = (id: string) => getJson<{ users: Array<{ id: string; displayName: string }> }>(`/api/messages/${id}/directory`);
+export const syncSunday = (id: string) => postJson(`/api/messages/${id}/sync`, {});
+export async function getStreamTicket(): Promise<{ ticket: string }> {
+  const res = await fetch('/api/messages/stream-ticket', { method: 'POST', headers: { ...requestHeaders(), 'Content-Type': 'application/json' }, body: '{}' });
+  if (res.status === 401) clearToken();
+  await requireOk(res);
+  return res.json();
+}
+export async function manageSunday(id: string, path: string, body: unknown) {
+  const res = await fetch(`/api/messages/${id}/${path}`, { method: 'PUT', headers: { ...requestHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  await requireOk(res);
+}

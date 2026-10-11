@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AppShell } from './layout/AppShell';
 import { SetupGate } from './layout/SetupGate';
+import { SundayTeam } from './pages/SundayTeam';
 import { Home } from './pages/Home';
 import { Services } from './pages/Services';
 import { Calendar } from './pages/Calendar';
@@ -31,6 +32,8 @@ export default function App() {
       <Route path="/display/:roomId/:key" element={<DisplayView />} />
       <Route element={<AppShell />}>
         <Route path="/" element={<Home />} />
+        <Route path="/messages" element={<SundayTeam />} />
+        <Route path="/sunday-team" element={<Navigate to="/messages" replace />} />
         <Route path="/services" element={<Services />} />
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/analytics" element={<Analytics />} />

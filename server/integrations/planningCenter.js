@@ -411,7 +411,7 @@ export function getPlanItems(serviceType, planId) {
 export function getPlanTeamMembers(serviceType, planId) {
   return cached(`team-members:${planId}`, async () => {
     if (!isConfigured()) return mockTeamMembers();
-    const body = await pcGet(`/service_types/${pcId(serviceType.id, 'service type id')}/plans/${pcId(planId, 'plan id')}/team_members?filter=not_declined&include=person,team&per_page=100`);
+    const body = await pcGetAllIncluded(`/service_types/${pcId(serviceType.id, 'service type id')}/plans/${pcId(planId, 'plan id')}/team_members?filter=not_declined&include=person,team`);
     const included = new Map((body.included ?? []).map((row) => [`${row.type}:${row.id}`, row]));
     return (body.data ?? []).map((row) => {
       const attrs = row.attributes ?? {};
@@ -421,6 +421,7 @@ export function getPlanTeamMembers(serviceType, planId) {
       const person = included.get(`${personRef.type ?? 'Person'}:${personRef.id}`)?.attributes ?? {};
       return {
         id: row.id,
+        personId: personRef.id ?? null,
         name: attrs.name ?? person.full_name ?? person.name ?? 'Unassigned',
         position: attrs.team_position_name ?? 'Team member',
         teamId: teamRef.id ?? null,
@@ -613,4 +614,26 @@ function mockDetail() {
       { category: 'Video', content: 'Baptism video rolls right after announcements.' },
     ],
   };
+}
+
+// Date-bounded discovery includes today's already-started services. Wide UTC
+// boundaries accommodate all site timezones; callers match actual service times.
+export function getPlansForSunday(serviceType, date) {
+  return cached(`sunday-plans:${serviceType.id}:${date}`, async () => {
+    if (!isConfigured()) return [];
+    const center = new Date(`${date}T00:00:00Z`).getTime();
+    const after = new Date(center - 2 * 86400000).toISOString();
+    const before = new Date(center + 2 * 86400000).toISOString();
+    const rows = await pcGetAll(`/service_types/${pcId(serviceType.id, 'service type id')}/plans?filter=after,before&after=${encodeURIComponent(after)}&before=${encodeURIComponent(before)}&order=sort_date`);
+    return rows.map(row => normalizePlan(serviceType, row));
+  });
+}
+async function pcGetAllIncluded(path) {
+  const data = [], included = [];
+  for (let offset = 0; ; offset += 100) {
+    const body = await pcGet(`${path}&per_page=100&offset=${offset}`);
+    const page = body.data ?? [];
+    data.push(...page); included.push(...(body.included ?? []));
+    if (!page.length || data.length >= (body.meta?.total_count ?? data.length)) return { data, included };
+  }
 }

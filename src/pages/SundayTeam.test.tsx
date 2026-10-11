@@ -1,0 +1,81 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+import { SundayTeam } from './SundayTeam';
+import { IdentityContext } from '../lib/identity';
+import type { AuthStatus, SundayConversation, SundayThread } from '../api';
+const api = vi.hoisted(() => ({ getSundayInbox: vi.fn(), getSundayConversation: vi.fn(), getStreamTicket: vi.fn(), sendSundayMessage: vi.fn(), readSunday: vi.fn(), getSundayDirectory: vi.fn(), manageSunday: vi.fn(), syncSunday: vi.fn() }));
+vi.mock('../api', async original => ({ ...await original<typeof import('../api')>(), ...api }));
+const identity: AuthStatus = { authenticated: true, admin: false, setupNeeded: false, permissions: [], station: null, user: { id: 'member', username: 'member', displayName: 'Team Member', planningCenterPersonId: null } };
+const thread: SundayThread = { id: 'current', siteId: 'north', siteName: 'North Campus', timezone: 'America/New_York', serviceDate: '2026-10-11', status: 'active', isCurrent: true, memberCount: 2, unread: 1, canSend: true };
+let conversation: SundayConversation;
+beforeEach(() => {
+  conversation = { thread, members: [{ id: 'member', displayName: 'Team Member', source: 'schedule' }], messages: [{ id: 1, threadId: thread.id, senderId: 'other', senderName: 'Other Member', body: '<script>window.hacked=true</script>', createdAt: Date.parse('2026-10-11T12:00:00Z'), deletedAt: null }], hasMore: false };
+  api.getSundayInbox.mockResolvedValue({ threads: [thread], manage: false });
+  api.getSundayConversation.mockImplementation(async () => conversation);
+  api.getStreamTicket.mockResolvedValue({ ticket: 'test-ticket' });
+  api.readSunday.mockResolvedValue({ ok: true });
+  api.sendSundayMessage.mockResolvedValue({ message: {} });
+  api.getSundayDirectory.mockResolvedValue({ users: [] });
+  Element.prototype.scrollIntoView = vi.fn();
+});
+const page = (who: AuthStatus | null = identity) => render(<MemoryRouter><IdentityContext.Provider value={who}><SundayTeam /></IdentityContext.Provider></MemoryRouter>);
+it('requires sign-in before fetching conversations', () => {
+  api.getSundayInbox.mockClear(); page(null);
+  expect(screen.getByRole('button', { name: 'Log in' })).toBeVisible();
+  expect(api.getSundayInbox).not.toHaveBeenCalled();
+});
+it('renders untrusted HTML as text and marks only the loaded read position', async () => {
+  page();
+  expect(await screen.findByText('<script>window.hacked=true</script>')).toBeVisible();
+  expect(document.querySelector('script')).toBeNull();
+  await waitFor(() => expect(api.readSunday).toHaveBeenCalledWith('current', 1));
+});
+it('Enter sends, Shift+Enter preserves a newline, and drafts clear only after success', async () => {
+  const user = userEvent.setup(); page();
+  const input = await screen.findByRole('textbox', { name: 'Message Sunday Team' });
+  await user.type(input, 'Wireless 4 is low'); await user.keyboard('{Shift>}{Enter}{/Shift}');
+  expect(input).toHaveValue('Wireless 4 is low\n');
+  await user.keyboard('{Enter}');
+  await waitFor(() => expect(api.sendSundayMessage).toHaveBeenCalledWith('current', 'Wireless 4 is low\n'));
+  await waitFor(() => expect(input).toHaveValue(''));
+  api.sendSundayMessage.mockRejectedValueOnce(new Error('Offline'));
+  await user.type(input, 'Keep my draft'); await user.keyboard('{Enter}');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Offline');
+  expect(input).toHaveValue('Keep my draft');
+});
+it('previous Sundays stay read-only and can be selected by date', async () => {
+  const old = { ...thread, id: 'old', serviceDate: '2026-10-04', status: 'archived' as const, isCurrent: false, canSend: false };
+  api.getSundayInbox.mockResolvedValue({ threads: [thread, old], manage: false });
+  api.getSundayConversation.mockImplementation(async id => ({ ...conversation, thread: id === 'old' ? old : thread }));
+  const user = userEvent.setup(); page();
+  await screen.findByText('<script>window.hacked=true</script>');
+  await user.click(screen.getByText('Previous Sundays'));
+  await user.click(screen.getByRole('button', { name: /Sunday, October 4/ }));
+  expect(await screen.findByText(/Archived Sunday/)).toBeVisible();
+  expect(screen.getByRole('textbox', { name: 'Message Sunday Team' })).toBeDisabled();
+});
+it('revoked access clears rendered messages and disables posting', async () => {
+  const user = userEvent.setup(); page();
+  await screen.findByText('<script>window.hacked=true</script>');
+  api.getSundayConversation.mockRejectedValue(Object.assign(new Error('Conversation unavailable'), { status: 404 }));
+  api.sendSundayMessage.mockRejectedValueOnce(new Error('Network failure'));
+  await user.type(screen.getByRole('textbox'), 'draft'); await user.keyboard('{Enter}');
+  await user.click(await screen.findByRole('button', { name: 'Retry' }));
+  await waitFor(() => expect(screen.queryByText('<script>window.hacked=true</script>')).toBeNull());
+  expect(screen.getByRole('textbox')).toBeDisabled();
+});
+it('administrators see unmatched people and can manually add team members', async () => {
+  api.getSundayInbox.mockResolvedValue({ threads: [thread], manage: true });
+  conversation = { ...conversation, thread: { ...thread, syncStatus: 'unavailable', unmatched: [{ personId: '999', name: 'Unmatched Person' }] } };
+  api.getSundayDirectory.mockResolvedValue({ users: [{ id: 'new', displayName: 'Manual Member' }] });
+  const user = userEvent.setup(); page({ ...identity, admin: true, permissions: ['*'] });
+  await screen.findByText('<script>window.hacked=true</script>');
+  await user.click(screen.getByRole('button', { name: 'Team' }));
+  expect(await screen.findByText('Unmatched Person')).toBeVisible();
+  expect(screen.getByText(/Existing membership is preserved/)).toBeVisible();
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Add team member' }), 'new');
+  await user.click(screen.getByRole('button', { name: 'Add member' }));
+  await waitFor(() => expect(api.manageSunday).toHaveBeenCalledWith('current', 'members/new', { remove: false }));
+});
