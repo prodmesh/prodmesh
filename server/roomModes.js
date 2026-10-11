@@ -6,8 +6,11 @@ import { rawToModeId } from './roomModel.js';
 import * as settings from './settings.js';
 import * as auth from './authStore.js';
 
-// In-memory state used when a room is in mock mode or Companion is unreachable.
-// Lazily keyed (?? 'standby' at reads) so rooms created after boot just work.
+// In-memory state for simulated rooms only — a room with no Companion (a demo,
+// a dev box, a room run on lockouts and checklists alone) still has a mode.
+// Never used to paper over a REAL Companion that stopped answering: a booth
+// display saying "Sunday" for a room nobody has confirmed is in Sunday is
+// worse than saying it doesn't know (#54). Lazily keyed (?? 'standby' at reads) so rooms created after boot just work.
 const mockState = Object.create(null);
 
 // Current room mode (the body of GET /api/rooms/:id/state).
@@ -23,13 +26,13 @@ export async function readRoomState(room) {
     const raw = await readCustomVariable(room.companion, room.state.variable);
     return { mode: rawToModeId(room, raw), raw, online: true, source: 'companion', protection };
   } catch (err) {
-    // Fall back to last-known mock state so the page degrades gracefully.
-    const raw = mockState[room.id] ?? 'standby';
+    // Unknown, not a guess. `source` stays 'companion' so a broken live room
+    // and a simulated one never share a shape; `error` says why.
     return {
-      mode: rawToModeId(room, raw),
-      raw,
+      mode: null,
+      raw: '',
       online: false,
-      source: 'mock',
+      source: 'companion',
       protection,
       error: String(err.message ?? err),
     };
@@ -39,9 +42,12 @@ export async function readRoomState(room) {
 // Set a room's mode: presses the mapped Companion button. Shared by the mode
 // endpoint and automated checklist items. Throws if Companion is unreachable.
 export async function applyMode(room, mode) {
-  // Update mock state regardless, so the UI reflects intent if Companion is down.
-  mockState[room.id] = mode.match ?? mode.id;
-  if (room.mock || !room.companion?.host) return { online: false, source: 'mock' };
+  if (room.mock || !room.companion?.host) {
+    mockState[room.id] = mode.match ?? mode.id;
+    return { online: false, source: 'mock' };
+  }
+  // A live room's mode is whatever Companion next reports — never recorded
+  // here first, or a failed press would read back as the mode it asked for.
   if (mode.press) await pressButton(room.companion, mode.press);
   return { online: true, source: 'companion' };
 }
