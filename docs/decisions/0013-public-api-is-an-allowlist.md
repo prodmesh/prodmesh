@@ -10,14 +10,15 @@ stable enough to integrate with in other apps"*. Three things stand in the way,
 and the first is the one that shaped this decision.
 
 **The surface is 100 endpoints, and most of them are our own admin screens.**
-Counted across the eleven routers in `server/routes/`:
+Counted across the eleven routers in `server/routes/` at `a38c140` — the figure
+will drift, and the allowlist below is the part that matters:
 
 | Router | Endpoints | What it mostly is |
 |---|---|---|
 | `adminConfig.js` | 35 | setup wizard, secrets, branding, per-room connectivity editors |
 | `auth.js` | 18 | stations, users, groups, PINs |
 | `events.js` | 13 | plans, show config, checklist templates |
-| `system.js` | 10 | version, health, update, backup, logs, audit |
+| `system.js` | 10 | version, health, update, backup, **restore**, logs, audit |
 | `views.js` | 6 | dashboard and display layouts |
 | `shows.js` | 5 | show lifecycle |
 | `rooms.js`, `proPresenter.js` | 4 each | room state and mode; PP read and control |
@@ -134,6 +135,9 @@ protected window, and neither can a token.
   PIN and every credential, as its own permission description says. A frozen,
   documented contract on that endpoint is a frozen, documented contract on
   exfiltrating a church's entire install.
+- **`POST /api/setup/restore`** — backup's counterpart, and the sharpest endpoint
+  in the tree: a 64 MB raw body that replaces an install, gated on
+  `isAdminSetupNeeded()`. Nothing about it should ever be a promise.
 - **`/api/rooms/:id/propresenter/diagnostics`** — diagnostics are unstable by
   definition; that is what makes them useful.
 - **`assistance.js`** — station-shaped, and the only router that hard-requires
