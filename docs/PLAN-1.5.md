@@ -43,7 +43,7 @@ good enough to publish.
 
 ## In scope
 
-### 1. API v1 + service tokens — the substrate ([#45](https://github.com/prodmesh/prodmesh/issues/45) · needs ADR 0013)
+### 1. API v1 + service tokens — the substrate ([#45](https://github.com/prodmesh/prodmesh/issues/45) · [ADR 0013](./decisions/0013-public-api-is-an-allowlist.md))
 
 - **Freeze a surface under `/api/v1`.** Not all ~100 endpoints: v1 is the set
   we are willing to keep working for the life of 1.5.x. Everything else stays
@@ -58,15 +58,39 @@ good enough to publish.
   in audit rows the way a station is.
 - **Throttling on the token path.** Unauthenticated resource exhaustion is
   inside the threat model in `CLAUDE.md`; a token that skips the login lockout
-  must not become the way around it.
+  must not become the way around it. ADR 0013 found this is not additive work:
+  `FAILURE_CAP` and the `429`s live **inside `server/routes/auth.js`**, so a
+  token request handled by another router inherits none of it. The lockout has
+  to become shared *before* the token path ships.
 - **The contract, written down**: the endpoint list, the SSE topics under the
   same promise, the deprecation policy, and a schema-compatibility statement
   (migrations forward-only, nothing destructive within 1.5.x).
 
-Federation settles one open question from the first draft: **writes are in v1**,
-because instance-to-instance config sync is a write. The remaining questions
-for the ADR are which endpoints make the cut, and whether
-`x-prodmesh-station` stays public contract or becomes browser-only.
+All three open questions are now settled in [ADR 0013](./decisions/0013-public-api-is-an-allowlist.md):
+
+- **Writes are in v1.** Federation makes it unavoidable (instance-to-instance
+  sync is a write), and the realistic first integrator is a church tech person
+  wanting a Companion button that starts the show.
+- **`x-prodmesh-station` stays browser-only**, outside the frozen surface. A
+  station and a service token do the same job through different doors — ADR 0008
+  made a booth browser identifiable, and a token makes an app identifiable — so
+  a token *replaces* a station rather than carrying one, and audit rows name it
+  in the same slot.
+- **Which endpoints: twenty of the hundred**, chosen by two tests — would a third
+  party reasonably depend on it, and does its authorization model admit a
+  non-browser caller? The second test is the sharp one: `/propresenter/control`
+  fails it, because beyond its permission it requires a `viewId`/`widgetId`
+  naming a stored dashboard widget with controls enabled, which a token can
+  never satisfy. Freezing it would mean shipping a promise nothing can call.
+
+Two findings that affect the work rather than the design:
+
+- **`GET /api/rooms/:id/show/stream` is dead** — no caller in `src/`, and ADR
+  0010's status line says it superseded the per-room stream. **Delete it before
+  the freeze**, or 1.5.x is committed to maintaining dead code.
+- **v1 must be an allowlist, with a 404 for anything else under it.** A `/api/v1`
+  that mirrored the surface would freeze all 100 endpoints by accident,
+  including the Admin UI's own 35.
 
 ### 2. Multi-site: directory and hand-off ([#46](https://github.com/prodmesh/prodmesh/issues/46) · [ADR 0014](./decisions/0014-a-server-per-site.md))
 
