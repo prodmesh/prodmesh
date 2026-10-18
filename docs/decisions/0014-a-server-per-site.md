@@ -87,10 +87,15 @@ saving, and it is large:
   served by that remote site and uses its own relative paths.
 - **No credentialed cross-origin `EventSource`** — `src/lib/stream.ts:55` stays
   as it is.
-- **No mixed-content or certificate-warning problem in the browser**, which
-  cross-origin fetch would have forced us to solve with either a real PKI that
-  churches do not have or a click-through warning that trains people to ignore
-  certificate errors.
+- **No mixed-content problem, and the certificate problem shrinks** — it does
+  not disappear, and an earlier version of this ADR overstated it. A browser
+  trusts a certificate authority, not the fingerprint we pin at pairing, so a
+  cross-site *navigation* to a self-signed origin still raises an interstitial.
+  What changes is that an interstitial is visible, clickable and accepted once
+  per browser, where a cross-origin `fetch` to an untrusted certificate simply
+  fails with nothing a user can act on. Strictly better, not solved:
+  [0016](0016-federation-network-boundaries.md) sets out the three deployment
+  tiers and which of them is honest to recommend.
 
 The campus picker therefore becomes a launcher for remote sites — the pattern
 the Quick Access launcher already uses for device UIs — while the All Campuses
