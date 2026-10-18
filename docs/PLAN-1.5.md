@@ -92,7 +92,7 @@ Two findings that affect the work rather than the design:
   that mirrored the surface would freeze all 100 endpoints by accident,
   including the Admin UI's own 35.
 
-### 2. Multi-site: directory and hand-off ([#46](https://github.com/prodmesh/prodmesh/issues/46) · [ADR 0014](./decisions/0014-a-server-per-site.md))
+### 2. Multi-site: directory and hand-off ([#46](https://github.com/prodmesh/prodmesh/issues/46) · [ADR 0014](./decisions/0014-a-server-per-site.md), [ADR 0016](./decisions/0016-federation-network-boundaries.md))
 
 **A server per site, instances aware of each other.** The bandwidth argument is
 real — 14 campuses × 3 auditoriums is 42 rooms of ProPresenter and RTA
@@ -120,6 +120,16 @@ The digest is a refcounted topic — `registerTopic('site:<id>:summary', { start
 stop })`, the same primitive ADR 0010 already uses for lyrics and captions — so
 polling runs only while somebody is watching, and fourteen campuses do not
 become 182 pollers.
+
+**The network boundary is its own decision.** After an external review by the
+church's networking designer, [ADR 0016](./decisions/0016-federation-network-boundaries.md)
+settles what 0014 assumed: two firewall paths rather than one (server-to-server,
+and workstation-to-remote-server), three honest certificate tiers for the
+operator path with a browser-trusted certificate recommended but never required,
+a standing rule that federation is never a generic forwarder, a freshness
+contract so a digest says when state was *observed*, and an always-on liveness
+probe separate from the refcounted digest so a peer that dies at 3am is known at
+3am. It also corrects 0014, which overstated the certificate situation.
 
 **Identity cannot be deferred even though replication can.** Cross-site viewing
 needs the home site to *vouch* for a user (Ed25519 via `node:crypto`, no new
