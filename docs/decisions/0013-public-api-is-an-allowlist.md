@@ -1,6 +1,6 @@
 # 0013 — The public API is an allowlist
 
-Status: proposed · 2026-10-12 · planned in [PLAN-1.5.md](../PLAN-1.5.md) · implements
+Status: accepted (2026-10-18) · planned in [PLAN-1.5.md](../PLAN-1.5.md) · implemented by
 [#45](https://github.com/prodmesh/prodmesh/issues/45)
 
 ## Context

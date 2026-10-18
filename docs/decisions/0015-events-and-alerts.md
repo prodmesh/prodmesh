@@ -1,6 +1,7 @@
 # 0015 — Events are facts, alerts are state
 
-Status: proposed · 2026-10-06 · planned in [PLAN-1.5.md](../PLAN-1.5.md)
+Status: accepted (2026-10-18) · planned in [PLAN-1.5.md](../PLAN-1.5.md) · implemented by
+[#47](https://github.com/prodmesh/prodmesh/issues/47)
 
 ## Context
 

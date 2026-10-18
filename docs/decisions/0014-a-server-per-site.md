@@ -1,6 +1,7 @@
 # 0014 — A server per site, federated by hand-off
 
-Status: proposed · 2026-10-06 · planned in [PLAN-1.5.md](../PLAN-1.5.md)
+Status: accepted (2026-10-18) · planned in [PLAN-1.5.md](../PLAN-1.5.md) · implemented by
+[#46](https://github.com/prodmesh/prodmesh/issues/46)
 
 ## Context
 
