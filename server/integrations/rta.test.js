@@ -43,13 +43,21 @@ async function fakeRta({ intervalMs = 20, frame = {} } = {}) {
   };
 }
 
-function collect(cfg, sampleCount, intervalMs = 10) {
-  return new Promise((resolve) => {
+// Rejects after `timeoutMs` rather than waiting forever: a regression that
+// stops samples arriving used to hang the whole file until node --test killed
+// it, which reads as a stuck runner instead of naming the broken test.
+function collect(cfg, sampleCount, intervalMs = 10, timeoutMs = 4000) {
+  return new Promise((resolve, reject) => {
     const samples = [];
     const ctl = new AbortController();
+    const timer = setTimeout(() => {
+      ctl.abort();
+      reject(new Error(`collect(): got ${samples.length} of ${sampleCount} samples within ${timeoutMs}ms`));
+    }, timeoutMs);
     watchSpl(cfg, (s) => {
       samples.push(s);
       if (samples.length >= sampleCount) {
+        clearTimeout(timer);
         ctl.abort();
         resolve(samples);
       }

@@ -562,6 +562,8 @@ Notes:
   - `/api/rooms/:id/show/stream` **still works** — reimplemented as an adapter
     over the same three topics, so room-Mac homepages and bookmarks are
     unaffected and the two surfaces cannot drift.
+    *(Removed in 1.5 per ADR 0013: no caller was left in `src/`, and freezing
+    it into `/api/v1` would have promised dead code for all of 1.5.x.)*
   - Client migrations: RunOfShow, RoomCard and RoomStatus onto `useTopic`;
     ServicePanel, Services and ServiceReport off bespoke `setInterval` onto
     `useQuery` (RoomCard and ServicePanel now share one cache key, so a room's
