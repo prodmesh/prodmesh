@@ -4,49 +4,15 @@ import express from 'express';
 
 import { rooms } from '../roomsStore.js';
 import * as show from '../showManager.js';
-import * as hub from '../streamHub.js';
 import { requirePermission } from '../httpAuth.js';
 
 const router = express.Router();
 
-/**
- * Room-level show state stream (SSE), the original single-room endpoint.
- *
- * Superseded by /api/stream, but kept: room-Mac homepages and bookmarks point
- * at views that use it, and it is the one URL an operator can open raw to see
- * whether the server is alive. It is now an ADAPTER — it subscribes to the
- * room's three topics and re-emits the combined `state` envelope on any of
- * them, so both surfaces are fed by one set of watchers and cannot drift.
- */
-router.get('/api/rooms/:id/show/stream', (req, res) => {
-  const roomId = req.params.id;
-  // Unlike every sibling route this never checked the room existed, so any
-  // string opened a stream — and subscribing starts the per-room timer
-  // watcher, which polls that room's ProPresenter once a second for as long
-  // as the connection is held. Unknown rooms are refused before any of that.
-  if (!rooms[roomId]) return res.status(404).json({ error: 'Unknown room' });
-
-  hub.openStream(req, res);
-
-  // Any of the three topics firing means "the envelope changed" — getState()
-  // reassembles it from all three, so the topic and value are unused here.
-  // Coalesced to one send per tick: subscribing delivers three opening
-  // snapshots, and this endpoint's contract is one paint, not three identical
-  // ones.
-  let queued = false;
-  const flush = () => {
-    queued = false;
-    // Rendered at write time, not queue time, so a frame conflated behind a
-    // backed-up socket still carries the envelope as it is when it goes out.
-    hub.send(res, 'state', () => `event: state\ndata: ${JSON.stringify(show.getState(roomId))}\n\n`);
-  };
-  hub.subscribe(res, show.roomTopics(roomId), () => {
-    if (queued) return;
-    queued = true;
-    queueMicrotask(flush);
-  });
-});
-
+// GET /api/rooms/:id/show/stream was removed in 1.5 (ADR 0013): it had no
+// caller left in src/ once ADR 0010's topic stream superseded it, and the
+// /api/v1 freeze would otherwise have promised it for all of 1.5.x. The raw
+// "is the server alive" check it doubled as is
+// /api/stream?topics=room:<id>:show, which is the same data.
 router.get('/api/rooms/:id/show', (req, res) => res.json(show.getState(req.params.id)));
 
 router.post('/api/rooms/:id/show/start', requirePermission('shows.operate'), async (req, res) => {

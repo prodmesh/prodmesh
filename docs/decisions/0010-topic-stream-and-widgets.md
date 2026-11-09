@@ -84,6 +84,11 @@ and it is the one URL an operator can open raw to see whether the server is
 alive. Being an adapter rather than a parallel implementation means the two
 surfaces cannot drift.
 
+> **Superseded in 1.5 by [0013](0013-public-api-is-an-allowlist.md):** the
+> adapter is removed. By then nothing in `src/` called it, and the `/api/v1`
+> freeze would otherwise have promised it for all of 1.5.x. The raw liveness
+> check is `/api/stream?topics=room:<id>:show`.
+
 ## Consequences
 
 - A dashboard of any size costs one connection. The six-connection ceiling

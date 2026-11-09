@@ -332,12 +332,6 @@ test('station registration is rate limited (it gated the lockout bypass)', async
   assert.ok(codes.includes(429), `expected a cap, got ${codes.join(',')}`);
 });
 
-test('the SSE stream refuses unknown rooms instead of leaking a map entry', async () => {
-  const res = await fetch(`${base}/api/rooms/${'Z'.repeat(200)}/show/stream`);
-  assert.equal(res.status, 404);
-  await res.body?.cancel?.();
-});
-
 // ── Device address validation (user-directed SSRF) ───────────────────────────
 
 test('device hosts must be bare hostnames or IPs, not URLs', async () => {
