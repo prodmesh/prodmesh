@@ -17,9 +17,25 @@ on:
     branches: ['**']
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      # Rebuild an existing release with THIS workflow, not the tag's own.
+      # Re-running a tag's run replays the workflow file frozen at that tag, so
+      # when the tag's file is what broke — GitHub retiring the macos-14 image
+      # cancelled v1.4.0's mac job before a single step — a re-run fails the
+      # same way. Moving the tag is not the answer either: Docker has already
+      # published from it and update.sh boxes may have checked it out. So run
+      # this from main with the tag named here: it builds the tag's code and
+      # uploads only the assets the release is missing, never replacing one
+      # that already shipped.
+      tag:
+        description: 'Existing release tag to rebuild (e.g. v1.4.0); empty for a normal build'
+        required: false
+        default: ''
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # The tag is part of the group so a push to main cannot cancel a rebuild
+  # dispatched from main.
+  group: ${{ github.workflow }}-${{ inputs.tag || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -28,7 +44,12 @@ jobs:
       fail-fast: false # a Windows failure should not hide a working mac build
       matrix:
         include:
-          - os: macos-14
+          # GitHub retires runner images on a schedule and the job is then
+          # cancelled with no steps run ("The configuration
+          # 'macos-14-arm64-us-default' is not supported"), which is how v1.4.0
+          # shipped without mac installers. If the mac job shows cancelled in
+          # about a second, check the image before anything else.
+          - os: macos-15
             platform: mac
           - os: windows-2022
             platform: win
@@ -45,8 +66,21 @@ jobs:
       contents: write
 
     steps:
+      # Fail before spending runner minutes on a typo or on a tag that has no
+      # release to fill in.
+      - name: Check the rebuild tag
+        if: inputs.tag != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::'$TAG' is not a vX.Y.Z tag"; exit 1; }
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null || { echo "::error::no GitHub release for $TAG"; exit 1; }
+
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.tag }} # empty → the triggering ref, as before
           fetch-depth: 0 # build.mjs stamps the commit
 
       - uses: actions/setup-node@v4
@@ -193,6 +227,32 @@ jobs:
           echo "smoke-testing $BIN"
           [ -e "$BIN" ] || { echo "::error::packaged binary not found at $BIN"; ls -R release | head -40; exit 1; }
           "$BIN"
+
+      # A rebuild built with --publish never (github.ref is main), so upload
+      # here instead. Only missing assets: one that is already on the release
+      # has been downloaded and auto-updated against, and its latest*.yml
+      # hashes describe that exact file. electron-builder's own publish is no
+      # good for this either — it may refuse a release that was published
+      # rather than drafted.
+      - name: Upload missing assets to the release
+        if: inputs.tag != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -e
+          have=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          shopt -s nullglob
+          for f in desktop/release/*.dmg desktop/release/*.exe desktop/release/*.blockmap desktop/release/latest*.yml; do
+            name=$(basename "$f")
+            if grep -qxF "$name" <<<"$have"; then
+              echo "keep    $name (already on $TAG)"
+            else
+              echo "upload  $name"
+              gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY"
+            fi
+          done
 
       - uses: actions/upload-artifact@v4
         with:
