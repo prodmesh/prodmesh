@@ -3,11 +3,12 @@
 A living snapshot of what's live vs mock and what's next. Update this as things
 change — it's the fastest way for a cold context to know where the project stands.
 The long-term destination lives in [VISION.md](./VISION.md).
-Last updated: 2026-09-08 (v1.4.0-dev in progress).
+Last updated: 2026-11-09 (v1.4.0 released; v1.5 planned in [PLAN-1.5.md](./PLAN-1.5.md)).
 
-## v1.4.0-dev at a glance (unreleased)
+## v1.4.0 at a glance
 
-Analyzer depth, Companion depth, and the editor learning to place things.
+Analyzer depth, Companion depth, the editor learning to place things, and a
+show that starts itself.
 Outside contributions again from
 [@WorshipWarehouse](https://github.com/WorshipWarehouse) (#17, #32, #33, #35,
 #40), reviewed and merged here — three of them reworked on the contributor's
@@ -25,9 +26,23 @@ maintainer has.
 | **Third-party embeds** | Fenced behind `src/lib/embed.ts`: `safeEmbedUrl()` (https only — `new URL()` is a parser, not a check) and a shared sandbox. Closes the v1.3.0 gap below |
 | **Org migration** | The repo is `prodmesh/prodmesh`. `ghcr.io/jbeale/prodmesh:latest` is mirrored by hand at release time so installs predating the move keep updating |
 | **Desktop app** | Version-free artifact names, and a README download table |
+| **Show autostart** | Set directly ("Autostart service at"), and a **Scheduled time** option that starts each service time on the clock: no ProPresenter needed, 30-minute late grace, never twice. Services LIVE follows the show: we take control at start, advance it, and release it at the end only if our token holds it |
+| **User management** (#39, #43) | Existing accounts can be edited, not just created |
+| **Planning Center service types** (#21) | Picked from a dropdown instead of typing the type ID |
+| **ProPresenter** (#42, #36, #38) | Each slide fetches its own thumbnail, not the next slide's. The live-slide follow scrolls inside the widget, not the whole page. Run of Show controls fit a narrow card |
+| **Companion variables refresh** (#24) | One Refresh setting per widget, within a room budget of 8 reads a second |
+| **Companion reachability** | An unreachable Companion reads as *unknown*, not a guessed mode |
+| **Navigation** | Floating sidebar, centred rail, and an Admin panel of its own |
+| **Swallowed errors** (#41) | Fallbacks now log what they used to swallow. Autostart came first, because a programming error there used to disarm it silently. Look for "unexpected error" lines in Admin → Logs |
 
 ### Verified how
 
+- **Show autostart and Services LIVE** — run on site by the maintainer
+  every Sunday since 2026-09-13. The scheduled-time start has fired at real
+  service times for about two months, and `toggle_control` releases Services
+  LIVE when ProdMesh holds it. Confirmed 2026-11-09.
+- **ProPresenter thumbnails (#42)** — verified live on PP 21.4 and on the
+  church's 21.1.
 - **ProdMesh RTA** — probed live against a running analyzer on 2026-09-07/08:
   the frame contract, the calibrated band scale, and the widget drawing real
   signal on the maintainer's instance. Written up in
@@ -59,7 +74,9 @@ maintainer has.
 - **`server/setupApi.test.js` fails intermittently** under a full-suite run —
   three sightings across sessions, never reproduced in isolation (6+ clean runs
   after the last one). Isolation looks correct (own temp data dir, ephemeral
-  port), so the suspicion is timing under concurrent load.
+  port), so the suspicion is timing under concurrent load. Carried into v1.5
+  as #55, along with the rest of #41's tech debt (test structure, design
+  tokens, seed mechanisms).
 
 ## v1.3.0 at a glance
 
@@ -159,7 +176,7 @@ Notes:
 | Integration | Status |
 |---|---|
 | Bitfocus Companion (per room) | Live for Auditorium; Youth Room/Chapel mock pending real setup. Since 1.4.0-dev also: a variables widget, and an optional embedded **emulator surface** whose picker reads Companion's tRPC API (`surfaces.emulatorList`, probed live on Companion 4). Room Mode is optional per room. The surface is off by default because its presses skip our permission, lockout and audit path — Companion has no auth of its own |
-| **OBS Studio** (per room) | **Implemented, not verified.** Per-room host/port/password; read-only health widget over obs-websocket. Nobody here has run it against a real OBS — it is exercised only against its unconfigured and error paths, and it is *not* currently labelled Beta though the rule says it should be |
+| **OBS Studio** (per room) | **Beta — implemented, not verified.** Per-room host/port/password; read-only health widget over obs-websocket. Nobody here has run it against a real OBS — it is exercised only against its unconfigured and error paths. Labelled Beta since 2026-09-11 |
 | **ProdMesh RTA** | **Live** — the free analyzer (`github.com/prodmesh/prodmesh-rta`) as an analysis source, plus a 1/3-octave spectrum widget since 1.4.0-dev. Frame contract probed live 2026-09-07/08: bands arrive already calibrated to dB SPL (31 bands summed to 50.1 dB against a reported LAF of 50.3), `cal_db` is the SPL at 0 dBFS so it doubles as the plot ceiling, and program (loudness) mode reports `cal_db: 0` with dBFS bands. Streams at a rate configured in the app — ~5 Hz on the instance tested, not the 20 Hz the widget was designed around |
 | Planning Center **Services** | **Live** — plan display + order of service, PAT in `server/data/secrets.json` |
 | Planning Center **Calendar** | **Built mock-first, awaiting the product grant.** `integrations/pcCalendar.js` + `routes/calendar.js` follow the Services pattern (auth → fetch → normalize → cache) against the same PAT — Calendar just has to be enabled for it. Field names marked ⓘ in the source are unconfirmed until real data arrives, and room matching uses the instance `location` string pending real `resource_bookings`. High value: the authoritative event→room→time source (see below) |
