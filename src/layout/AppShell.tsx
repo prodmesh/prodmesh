@@ -17,6 +17,7 @@ import {
   Settings2,
   Plug,
   Users,
+  MessageSquare,
   Home as HomeIcon,
   PanelLeftClose,
   PanelLeftOpen,
@@ -30,6 +31,8 @@ import { AssistanceDialog } from '../components/AssistanceDialog';
 import { ChangePinDialog } from '../components/ChangePinDialog';
 import { ALL_CAMPUSES, CampusContext } from './campus';
 import { ChurchContext, EMPTY_CHURCH } from './church';
+import { MessageNotifications } from '../components/MessageNotifications';
+import { useSundayInbox } from '../lib/sunday';
 import { IdentityContext } from '../lib/identity';
 import type { Church } from '../types';
 import { Clock } from '../components/Clock';
@@ -39,6 +42,7 @@ import logoUrl from '../assets/prodmesh-logo.svg';
 
 const NAV = [
   { to: '/', label: 'Home', icon: HomeIcon, end: true },
+  { to: '/messages', label: 'Messages', icon: MessageSquare },
   { to: '/services', label: 'Services', icon: CalendarDays },
   { to: '/calendar', label: 'Calendar', icon: CalendarRange },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
@@ -99,6 +103,8 @@ export function AppShell() {
   const [church, setChurch] = useState<Church>(EMPTY_CHURCH);
   const [logoStamp, setLogoStamp] = useState<number | null>(null);
   const [identity, setIdentity] = useState<AuthStatus | null>(null);
+  const sunday = useSundayInbox(identity);
+  const sundayUnread = (sunday.data?.threads ?? []).reduce((n, t) => n + t.unread, 0);
   const [identityOpen, setIdentityOpen] = useState(false);
   // The permission a refused action was asking for, so the dialog can say what
   // is missing rather than showing a bare login form to someone already logged
@@ -353,6 +359,7 @@ export function AppShell() {
               >
                 <Glyph icon={icon} />
                 <span className="sidebar__label rail-hide">{label}</span>
+                {to === '/messages' && sundayUnread > 0 && <span className="sunday-nav-badge" aria-label={`${sundayUnread} unread messages`}>{sundayUnread > 99 ? '99+' : sundayUnread}</span>}
               </NavLink>
             ))}
           </nav>
@@ -469,6 +476,7 @@ export function AppShell() {
           <AssistanceBar enabled={Boolean(identity?.station)} />
           {offLimits ? <Navigate to={lockedPrefix!} replace /> : <Outlet />}
         </main>
+        <MessageNotifications key={identity?.user?.id ?? 'anonymous'} userId={identity?.authenticated ? identity.user?.id : undefined} threads={sunday.data?.threads} />
         {assistOpen && <AssistanceDialog onClose={() => setAssistOpen(false)} />}
         {pinOpen && (
           <ChangePinDialog

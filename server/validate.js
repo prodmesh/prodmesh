@@ -120,12 +120,18 @@ export function validateChurch(input) {
     if (site.status !== 'active' && site.status !== 'disabled') {
       throw new Error(`Site "${id}" status must be active or disabled`);
     }
+    if (site.timezone !== undefined) {
+      if (typeof site.timezone !== 'string' || site.timezone.length > 100) throw new Error('Invalid site timezone');
+      try { new Intl.DateTimeFormat('en', { timeZone: site.timezone }); }
+      catch { throw new Error('Invalid site timezone'); }
+    }
     const auditoriums = Array.isArray(site.auditoriums) ? site.auditoriums : [];
     if (auditoriums.length > 20) throw new Error(`Site "${id}" has too many rooms (max 20)`);
     return {
       id,
       name: text(site.name, `Site "${id}" name`, 60, { required: true }),
       status: site.status,
+      ...(site.timezone !== undefined ? { timezone: site.timezone } : {}),
       auditoriums: auditoriums.map((room) => {
         const roomId = claim(room?.id, 'Room');
         const tiles = Array.isArray(room.tiles) ? room.tiles : [];

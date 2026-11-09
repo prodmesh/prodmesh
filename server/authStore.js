@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { getDb } from './db.js';
 
 export const PERMISSIONS = [
+  ['messages.manage', 'Manage messages', 'Manage Sunday Team membership and archive or lock conversations.'],
   ['checklists.complete', 'Complete checklist items', 'Check or reopen startup checklist items.'],
   ['checklists.templates.edit', 'Edit checklist templates', 'Create and change checklist templates.'],
   ['rooms.mode.change', 'Change room modes', 'Change the active production mode for a room.'],

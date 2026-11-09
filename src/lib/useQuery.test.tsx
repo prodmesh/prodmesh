@@ -107,3 +107,13 @@ describe('useQuery', () => {
     expect(fetcher).toHaveBeenCalledTimes(2); // no orphaned interval
   });
 });
+
+it('a realtime invalidation during an in-flight fetch triggers a follow-up fetch', async () => {
+  let resolve!: (value: string) => void;
+  const fetcher = vi.fn().mockImplementationOnce(() => new Promise<string>(r => { resolve = r; })).mockResolvedValue('newest');
+  render(<Probe id="a" fetcher={fetcher} />);
+  act(() => invalidate('k'));
+  await act(async () => { resolve('older snapshot'); });
+  await waitFor(() => expect(screen.getByTestId('a')).toHaveTextContent('newest'));
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});

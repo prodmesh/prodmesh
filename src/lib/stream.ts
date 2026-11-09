@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { getStreamTicket } from '../api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  useTopic — live server values over ONE EventSource per browser tab.
@@ -24,6 +25,8 @@ const listeners = new Map<string, Set<Listener>>();
 const values = new Map<string, unknown>();
 
 let source: EventSource | null = null;
+let generation = 0;
+let ticketRetryMs = 1000;
 let connected = ''; // the topic list `source` was opened with
 let pending: ReturnType<typeof setTimeout> | null = null;
 let reconnect: ReturnType<typeof setTimeout> | null = null;
@@ -42,6 +45,7 @@ function wanted() {
 }
 
 function connect() {
+  const attempt = ++generation;
   pending = null;
   if (reconnect) { clearTimeout(reconnect); reconnect = null; }
   const topics = wanted();
@@ -52,25 +56,36 @@ function connect() {
   connected = topics;
   if (!topics) return;
 
-  const es = new EventSource(`/api/stream?topics=${encodeURIComponent(topics)}`);
-  source = es;
-  es.addEventListener('msg', (e) => {
-    try {
-      const { topic, data } = JSON.parse((e as MessageEvent).data);
-      values.set(topic, data);
-      notify(topic);
-    } catch {
-      /* a malformed frame must not tear down the connection */
-    }
-  });
-  // Native EventSource retries, but some browsers leave a dead LAN stream in
-  // CONNECTING indefinitely after a PP/server outage. Own a bounded reconnect
-  // so the current topic snapshot is re-requested without an operator refresh.
-  es.onerror = () => {
-    if (source !== es || reconnect) return;
-    es.close(); source = null; connected = '';
-    reconnect = setTimeout(() => { reconnect = null; connect(); }, 1000);
+  const open = (ticket?: string, streamTopics = topics) => {
+    if (attempt !== generation || !streamTopics) return;
+    const es = new EventSource(`/api/stream?topics=${encodeURIComponent(streamTopics)}${ticket ? `&ticket=${encodeURIComponent(ticket)}` : ''}`);
+    source = es;
+    es.addEventListener('msg', (e) => {
+      if (source !== es) return;
+      try {
+        const { topic, data } = JSON.parse((e as MessageEvent).data);
+        values.set(topic, data);
+        notify(topic);
+      } catch {
+        /* a malformed frame must not tear down the connection */
+      }
+    });
+    // Own reconnects so private streams always receive a fresh one-use ticket.
+    es.onerror = () => {
+      if (source !== es || reconnect) return;
+      es.close(); source = null; connected = '';
+      reconnect = setTimeout(() => { reconnect = null; connect(); }, 1000);
+    };
   };
+  if (topics.split(',').some(t => t.startsWith('sunday:'))) {
+    getStreamTicket().then(({ ticket }) => { ticketRetryMs = 1000; open(ticket); }).catch(() => {
+      if (attempt !== generation) return;
+      // Authentication outages must not take the anonymous room widgets down.
+      open(undefined, topics.split(',').filter(t => !t.startsWith('sunday:')).join(','));
+      ticketRetryMs = Math.min(ticketRetryMs * 2, 30_000);
+      reconnect = setTimeout(() => { reconnect = null; connected = ''; connect(); }, ticketRetryMs);
+    });
+  } else open();
 }
 
 function schedule() {
@@ -95,6 +110,14 @@ function release(topic: string) {
   // flash empty while the reconnect and its snapshot land.
   schedule();
 }
+
+if (typeof window !== 'undefined') window.addEventListener('prodmesh:auth-changed', () => {
+  generation += 1;
+  ticketRetryMs = 1000;
+  source?.close(); source = null; connected = '';
+  for (const topic of values.keys()) if (topic.startsWith('sunday:')) { values.delete(topic); notify(topic); }
+  schedule();
+});
 
 /**
  * Subscribe to one server topic, e.g. `room:north-main:spl`.
@@ -151,6 +174,8 @@ export const integrationTopic = (id: 'resi' | 'restream') => `integration:${id}`
 
 /** Test hook: drop the connection and every cached value. */
 export function resetStream() {
+  generation += 1;
+  ticketRetryMs = 1000;
   if (pending) clearTimeout(pending);
   pending = null;
   if (reconnect) clearTimeout(reconnect);
