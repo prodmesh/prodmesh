@@ -225,7 +225,7 @@ router.post('/api/rooms/:id/event/:planId/checklist/:itemId', requirePermission(
       if (!mode) return res.status(400).json({ error: `Unknown mode '${item.action.mode}'` });
       // Lockouts apply here too — a checklist can't sidestep a protected window.
       const lockError = modeLockError(req, room.id, mode.id, req.body?.overridePin);
-      if (lockError) return res.status(403).json(lockError);
+      if (lockError) return res.status(lockError.status).json(lockError.body);
       await applyMode(room, mode); // throws → 502 below, item stays unchecked
       bump(room.id); // an automated checklist item moves the mode; screens follow
     }

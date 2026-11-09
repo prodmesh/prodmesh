@@ -38,7 +38,7 @@ router.post('/api/rooms/:id/mode', requirePermission('rooms.mode.change'), async
 
   // Enforce lockout: a locked mode in a protected window needs the Override PIN.
   const lockError = modeLockError(req, room.id, mode.id, req.body?.overridePin);
-  if (lockError) return res.status(403).json(lockError);
+  if (lockError) return res.status(lockError.status).json(lockError.body);
 
   try {
     const result = await applyMode(room, mode);

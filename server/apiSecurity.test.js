@@ -598,3 +598,35 @@ test('a group cannot be given permissions its editor does not hold', async () =>
   const adminGroup = auth.listDirectory().groups.find((x) => x.systemKey === 'admin');
   assert.equal((await put(adminGroup.id, { name: 'Nope' })).status, 400);
 });
+
+// Last in the file on purpose: it leaves 127.0.0.1's override counter locked
+// for a minute, and every test here shares that address.
+test('override PIN guesses are throttled like any other credential', async () => {
+  settings.setPins({ admin: 'admin1234', override: '9999' });
+  settings.setSchedules({
+    [ROOM]: [{ id: 'w', label: 'Always', days: [0, 1, 2, 3, 4, 5, 6], start: '00:00', end: '23:59', lock: ['sunday'] }],
+  });
+  const mode = (overridePin) => post(`/api/rooms/${ROOM}/mode`, { mode: 'sunday', overridePin }, operatorToken, station.token);
+  try {
+    // Asking without a PIN is how the UI learns one is needed, not a guess,
+    // so any number of those must not lock anybody out.
+    for (let i = 0; i < 8; i++) assert.equal((await mode(undefined)).status, 403);
+    assert.equal((await mode('9999')).status, 200, 'PIN-less asks counted as guesses');
+
+    // Five wrong PINs, then the lock holds even against the right one: a
+    // throttle that a correct guess could pass would only slow the attacker
+    // down until they hit it.
+    for (let i = 0; i < 5; i++) {
+      const res = await mode(String(1000 + i));
+      assert.equal(res.status, 403);
+      assert.equal((await res.json()).error, 'override_required');
+    }
+    const locked = await mode('9999');
+    assert.equal(locked.status, 429);
+    const body = await locked.json();
+    assert.equal(body.error, 'temporarily_locked');
+    assert.ok(body.retryAfter > 0);
+  } finally {
+    settings.setSchedules({});
+  }
+});
