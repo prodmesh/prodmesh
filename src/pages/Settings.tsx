@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDown, ArrowUp, CircleUser, MonitorCog, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, CircleUser, Key, MonitorCog, Trash2, X } from 'lucide-react';
 import { Checkbox } from '../components/Checkbox';
 import { HelpTip } from '../components/HelpTip';
 import { EditDialog } from '../components/form/EditDialog';
@@ -39,6 +39,11 @@ import {
   getStations,
   updateStation,
   revokeStation,
+  getServiceTokens,
+  createServiceToken,
+  revokeServiceToken,
+  type ServiceToken,
+  type GrantablePermission,
   getServerLog,
   getAuditLog,
   getConfig,
@@ -71,7 +76,7 @@ import {
 import type { Church, Site } from '../types';
 import logoUrl from '../assets/prodmesh-logo.svg';
 type Phase = 'loading' | 'setup' | 'login' | 'admin';
-type AdminSection = 'general' | 'integrations' | 'campuses' | 'room' | 'users' | 'stations' | 'checklists' | 'logs';
+type AdminSection = 'general' | 'integrations' | 'campuses' | 'room' | 'users' | 'stations' | 'tokens' | 'checklists' | 'logs';
 
 export function Settings({ section = 'general' }: { section?: AdminSection }) {
   const [phase, setPhase] = useState<Phase>('loading');
@@ -92,6 +97,7 @@ export function Settings({ section = 'general' }: { section?: AdminSection }) {
     integrations: 'Integrations',
     users: 'Users & access',
     stations: 'Stations',
+    tokens: 'API tokens',
     campuses: 'Campuses',
     room: 'Room configuration',
     checklists: 'Checklists',
@@ -179,6 +185,7 @@ function AdminPanels({ section }: { section: AdminSection }) {
       {section === 'room' && <RoomConfigPanel />}
       {section === 'users' && <UserManagementPanel />}
       {section === 'stations' && <StationsPanel />}
+      {section === 'tokens' && <TokensPanel />}
       {section === 'checklists' && <ChecklistsPanel />}
       {section === 'logs' && <LogsPanel />}
     </>
@@ -769,6 +776,189 @@ function StationEditor({
       <div className="stations__actions">
         <button className="btn btn--primary btn--sm" disabled={!dirty || busy || name.trim().length < 2} onClick={save}>Save</button>
         <button className="btn btn--ghost btn--sm stations__revoke" onClick={onRevoke}><Trash2 size={13} /> Revoke</button>
+      </div>
+    </div>
+  );
+}
+
+// ── API tokens (ADR 0013): credentials for apps, not people ───────────────────
+export function TokensPanel() {
+  const [tokens, setTokens] = useState<ServiceToken[] | null>(null);
+  const [grantable, setGrantable] = useState<GrantablePermission[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [revealed, setRevealed] = useState<{ token: string; name: string } | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<ServiceToken | null>(null);
+  const [msg, setMsg] = useState<Feedback>(null);
+
+  const refresh = useCallback(() => getServiceTokens()
+    .then((result) => { setTokens(result.tokens); setGrantable(result.grantable); })
+    .catch((err) => setMsg(fail(err))), []);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const labelOf = (id: string) => grantable.find((p) => p.id === id)?.label ?? id;
+
+  const revoke = async () => {
+    if (!revokeTarget) return;
+    try {
+      await revokeServiceToken(revokeTarget.id);
+      setMsg(ok(`Revoked ${revokeTarget.name}.`));
+    } catch (err) {
+      setMsg(fail(err));
+    }
+    setRevokeTarget(null);
+    refresh();
+  };
+
+  if (!tokens) return msg ? <Msg msg={msg} /> : <p className="settings__muted">Loading…</p>;
+
+  return (
+    <section className="panel users">
+      <div>
+        <p className="section-label">App access</p>
+        <h2 className="panel__title">Issued tokens
+          <HelpTip text="A token lets another app — a Companion button, a stream deck, a script — start and end shows, change room modes or tick checklist items over the API. It can do only what you tick, never anything in Admin, and it still respects schedule lockouts. Send it as an Authorization: Bearer header." />
+        </h2>
+      </div>
+
+      <div className="users__toolbar">
+        <button className="btn btn--primary" onClick={() => setCreating(true)}>New token</button>
+      </div>
+
+      <div className="users__list">
+        {tokens.length === 0 && <p className="settings__muted">No tokens yet.</p>}
+        {tokens.map((token) => (
+          <div className={`users__row users__row--group${token.revokedAt ? ' users__row--revoked' : ''}`} key={token.id}>
+            <div className="users__identity">
+              <span className="users__avatar"><Key size={20} /></span>
+              <span><strong>{token.name}</strong><small>
+                <span className="mono">{token.hint}…</span>
+                {token.revokedAt
+                  ? ` · revoked ${relativeTime(token.revokedAt)}`
+                  : ` · ${token.lastUsedAt ? `used ${relativeTime(token.lastUsedAt)}` : 'never used'}`}
+              </small></span>
+            </div>
+            <p className="users__summary" title={token.createdBy ? `Created by ${token.createdBy}` : undefined}>
+              {token.permissions.map(labelOf).join(' · ')}
+            </p>
+            <div className="users__actions">
+              {!token.revokedAt && (
+                <button className="btn btn--ghost btn--sm stations__revoke" onClick={() => setRevokeTarget(token)}>
+                  <Trash2 size={13} /> Revoke
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      <Msg msg={msg} />
+
+      {creating && (
+        <CreateTokenDialog
+          grantable={grantable}
+          onClose={() => setCreating(false)}
+          onCreated={(token, name) => { setRevealed({ token, name }); refresh(); }}
+        />
+      )}
+      {revealed && <TokenRevealDialog {...revealed} onClose={() => setRevealed(null)} />}
+
+      {revokeTarget && (
+        <div className="confirm" role="dialog" aria-modal="true" aria-labelledby="revoke-token-title">
+          <div className="confirm__card">
+            <p className="eyebrow">Revoke token</p>
+            <p className="confirm__text" id="revoke-token-title">
+              Revoke <strong>{revokeTarget.name}</strong>? Anything using it stops working immediately. This cannot be undone.
+            </p>
+            <div className="confirm__buttons">
+              <button className="confirm__cancel" onClick={() => setRevokeTarget(null)}>Cancel</button>
+              <button className="confirm__ok" onClick={revoke}>Revoke token</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CreateTokenDialog({ grantable, onClose, onCreated }: {
+  grantable: GrantablePermission[];
+  onClose: () => void;
+  onCreated: (token: string, name: string) => void;
+}) {
+  const f = useDraft({ name: '', permissions: [] as string[] }, async (draft) => {
+    const created = await createServiceToken({ name: draft.name.trim(), permissions: draft.permissions });
+    onCreated(created.token, created.serviceToken.name);
+    return draft;
+  });
+  const { draft } = f;
+
+  return (
+    <EditDialog
+      title="New API token"
+      help="Name it after what will hold it, so the audit log and this list say which app did what. Tick only what that app needs."
+      form={f}
+      onClose={onClose}
+      saveLabel="Create token"
+    >
+      <FormRow>
+        <Field label="Name" width="grow">
+          <input className="field" autoFocus placeholder="e.g. Companion — Booth"
+            value={draft.name} onChange={(e) => f.patch({ name: e.target.value })} />
+        </Field>
+      </FormRow>
+      <div className="users__checks">
+        {grantable.map((permission) => (
+          <Checkbox key={permission.id} label={permission.label} title={permission.description}
+            checked={draft.permissions.includes(permission.id)}
+            onChange={() => f.patch({ permissions: toggle(draft.permissions, permission.id) })} />
+        ))}
+      </div>
+    </EditDialog>
+  );
+}
+
+/** The one time a token's plaintext is on screen. */
+function TokenRevealDialog({ token, name, onClose }: { token: string; name: string; onClose: () => void }) {
+  const field = useRef<HTMLTextAreaElement>(null);
+  const [copyLabel, setCopyLabel] = useState('Copy');
+
+  // navigator.clipboard exists only in a secure context, and a booth opens
+  // ProdMesh over plain http on a LAN address — so on most installs it is
+  // undefined, and where it exists a browser may still refuse it. The legacy
+  // copy command is the fallback; it copies the current selection, which is
+  // why the field is selected first. If both fail the token is left selected
+  // and the button says what to press.
+  const copy = async () => {
+    field.current?.select();
+    let copied = false;
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(token);
+        copied = true;
+      }
+    } catch {
+      /* refused: fall through to the legacy command */
+    }
+    if (!copied) {
+      try { copied = document.execCommand('copy'); } catch { copied = false; }
+    }
+    setCopyLabel(copied ? 'Copied' : 'Press ⌘/Ctrl+C');
+  };
+
+  return (
+    <div className="confirm" role="dialog" aria-modal="true" aria-labelledby="token-reveal-title">
+      <div className="confirm__card">
+        <p className="eyebrow">{name}</p>
+        <p className="confirm__text" id="token-reveal-title">
+          Copy this token now. It won’t be shown again.
+        </p>
+        {/* A textarea so the whole token is visible to check by eye: in a
+            single-line input it scrolled, and the end was hidden. */}
+        <textarea ref={field} className="field mono tokenreveal__value" readOnly rows={2} value={token}
+          aria-label="Token" spellCheck={false} onFocus={(e) => e.currentTarget.select()} />
+        <div className="confirm__buttons">
+          <button className="confirm__cancel" onClick={copy}>{copyLabel}</button>
+          <button className="confirm__ok" onClick={onClose}>Done</button>
+        </div>
       </div>
     </div>
   );
@@ -1553,8 +1743,12 @@ function AuditTrail() {
                   <td className="audittrail__when" title={new Date(entry.ts).toLocaleString()}>
                     {relativeTime(entry.ts)}
                   </td>
-                  <td>{entry.userName ?? <span className="settings__muted">anonymous</span>}</td>
-                  <td>{entry.stationName ?? <span className="settings__muted">—</span>}</td>
+                  <td>{entry.userName ?? <span className="settings__muted">{entry.tokenName ? 'app' : 'anonymous'}</span>}</td>
+                  {/* A token replaces a station (ADR 0013), so it is named in the
+                      same column: this is where the action came from. */}
+                  <td>{entry.stationName
+                    ?? (entry.tokenName ? <>{entry.tokenName} <span className="settings__muted">(token)</span></> : null)
+                    ?? <span className="settings__muted">—</span>}</td>
                   <td className="audittrail__action">
                     {entry.action}
                     {(entry.roomId || entry.resourceId) && (

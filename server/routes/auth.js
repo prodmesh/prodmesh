@@ -7,6 +7,7 @@ import * as settings from '../settings.js';
 import * as pco from '../integrations/planningCenter.js';
 import * as auth from '../authStore.js';
 import { bearer, requirePermission, auditSuccess } from '../httpAuth.js';
+import { sourceIp, recordFailure, clearFailures, refuseIfLocked } from '../credentialThrottle.js';
 
 const router = express.Router();
 
@@ -99,57 +100,9 @@ router.delete('/api/stations/:stationId', requirePermission('stations.manage'), 
   }
 });
 
-// ── Credential throttling ────────────────────────────────────────────────────
-//  Keyed on the SOURCE IP, never on station id. Stations are minted by an
-//  unauthenticated endpoint with no cap, so a station-keyed counter never
-//  advances — reproduced: 20 wrong PINs with a fresh station each time drew
-//  zero lockouts, then the correct PIN logged in normally.
-//
-//  Checked BEFORE any hashing. scrypt is deliberately expensive (~24ms) and
-//  synchronous, so an unthrottled guess loop also stalls the event loop —
-//  every SSE stream, the ProPresenter poller, SPL capture — mid-service.
-//  Refusing early bounds the number of hashes an attacker can provoke.
-
-const FAILURE_CAP = 5000; // the counter map must not itself become a leak
-const failures = new Map(); // key → { count, lockedUntil }
-
-const sourceIp = (req) => req.ip || req.socket?.remoteAddress || 'unknown';
-
-/**
- * Escalating lockout: brief for fat fingers, punishing for a guess loop.
- * `after` differs per counter — a shared booth must not lock everyone out
- * because one volunteer mistyped five times, so the broad per-IP counter that
- * exists to catch username SPRAYING sits much higher than the per-account one.
- */
-function lockoutMs(count, after) {
-  if (count < after) return 0;
-  if (count < after * 2) return 60_000;
-  if (count < after * 4) return 15 * 60_000;
-  return 60 * 60_000;
-}
-
-/** Milliseconds remaining on the longest active lock across `keys`, or 0. */
-function lockedFor(keys) {
-  const now = Date.now();
-  return Math.max(0, ...keys.map(({ k }) => (failures.get(k)?.lockedUntil ?? 0) - now));
-}
-
-function recordFailure(keys) {
-  if (failures.size >= FAILURE_CAP) {
-    const now = Date.now();
-    for (const [k, v] of failures) {
-      if ((v.lockedUntil ?? 0) <= now) failures.delete(k);
-      if (failures.size < FAILURE_CAP / 2) break;
-    }
-  }
-  for (const { k, after } of keys) {
-    const count = (failures.get(k)?.count ?? 0) + 1;
-    const ms = lockoutMs(count, after);
-    failures.set(k, { count, lockedUntil: ms ? Date.now() + ms : 0 });
-  }
-}
-
-const clearFailures = (keys) => keys.forEach(({ k }) => failures.delete(k));
+// Credential throttling lives in ../credentialThrottle.js, shared with the
+// service-token door in resolveIdentity — see the header there for why it is
+// keyed on IP and checked before any hashing.
 
 router.post('/api/auth/login', (req, res) => {
   if (!req.station) return res.status(400).json({ error: 'station_required' });
@@ -160,8 +113,7 @@ router.post('/api/auth/login', (req, res) => {
     { k: `u:${sourceIp(req)}:${username}`, after: 5 },
     { k: `ip:${sourceIp(req)}`, after: 50 }, // spray guard only — see lockoutMs
   ];
-  const retryAfter = lockedFor(keys);
-  if (retryAfter > 0) return res.status(429).json({ error: 'temporarily_locked', retryAfter });
+  if (refuseIfLocked(res, keys)) return;
 
   // @admin is an account like any other here — the reason this reconciliation
   // exists is that it was not, and typing the PIN people actually know into
@@ -192,8 +144,7 @@ router.post('/api/auth/login', (req, res) => {
 // about four minutes.
 router.post('/api/auth/admin', (req, res) => {
   const keys = [{ k: `admin:${sourceIp(req)}`, after: 5 }];
-  const retryAfter = lockedFor(keys);
-  if (retryAfter > 0) return res.status(429).json({ error: 'temporarily_locked', retryAfter });
+  if (refuseIfLocked(res, keys)) return;
 
   // Kept in step here as well as at boot, so a PIN changed on another server
   // process — or edited into settings.json by an administrator who has been
@@ -217,6 +168,9 @@ router.post('/api/auth/admin', (req, res) => {
 
 router.post('/api/auth/logout', (req, res) => {
   const token = bearer(req);
+  // A token is not a session: there is nothing to sign out of, and it ends by
+  // being revoked in Admin. Nothing to audit either.
+  if (req.auth?.token) return res.json({ ok: true });
   if (req.auth) auth.audit({ userId: req.auth.user.id, stationId: req.station?.id, action: 'auth.logout', result: 'allowed' });
   auth.destroySession(token);
   res.json({ ok: true });
@@ -342,8 +296,7 @@ router.post('/api/auth/pin', (req, res) => {
   if (!userId) return res.status(401).json({ error: 'not_signed_in' });
 
   const keys = [{ k: `pin:${userId}`, after: 5 }];
-  const retryAfter = lockedFor(keys);
-  if (retryAfter > 0) return res.status(429).json({ error: 'temporarily_locked', retryAfter });
+  if (refuseIfLocked(res, keys)) return;
 
   if (!auth.pinMatches(userId, req.body?.currentPin)) {
     recordFailure(keys);

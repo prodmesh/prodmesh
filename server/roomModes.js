@@ -5,6 +5,7 @@ import { readCustomVariable, pressButton } from './companion.js';
 import { rawToModeId } from './roomModel.js';
 import * as settings from './settings.js';
 import * as auth from './authStore.js';
+import { sourceIp, lockedFor, recordFailure, clearFailures } from './credentialThrottle.js';
 
 // In-memory state for simulated rooms only — a room with no Companion (a demo,
 // a dev box, a room run on lockouts and checklists alone) still has a mode.
@@ -53,12 +54,32 @@ export async function applyMode(room, mode) {
 }
 
 // Enforce lockout: a locked mode in a protected window needs the Override PIN.
-// Returns null when the change is allowed, or the 403 response body when not.
+// Returns null when the change is allowed, or `{ status, body }` when not.
+//
+// The Override PIN is a credential like any other and goes through the shared
+// throttle. It went unthrottled for as long as only a signed-in operator could
+// reach it, which made it a quiet escalation: anyone holding rooms.mode.change
+// could guess a 4-digit PIN that grants rooms.mode.override_lock, and stall
+// the event loop with an scrypt per guess while doing it. A service token
+// carrying rooms.mode.change would make that an app's loop rather than a
+// person's, so it is closed before tokens exist.
+//
+// Asking without a PIN is not a guess — it is how the UI learns a PIN is
+// needed — so only a supplied, wrong PIN counts.
 export function modeLockError(req, roomId, modeId, overridePin) {
   if (!settings.isModeLocked(roomId, modeId)) return null;
-  const permitted = auth.hasPermission(req.auth, 'rooms.mode.override_lock');
-  if (!permitted && !settings.verifyOverride(overridePin)) {
-    return { error: 'override_required', mode: modeId };
+  if (auth.hasPermission(req.auth, 'rooms.mode.override_lock')) return null;
+
+  const refused = { status: 403, body: { error: 'override_required', mode: modeId } };
+  if (overridePin == null || overridePin === '') return refused;
+
+  const keys = [{ k: `override:${sourceIp(req)}`, after: 5 }];
+  const retryAfter = lockedFor(keys);
+  if (retryAfter > 0) return { status: 429, body: { error: 'temporarily_locked', retryAfter } };
+  if (!settings.verifyOverride(overridePin)) {
+    recordFailure(keys);
+    return refused;
   }
+  clearFailures(keys);
   return null;
 }

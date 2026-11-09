@@ -322,6 +322,45 @@ export async function updateStation(
   return station;
 }
 
+// ── Service tokens (ADR 0013) — credentials for apps, not people ──────────────
+
+export interface ServiceToken {
+  id: string;
+  name: string;
+  /** The first characters of the token, to tell tokens apart. */
+  hint: string;
+  permissions: string[];
+  createdBy: string | null;
+  createdAt: number;
+  lastUsedAt: number | null;
+  revokedAt: number | null;
+}
+
+export interface GrantablePermission { id: string; label: string; description: string }
+
+export const getServiceTokens = () =>
+  getJson<{ tokens: ServiceToken[]; grantable: GrantablePermission[] }>('/api/tokens');
+
+/** Returns the plaintext token. This is the only time it exists anywhere. */
+export async function createServiceToken(input: { name: string; permissions: string[] }) {
+  const res = await fetch('/api/tokens', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...requestHeaders() },
+    body: JSON.stringify(input),
+  });
+  await requireOk(res);
+  return res.json() as Promise<{ token: string; serviceToken: ServiceToken }>;
+}
+
+export async function revokeServiceToken(tokenId: string): Promise<ServiceToken> {
+  const res = await fetch(`/api/tokens/${encodeURIComponent(tokenId)}`, {
+    method: 'DELETE',
+    headers: requestHeaders(),
+  });
+  await requireOk(res);
+  return ((await res.json()) as { serviceToken: ServiceToken }).serviceToken;
+}
+
 export async function revokeStation(stationId: string): Promise<{ current: boolean }> {
   const res = await fetch(`/api/stations/${encodeURIComponent(stationId)}`, {
     method: 'DELETE',
@@ -941,6 +980,8 @@ export interface AuditEntry {
   userName: string | null;
   username: string | null;
   stationName: string | null;
+  /** Set when an app did this with a service token, in place of a station. */
+  tokenName: string | null;
   details: Record<string, unknown> | null;
 }
 

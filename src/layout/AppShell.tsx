@@ -10,6 +10,7 @@ import {
   CircleHelp,
   CircleUser,
   ClipboardList,
+  Key,
   MonitorCog,
   KeyRound,
   LockKeyhole,
@@ -62,6 +63,7 @@ const ADMIN_NAV = [
     items: [
       { to: '/admin/users', label: 'Users & access', icon: Users },
       { to: '/admin/stations', label: 'Stations', icon: MonitorCog },
+      { to: '/admin/tokens', label: 'API tokens', icon: Key },
     ],
   },
   {

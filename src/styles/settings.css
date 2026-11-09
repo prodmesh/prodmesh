@@ -1540,3 +1540,15 @@
   padding-top: 4px;
   border-top: 1px solid var(--border);
 }
+
+/* The one time a service token's plaintext is on screen: wide enough to show
+   it whole, monospace so it can be read back if it has to be typed. */
+.tokenreveal__value {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 4px 0 14px;
+  font-size: 0.8rem;
+  resize: none;
+  word-break: break-all;
+  line-height: 1.5;
+}

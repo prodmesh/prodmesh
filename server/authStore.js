@@ -455,19 +455,141 @@ export function listAudit(limit = 200) {
   return getDb().prepare(
     `SELECT a.id, a.ts, a.action, a.resource_type AS resourceType, a.resource_id AS resourceId,
             a.room_id AS roomId, a.plan_id AS planId, a.result, a.details,
-            u.display_name AS userName, u.username, s.name AS stationName
+            u.display_name AS userName, u.username, s.name AS stationName, t.name AS tokenName
        FROM audit_log a
        LEFT JOIN users u ON u.id = a.user_id
        LEFT JOIN stations s ON s.id = a.station_id
+       LEFT JOIN service_tokens t ON t.id = a.token_id
       ORDER BY a.ts DESC, a.id DESC LIMIT ?`,
   ).all(n).map((row) => ({ ...row, details: row.details ? JSON.parse(row.details) : null }));
 }
 
-export function audit({ userId = null, stationId = null, action, resourceType = null, resourceId = null, roomId = null, planId = null, result, details = null }) {
+export function audit({ userId = null, stationId = null, tokenId = null, action, resourceType = null, resourceId = null, roomId = null, planId = null, result, details = null }) {
   getDb().prepare(
-    `INSERT INTO audit_log (ts, user_id, station_id, action, resource_type, resource_id, room_id, plan_id, result, details)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(Date.now(), userId, stationId, action, resourceType, resourceId, roomId, planId, result, details ? JSON.stringify(details) : null);
+    `INSERT INTO audit_log (ts, user_id, station_id, token_id, action, resource_type, resource_id, room_id, plan_id, result, details)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(Date.now(), userId, stationId, tokenId, action, resourceType, resourceId, roomId, planId, result, details ? JSON.stringify(details) : null);
+}
+
+// ── Service tokens (ADR 0013) ────────────────────────────────────────────────
+
+/**
+ * What a token may be granted: the writes in the /api/v1 allowlist, and
+ * nothing else.
+ *
+ * ADR 0013 promises a token can do strictly less than an administrator, and
+ * this list is what keeps that true. Everything sharp stays off it on purpose:
+ * system.backup is a download of every credential in the building,
+ * system.update runs a script, users.manage can mint an administrator. Reads
+ * need no permission at all, so a token is for writes, and these are the
+ * writes an app has a reason to make.
+ */
+export const TOKEN_PERMISSIONS = [
+  'shows.operate',
+  'rooms.mode.change',
+  'rooms.mode.override_lock',
+  'checklists.complete',
+];
+
+export const TOKEN_PREFIX = 'pmt_';
+const TOKEN_NAME_MAX = 60;
+// A token's last-used time is for an administrator deciding whether it is
+// safe to revoke; to the minute is plenty, and a Companion poller should not
+// cost a database write per request.
+const LAST_USED_RESOLUTION = 60_000;
+
+function publicToken(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    hint: row.hint,
+    permissions: JSON.parse(row.permissions),
+    createdBy: row.created_by_name ?? null,
+    createdAt: row.created_at,
+    lastUsedAt: row.last_used_at ?? null,
+    revokedAt: row.revoked_at ?? null,
+  };
+}
+
+/**
+ * Mint a token. The plaintext is returned once, here, and never stored: a
+ * lost token is replaced, not recovered.
+ */
+export function createServiceToken({ name, permissions, createdBy = null }) {
+  const label = String(name ?? '').trim();
+  if (!label) throw new Error('A token needs a name');
+  if (label.length > TOKEN_NAME_MAX) throw new Error(`Keep the name under ${TOKEN_NAME_MAX} characters`);
+  const perms = [...new Set(Array.isArray(permissions) ? permissions : [])];
+  if (perms.length === 0) throw new Error('Choose at least one permission');
+  const unknown = perms.filter((p) => !TOKEN_PERMISSIONS.includes(p));
+  if (unknown.length) throw new Error(`A token cannot hold: ${unknown.join(', ')}`);
+
+  // base64url of 32 bytes: 43 characters, no padding, safe in a header and in
+  // a Companion text field without escaping.
+  const token = TOKEN_PREFIX + crypto.randomBytes(32).toString('base64url');
+  const row = {
+    id: id(),
+    name: label,
+    token_hash: digest(token),
+    hint: token.slice(0, TOKEN_PREFIX.length + 4),
+    permissions: JSON.stringify(perms.sort()),
+    created_by: createdBy,
+    created_at: Date.now(),
+  };
+  getDb().prepare(
+    `INSERT INTO service_tokens (id, name, token_hash, hint, permissions, created_by, created_at)
+     VALUES (@id, @name, @token_hash, @hint, @permissions, @created_by, @created_at)`,
+  ).run(row);
+  return { token, serviceToken: getServiceToken(row.id) };
+}
+
+export function getServiceToken(tokenId) {
+  const row = getDb().prepare(
+    `SELECT t.*, u.display_name AS created_by_name
+       FROM service_tokens t LEFT JOIN users u ON u.id = t.created_by
+      WHERE t.id = ?`,
+  ).get(tokenId);
+  return row ? publicToken(row) : null;
+}
+
+export function listServiceTokens() {
+  return getDb().prepare(
+    `SELECT t.*, u.display_name AS created_by_name
+       FROM service_tokens t LEFT JOIN users u ON u.id = t.created_by
+      ORDER BY t.revoked_at IS NOT NULL, t.created_at DESC`,
+  ).all().map(publicToken);
+}
+
+/** Revoke takes effect on the next request; nothing caches a resolved token. */
+export function revokeServiceToken(tokenId) {
+  const existing = getServiceToken(tokenId);
+  if (!existing) throw new Error('Unknown token');
+  if (!existing.revokedAt) {
+    getDb().prepare('UPDATE service_tokens SET revoked_at = ? WHERE id = ?').run(Date.now(), tokenId);
+  }
+  return getServiceToken(tokenId);
+}
+
+/**
+ * The identity a token request runs as, or null for an unknown or revoked
+ * token. Shaped like a session — `permissions` is what hasPermission reads —
+ * but with `token` where a session has `user`, and no user at all: an app is
+ * not a person, and audit rows say so.
+ */
+export function resolveServiceToken(token) {
+  if (!token || !token.startsWith(TOKEN_PREFIX)) return null;
+  const row = getDb().prepare(
+    'SELECT * FROM service_tokens WHERE token_hash = ? AND revoked_at IS NULL',
+  ).get(digest(token));
+  if (!row) return null;
+  const now = Date.now();
+  if (!row.last_used_at || now - row.last_used_at >= LAST_USED_RESOLUTION) {
+    getDb().prepare('UPDATE service_tokens SET last_used_at = ? WHERE id = ?').run(now, row.id);
+  }
+  // Re-filtered on every read, so narrowing TOKEN_PERMISSIONS in a later
+  // release takes effect on tokens already issued rather than only on new ones.
+  const permissions = JSON.parse(row.permissions).filter((p) => TOKEN_PERMISSIONS.includes(p));
+  return { user: null, token: { id: row.id, name: row.name }, permissions };
 }
 
 initialize();

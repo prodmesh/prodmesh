@@ -132,6 +132,10 @@ export function RoomStatus() {
     } catch (err) {
       if (err instanceof OverrideRequiredError) {
         setPinError('Incorrect override PIN.');
+      } else if (err instanceof Error && err.message === 'temporarily_locked') {
+        // Five wrong override PINs from this address lock it out for a while
+        // (roomModes.js), the same as a login.
+        setPinError('Too many attempts. Try again in a few minutes.');
       } else {
         setPinError('Something went wrong — try again.');
       }

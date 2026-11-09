@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { IdentityContext } from '../lib/identity';
-import { CampusesPanel, LogsPanel, RoomConfigPanel, StationsPanel, SystemPanel, UserManagementPanel } from './Settings';
+import { CampusesPanel, LogsPanel, RoomConfigPanel, StationsPanel, SystemPanel, TokensPanel, UserManagementPanel } from './Settings';
 
 const api = vi.hoisted(() => ({
   getVersion: vi.fn(),
@@ -20,6 +20,9 @@ const api = vi.hoisted(() => ({
   getViews: vi.fn(),
   updateStation: vi.fn(),
   revokeStation: vi.fn(),
+  getServiceTokens: vi.fn(),
+  createServiceToken: vi.fn(),
+  revokeServiceToken: vi.fn(),
   getServerLog: vi.fn(),
   getAuditLog: vi.fn(),
   getConfig: vi.fn(),
@@ -241,6 +244,64 @@ describe('Stations', () => {
     expect(screen.getByRole('dialog', { name: /Unregister FOH – Producer/ })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Revoke station' }));
     expect(api.revokeStation).toHaveBeenCalledWith('station-1');
+  });
+});
+
+describe('API tokens', () => {
+  const grantable = [
+    { id: 'shows.operate', label: 'Operate shows', description: 'Start, end, and manually follow a show.' },
+    { id: 'rooms.mode.change', label: 'Change room modes', description: 'Change the active production mode for a room.' },
+  ];
+  const booth = {
+    id: 'tok-1', name: 'Companion — Booth', hint: 'pmt_Ab3x', permissions: ['shows.operate'],
+    createdBy: 'System Administrator', createdAt: Date.now() - 86_400_000, lastUsedAt: null, revokedAt: null,
+  };
+
+  beforeEach(() => {
+    api.getServiceTokens.mockResolvedValue({ tokens: [booth], grantable });
+    api.createServiceToken.mockResolvedValue({
+      token: 'pmt_secretsecretsecretsecretsecretsecretsecre',
+      serviceToken: { ...booth, id: 'tok-2', name: 'Stream Deck' },
+    });
+    api.revokeServiceToken.mockResolvedValue({ ...booth, revokedAt: Date.now() });
+  });
+
+  it('lists tokens by name, hint and what they may do, never the token itself', async () => {
+    render(<TokensPanel />);
+    expect(await screen.findByText('Companion — Booth')).toBeInTheDocument();
+    expect(screen.getByText('pmt_Ab3x…')).toBeInTheDocument();
+    expect(screen.getByText('Operate shows')).toBeInTheDocument();
+    expect(screen.getByText(/never used/)).toBeInTheDocument();
+  });
+
+  it('creates a token from the grantable set and shows it exactly once', async () => {
+    const user = userEvent.setup();
+    render(<TokensPanel />);
+    await user.click(await screen.findByRole('button', { name: 'New token' }));
+
+    const dialog = within(document.querySelector('.editdlg') as HTMLElement);
+    await user.type(dialog.getByRole('textbox'), 'Stream Deck');
+    // Only what the server says a token may hold is offered.
+    expect(dialog.getAllByRole('checkbox')).toHaveLength(2);
+    await user.click(dialog.getByLabelText('Change room modes'));
+    await user.click(dialog.getByRole('button', { name: 'Create token' }));
+    expect(api.createServiceToken).toHaveBeenCalledWith({ name: 'Stream Deck', permissions: ['rooms.mode.change'] });
+
+    const reveal = await screen.findByRole('dialog', { name: /won’t be shown again/ });
+    expect(within(reveal).getByLabelText('Token')).toHaveValue('pmt_secretsecretsecretsecretsecretsecretsecre');
+    await user.click(within(reveal).getByRole('button', { name: 'Done' }));
+    expect(screen.queryByDisplayValue(/pmt_secret/)).not.toBeInTheDocument();
+  });
+
+  it('confirms before revoking, because anything using the token stops at once', async () => {
+    const user = userEvent.setup();
+    render(<TokensPanel />);
+    await user.click(await screen.findByRole('button', { name: /Revoke/ }));
+    expect(api.revokeServiceToken).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: /Revoke Companion — Booth/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Revoke token' }));
+    expect(api.revokeServiceToken).toHaveBeenCalledWith('tok-1');
+    expect(await screen.findByText('Revoked Companion — Booth.')).toBeInTheDocument();
   });
 });
 
