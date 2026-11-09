@@ -5,6 +5,15 @@ change — it's the fastest way for a cold context to know where the project sta
 The long-term destination lives in [VISION.md](./VISION.md).
 Last updated: 2026-11-09 (v1.4.0 released; v1.5 planned in [PLAN-1.5.md](./PLAN-1.5.md), due 2027-01-04 ahead of South Campus opening 2027-01-17).
 
+## v1.5 in progress
+
+| | |
+|---|---|
+| **Service tokens** (#45, ADR 0013) | Admin → API tokens mints credentials for apps (a Companion button, a stream deck, a script), limited to the v1 writes: operate shows, change modes, override lockouts, tick checklists. Shown once, stored as a hash, revocable, attributed in the audit trail. `/api/v1` itself, and `show/start` without a `planId`, are not done yet |
+| **Shared credential throttle** | `credentialThrottle.js`: login, admin PIN, PIN change, the token door and the Override PIN, which had been unthrottled, all use one counter |
+| **Show start/end audited** | Previously unrecorded |
+| **Per-room `show/stream` removed** | Superseded by `/api/stream` since ADR 0010; nothing called it |
+
 ## v1.4.0 at a glance
 
 Analyzer depth, Companion depth, the editor learning to place things, and a

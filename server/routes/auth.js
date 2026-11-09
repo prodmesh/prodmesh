@@ -168,6 +168,9 @@ router.post('/api/auth/admin', (req, res) => {
 
 router.post('/api/auth/logout', (req, res) => {
   const token = bearer(req);
+  // A token is not a session: there is nothing to sign out of, and it ends by
+  // being revoked in Admin. Nothing to audit either.
+  if (req.auth?.token) return res.json({ ok: true });
   if (req.auth) auth.audit({ userId: req.auth.user.id, stationId: req.station?.id, action: 'auth.logout', result: 'allowed' });
   auth.destroySession(token);
   res.json({ ok: true });

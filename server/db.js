@@ -397,6 +397,40 @@ const MIGRATIONS = [
       addColumn(d, 'spl_samples', 'peak', 'REAL');
     },
   },
+  {
+    // Service tokens (ADR 0013): a credential for an app rather than a person
+    // — a Companion button, a stream deck, another ProdMesh. Only a SHA-256 of
+    // the token is stored. A PIN needs scrypt because it is short enough to
+    // guess offline; a token is 256 random bits, so a fast hash loses nothing
+    // and keeps the per-request lookup off the event loop's critical path.
+    //
+    // Permissions live on the token itself rather than through groups: a
+    // token is made for one job, and a group edit should never quietly widen
+    // what an app on the network can do.
+    //
+    // Revoked, never deleted: the audit trail points at these rows.
+    //
+    // audit_log.token_id is the third kind of actor beside user and station.
+    // A token replaces a station rather than carrying one, so a row has one
+    // or the other.
+    name: 'service-tokens',
+    up(d) {
+      d.exec(`
+        CREATE TABLE IF NOT EXISTS service_tokens (
+          id           TEXT PRIMARY KEY,
+          name         TEXT    NOT NULL,
+          token_hash   TEXT    NOT NULL UNIQUE,
+          hint         TEXT    NOT NULL,  -- the first characters, to tell tokens apart
+          permissions  TEXT    NOT NULL,  -- JSON array of permission ids
+          created_by   TEXT,              -- users.id, unenforced like the audit trail
+          created_at   INTEGER NOT NULL,
+          last_used_at INTEGER,
+          revoked_at   INTEGER
+        );
+      `);
+      addColumn(d, 'audit_log', 'token_id', 'TEXT');
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

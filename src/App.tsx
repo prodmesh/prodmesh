@@ -39,6 +39,7 @@ export default function App() {
         <Route path="/admin/integrations" element={<Settings section="integrations" />} />
         <Route path="/admin/users" element={<Settings section="users" />} />
         <Route path="/admin/stations" element={<Settings section="stations" />} />
+        <Route path="/admin/tokens" element={<Settings section="tokens" />} />
         <Route path="/admin/checklists" element={<Settings section="checklists" />} />
         <Route path="/admin/campuses" element={<Settings section="campuses" />} />
         <Route path="/admin/campuses/:roomId" element={<Settings section="room" />} />

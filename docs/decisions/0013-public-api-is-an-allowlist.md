@@ -270,3 +270,42 @@ refusal that tells a human what happened.
 - **`GET /api/system/health` exposes which integrations exist and whether they
   are reachable** — mild reconnaissance value on a bridged network. Consistent
   with the LAN-appliance bar, and worth remembering if that bar ever moves.
+
+## Implementation notes (2026-11-09)
+
+What building tokens and the shared throttle settled or changed. The decisions
+above stand; these are the details they left open.
+
+- **Audit rows get a `token_id` column** rather than reusing `station_id`. The
+  idea above still holds, since a token replaces a station: a row carries one
+  or the other, and Admin → Logs shows the token in the Station column. But a
+  column that sometimes names a station and sometimes a token is something
+  every query would have to remember. The User column reads "app".
+- **A token may hold only the v1 writes:** `shows.operate`, `rooms.mode.change`,
+  `rooms.mode.override_lock`, `checklists.complete` (`TOKEN_PERMISSIONS` in
+  `authStore.js`). "Strictly less than an admin" was a promise that depended on
+  whoever minted the token. Now the server enforces it, and it re-filters on
+  every request, so narrowing the list later also narrows tokens already
+  issued. Only a full administrator can mint one.
+- **Tokens are `pmt_` + 256 random bits, stored as SHA-256.** A PIN needs scrypt
+  because it is short enough to brute-force offline; a token is not, and a fast
+  hash keeps the per-request lookup off the event loop.
+- **The prefix is what the throttle keys on.** A browser holding an expired
+  session sends it on every poll, and counting those as guesses would lock a
+  booth out. Only a bearer that claims to be a token (`pmt_…`) and isn't
+  counts. A valid token does not clear the counter, or one good token could be
+  interleaved with guesses forever. An unknown token gets an explicit
+  `401 invalid_token` even on routes anonymous may read, so an integrator learns
+  their token was revoked before their first write fails.
+- **Moving the throttle found an unthrottled credential.** The Override PIN
+  check in `modeLockError` ran scrypt per attempt with no limit, so anyone
+  holding `rooms.mode.change` could guess the PIN that grants
+  `rooms.mode.override_lock`. It now goes through `credentialThrottle.js` like
+  every other door.
+- **Show start and end are now audited.** They never were, which was tolerable
+  while only a signed-in operator could do it. A button anywhere on the network
+  can now end a service, so who did it has to be on record.
+- **Still to do for v1:** `show/start` needs a `planId` that a Companion button
+  cannot know, since it changes weekly. Before the freeze it should fall back to
+  the plan and time autostart would pick for the room. Then the allowlist, its
+  contract tests, and the written contract.

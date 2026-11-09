@@ -4,7 +4,7 @@ import express from 'express';
 
 import { rooms } from '../roomsStore.js';
 import * as show from '../showManager.js';
-import { requirePermission } from '../httpAuth.js';
+import { requirePermission, auditSuccess } from '../httpAuth.js';
 
 const router = express.Router();
 
@@ -34,7 +34,13 @@ router.post('/api/rooms/:id/show/start', requirePermission('shows.operate'), asy
     const planId = String(req.body?.planId ?? '');
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(planId)) return res.status(400).json({ error: 'Invalid plan id' });
     if (!/^[A-Za-z0-9_-]{1,40}$/.test(timeId)) return res.status(400).json({ error: 'Invalid time id' });
-    res.json(await show.startShow(req.params.id, planId, timeId));
+    const state = await show.startShow(req.params.id, planId, timeId);
+    // Starting and ending a show were never audited, which was tolerable while
+    // only a signed-in operator in the room could do it. A service token lets
+    // a button anywhere on the network end the service, so who did it has to
+    // be on record.
+    auditSuccess(req, 'shows.operate', { resourceType: 'show', planId, details: { operation: 'start', timeId } });
+    res.json(state);
   } catch (err) {
     res.status(err.code === 'conflict' ? 409 : 400).json({ error: String(err.message ?? err) });
   }
@@ -42,7 +48,9 @@ router.post('/api/rooms/:id/show/start', requirePermission('shows.operate'), asy
 
 router.post('/api/rooms/:id/show/end', requirePermission('shows.operate'), (req, res) => {
   try {
-    res.json(show.endShow(req.params.id));
+    const state = show.endShow(req.params.id);
+    auditSuccess(req, 'shows.operate', { resourceType: 'show', details: { operation: 'end' } });
+    res.json(state);
   } catch (err) {
     res.status(err.code === 'not_found' ? 409 : 400).json({ error: String(err.message ?? err) });
   }
