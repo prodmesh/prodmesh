@@ -1,6 +1,6 @@
 # v1.5 — release plan
 
-Status: draft, 2026-09-13 · Milestone due 2026-11-23 · Planned from the
+Status: draft, 2026-09-13; re-dated 2026-11-09 · Milestone due 2027-01-04 · Planned from the
 [v1.5 milestone](https://github.com/prodmesh/prodmesh/milestone/2) and
 [VISION.md](./VISION.md).
 
@@ -366,10 +366,30 @@ comment on it saying why it moved.
 
 ## Rough sequencing
 
-Ten weeks, one maintainer, occasional contributions.
+One maintainer, occasional contributions. The original 2026-11-23 date was a
+placeholder; the real anchor is **South Campus opening on Sunday 2027-01-17**.
+v1.5 is the release that campus opens on, so it is tagged on **Monday
+2027-01-04**: after the Sunday-before run in the building, and with two Sundays
+of margin before the opening.
 
-1. **1.4 ships.** Nothing below starts cleanly until it does.
-2. **PC Calendar access request** goes out in week 1 regardless — it should be
+| Window | Work |
+|---|---|
+| Nov 9 – Nov 22 | #55 hygiene (the flaky `setupApi` test, the dead `show/stream` route), shared lockout, service tokens, `/api/v1` freeze (#45). Calendar access request goes out now |
+| Nov 23 – Dec 6 | System identity → mDNS → desktop window (#49, #48); alert spine (#47) interleaved |
+| Dec 7 – Dec 20 | Multi-site directory + hand-off (#46); `prodmesh-watch` contract (#51) |
+| Dec 21 – Jan 3 | **Feature freeze.** Christmas services fall here, so this is fixes and on-site runs only, never new surface |
+| Mon Jan 4 | Tag v1.5.0 |
+| Jan 10 | South Campus box live for its rehearsal Sunday, paired with the main campus |
+
+If something has to give, it is #46: South Campus can open on its own box
+without federation (see above), and a half-built trust model is worse than
+none. Everything else on the list is smaller and the API freeze must not slip,
+because it is what "LTS" means.
+
+Dependency order, which the windows above follow:
+
+1. ~~**1.4 ships.**~~ Done 2026-11-09.
+2. **PC Calendar access request** goes out immediately — it should be
    waiting on us, not the reverse.
 3. **ADR 0013**, then service tokens, then the `/api/v1` freeze. First, because
    everything else adds surface that should be added *into* the frozen shape.
