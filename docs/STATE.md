@@ -3,7 +3,7 @@
 A living snapshot of what's live vs mock and what's next. Update this as things
 change — it's the fastest way for a cold context to know where the project stands.
 The long-term destination lives in [VISION.md](./VISION.md).
-Last updated: 2026-11-09 (v1.4.0 released; v1.5 planned in [PLAN-1.5.md](./PLAN-1.5.md)).
+Last updated: 2026-11-09 (v1.4.0 released; v1.5 planned in [PLAN-1.5.md](./PLAN-1.5.md), due 2027-01-04 ahead of South Campus opening 2027-01-17).
 
 ## v1.4.0 at a glance
 
