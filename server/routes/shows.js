@@ -16,14 +16,9 @@ const router = express.Router();
 router.get('/api/rooms/:id/show', (req, res) => res.json(show.getState(req.params.id)));
 
 router.post('/api/rooms/:id/show/start', requirePermission('shows.operate'), async (req, res) => {
-  if (!rooms[req.params.id]) return res.status(404).json({ error: 'Unknown room' });
+  const room = rooms[req.params.id];
+  if (!room) return res.status(404).json({ error: 'Unknown room' });
   try {
-    // A rehearsal runs the full show machinery under its own synthetic
-    // timeId, so it never overwrites the real service's timeline and is
-    // identifiable (and excludable from aggregates) by the prefix alone.
-    const timeId = req.body?.rehearsal
-      ? `rehearsal-${Date.now()}`
-      : String(req.body?.timeId || 'default');
     // planId is persisted (timeline JSON, show_summaries) and later replayed
     // into Planning Center request paths by backfillLabels, so it has to be
     // clean before it is STORED, not just before it is used. Charset rather
@@ -31,15 +26,39 @@ router.post('/api/rooms/:id/show/start', requirePermission('shows.operate'), asy
     // "mock-st1-0" and must keep working. This blocks every character that
     // could reshape a URL path; planningCenter.js then enforces digits-only
     // at the point a real request is actually built.
-    const planId = String(req.body?.planId ?? '');
+    let planId = String(req.body?.planId ?? '');
+    let resolvedTimeId = null;
+    if (!planId) {
+      // No plan named: start the service the room is in now (ADR 0013), the
+      // one autostart would pick. This is what lets a Companion button that
+      // knows only a room start the right service every week.
+      const current = await show.currentService(room, Date.now());
+      if (!current) {
+        return res.status(409).json({
+          error: 'no_current_service',
+          message: 'No service is on in this room now (from two hours before its first time to an hour after its last). Name a planId to start one anyway.',
+        });
+      }
+      ({ planId } = current);
+      resolvedTimeId = current.timeId;
+    }
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(planId)) return res.status(400).json({ error: 'Invalid plan id' });
+    // A rehearsal runs the full show machinery under its own synthetic
+    // timeId, so it never overwrites the real service's timeline and is
+    // identifiable (and excludable from aggregates) by the prefix alone.
+    const timeId = req.body?.rehearsal
+      ? `rehearsal-${Date.now()}`
+      : String(req.body?.timeId || resolvedTimeId || 'default');
     if (!/^[A-Za-z0-9_-]{1,40}$/.test(timeId)) return res.status(400).json({ error: 'Invalid time id' });
     const state = await show.startShow(req.params.id, planId, timeId);
     // Starting and ending a show were never audited, which was tolerable while
     // only a signed-in operator in the room could do it. A service token lets
     // a button anywhere on the network end the service, so who did it has to
     // be on record.
-    auditSuccess(req, 'shows.operate', { resourceType: 'show', planId, details: { operation: 'start', timeId } });
+    auditSuccess(req, 'shows.operate', {
+      resourceType: 'show', planId,
+      details: { operation: 'start', timeId, ...(resolvedTimeId ? { resolved: true } : {}) },
+    });
     res.json(state);
   } catch (err) {
     res.status(err.code === 'conflict' ? 409 : 400).json({ error: String(err.message ?? err) });

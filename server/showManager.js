@@ -966,6 +966,38 @@ export async function nextArmedEvent(room, now) {
   return null;
 }
 
+/**
+ * The service a room is in, or about to be, for a start that names no plan.
+ *
+ * A Companion "Start Service" button (ADR 0013) knows a room and a token, and
+ * nothing else: Planning Center's plan id changes every week, so a button
+ * cannot carry one. This answers with the plan and time autostart would pick,
+ * using the same arm window (2h before the first service → 1h after the last)
+ * and the same nearest-uncompleted-time rule, so a button and the clock never
+ * disagree about which service is "now". Unlike nextArmedEvent it does not
+ * require the event to be configured to start itself — pressing a button is
+ * the configuration.
+ *
+ * Null when no plan's window contains `now`, or every time in it is done.
+ */
+export async function currentService(room, now = Date.now()) {
+  const plans = [];
+  for (const st of room.planningCenter?.serviceTypes ?? []) {
+    plans.push(...(await pco.getUpcomingPlans(st, 3).catch(survive([], `show start ${room.id}`))));
+  }
+  plans.sort((a, b) => String(a.sortDate ?? '').localeCompare(String(b.sortDate ?? '')));
+  for (const plan of plans) {
+    const st = { id: plan.serviceTypeId, name: plan.serviceTypeName };
+    const times = await pco.getPlanTimes(st, plan.id).catch(survive([], `show start ${room.id}`));
+    const window = armWindow(times);
+    if (!IGNORE_WINDOW && (!window || now < window.from || now > window.to)) continue;
+    const isCompleted = (timeId) => Boolean(timeline.getReport(`${plan.id}__${timeId}`)?.completedAt);
+    const timeId = pickAutostartTime(times, now, isCompleted);
+    if (timeId) return { planId: plan.id, timeId };
+  }
+  return null;
+}
+
 // Scheduled-time starts, for up to ~1 min before the loop re-arms. `started`
 // outlives any one arming, and is what stops the clock starting a service
 // twice. completedAt already covers a show somebody ended, but not one whose

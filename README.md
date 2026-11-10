@@ -204,6 +204,7 @@ the build, both test suites and lint on every branch and pull request.
 |---|---|
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to send a pull request, and what it needs to include |
 | [`CLAUDE.md`](CLAUDE.md) | Conventions, constraints and workflow |
+| [`docs/API.md`](docs/API.md) | The stable API for other apps: Companion buttons, scripts, stream decks |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Mental model, patterns, invariants, gotchas |
 | [`docs/STATE.md`](docs/STATE.md) | What's live, what's still mock, and the roadmap |
 | [`docs/INTEGRATION-NOTES.md`](docs/INTEGRATION-NOTES.md) | Device and API behaviour we learned the hard way |

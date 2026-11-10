@@ -474,21 +474,20 @@ export function audit({ userId = null, stationId = null, tokenId = null, action,
 // ── Service tokens (ADR 0013) ────────────────────────────────────────────────
 
 /**
- * What a token may be granted: the writes in the /api/v1 allowlist, and
- * nothing else.
+ * What a token may be granted: the writes in the /api/v1 allowlist, plus
+ * reports.view, the one v1 read that is not open to anonymous (/history).
  *
  * ADR 0013 promises a token can do strictly less than an administrator, and
  * this list is what keeps that true. Everything sharp stays off it on purpose:
  * system.backup is a download of every credential in the building,
- * system.update runs a script, users.manage can mint an administrator. Reads
- * need no permission at all, so a token is for writes, and these are the
- * writes an app has a reason to make.
+ * system.update runs a script, users.manage can mint an administrator.
  */
 export const TOKEN_PERMISSIONS = [
   'shows.operate',
   'rooms.mode.change',
   'rooms.mode.override_lock',
   'checklists.complete',
+  'reports.view',
 ];
 
 export const TOKEN_PREFIX = 'pmt_';
