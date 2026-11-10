@@ -47,7 +47,10 @@ const HISTORY_TABLES = ['spl_samples', 'stream_samples', 'show_summaries'];
  * over, holding SPL logging open against a room that is dark.
  */
 const FILES = ['settings.json', 'secrets.json', 'checklists.json'];
-const DIRS = { branding: false, timelines: true }; // value = is it history?
+// identity/ is this installation's system id, signing key and certificate
+// (#49). Restoring onto new hardware must keep it: a peer site has pinned that
+// certificate, and a new one would make every pairing fail.
+const DIRS = { branding: false, identity: false, timelines: true }; // value = is it history?
 
 /**
  * Files whose MODE is part of what they are.
@@ -63,7 +66,13 @@ const DIRS = { branding: false, timelines: true }; // value = is it history?
  * in db.js if it belongs anywhere, not in a code path that only some
  * installations ever run.
  */
-const RESTRICTED_MODE = new Map([['secrets.json', 0o600]]);
+const RESTRICTED_MODE = new Map([
+  ['secrets.json', 0o600],
+  // The identity's private keys: whoever holds them can impersonate this
+  // server to a paired campus.
+  ['identity/signing.key', 0o600],
+  ['identity/tls.key', 0o600],
+]);
 
 const isSafeName = (n) => /^[\w.-]+$/.test(n) && !n.startsWith('.');
 

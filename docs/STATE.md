@@ -11,6 +11,7 @@ Last updated: 2026-11-09 (v1.4.0 released; v1.5 planned in [PLAN-1.5.md](./PLAN-
 |---|---|
 | **Service tokens** (#45, ADR 0013) | Admin → API tokens mints credentials for apps (a Companion button, a stream deck, a script), limited to the v1 writes plus `reports.view`. Shown once, stored as a hash, revocable, attributed in the audit trail |
 | **`/api/v1`** (#45) | 19 endpoints and 7 stream topics promised for all of 1.5.x, served from an allowlist (`server/apiV1.js`); everything else under `/api/v1` is 404. Contract in [API.md](./API.md), checked against the allowlist by tests. `show/start` with no `planId` starts the room's current service, so a Companion button needs only a room id and a token |
+| **System identity** (#49) | Each install has a system id, an editable name (Admin → General → System), an Ed25519 signing key and a self-signed P-256 certificate whose fingerprint pairing will pin. Created on first boot, kept in `data/identity/`, carried by backup and restore. `node:crypto` only; `x509.js` writes the certificate. The multi-site prerequisite: nothing uses the keys until #46 |
 | **Shared credential throttle** | `credentialThrottle.js`: login, admin PIN, PIN change, the token door and the Override PIN, which had been unthrottled, all use one counter |
 | **Show start/end audited** | Previously unrecorded |
 | **Per-room `show/stream` removed** | Superseded by `/api/stream` since ADR 0010; nothing called it |

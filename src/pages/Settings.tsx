@@ -25,6 +25,9 @@ import {
   getRooms,
   getViews,
   getVersion,
+  getSystemIdentity,
+  setSystemName,
+  type SystemIdentity,
   triggerUpdate,
   getChecklistTemplates,
   saveChecklistTemplate,
@@ -1509,6 +1512,7 @@ export function SystemPanel() {
   return (
     <section className="panel">
       <h2 className="panel__title">System</h2>
+      <IdentityRow />
       <div className="panel__row">
         <div>
           <div className="panel__label">Version</div>
@@ -1538,6 +1542,75 @@ export function SystemPanel() {
 
       <BackupRow />
     </section>
+  );
+}
+
+/**
+ * This installation's identity (#49). The name is what another campus and the
+ * client apps will show; the id and fingerprint are what pairing pins, and
+ * the fingerprint is the thing two admins read to each other to be sure they
+ * are pairing with the right server. Read-only apart from the name: the rest
+ * belongs to the installation and moves with it on restore.
+ */
+function IdentityRow() {
+  const [me, setMe] = useState<SystemIdentity | null>(null);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<Feedback>(null);
+
+  useEffect(() => {
+    getSystemIdentity()
+      .then((identity) => { setMe(identity); setName(identity.nameIsDefault ? '' : identity.name); })
+      .catch((err) => setMsg(fail(err)));
+  }, []);
+
+  if (!me) return <Msg msg={msg} />;
+  const stored = me.nameIsDefault ? '' : me.name;
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const updated = await setSystemName(name);
+      setMe(updated);
+      setName(updated.nameIsDefault ? '' : updated.name);
+      setMsg(ok('Saved.'));
+    } catch (err) {
+      setMsg(fail(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="panel__row">
+        <div className="identity__name">
+          <label className="panel__label" htmlFor="system-name">System name
+            <HelpTip text="How other campuses and ProdMesh apps list this server. Leave it blank to use the institution name." />
+          </label>
+          <input id="system-name" className="field" value={name} placeholder={me.nameIsDefault ? me.name : 'e.g. Grace Church — North Campus'}
+            maxLength={80} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div className="panel__controls">
+          <button className="btn btn--primary" disabled={busy || name.trim() === stored} onClick={save}>Save</button>
+        </div>
+      </div>
+      <div className="panel__row">
+        <div>
+          <div className="panel__label">System ID</div>
+          <code className="identity__value">{me.systemId}</code>
+        </div>
+      </div>
+      <div className="panel__row">
+        <div>
+          <div className="panel__label">Certificate fingerprint
+            <HelpTip text="Pairing with another campus pins this. Read it to the other site's admin to confirm you are pairing with this server. It changes only if this server's keys are lost." />
+          </div>
+          <code className="identity__value">{me.tlsFingerprint}</code>
+        </div>
+      </div>
+      <Msg msg={msg} />
+    </>
   );
 }
 

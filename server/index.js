@@ -41,6 +41,7 @@ import assistanceRouter from './routes/assistance.js';
 import authRouter from './routes/auth.js';
 import tokensRouter from './routes/tokens.js';
 import { apiV1 } from './apiV1.js';
+import * as identity from './identity.js';
 import adminConfigRouter from './routes/adminConfig.js';
 import systemRouter from './routes/system.js';
 import proPresenterRouter from './routes/proPresenter.js';
@@ -175,6 +176,10 @@ export function start(port = PORT) {
   splStore.startRetention(); // prune old SPL samples now + daily
   streamStore.startRetention(); // and old viewer samples
   initHealthDeclarations(); // every configured integration appears on /api/system/health
+  // Created on first boot, and logged every boot: the fingerprint is what a
+  // paired site has pinned, so it is worth being able to read from the log.
+  const me = identity.getIdentity();
+  console.log(`[identity] ${me.name} · ${me.systemId} · certificate ${me.tlsFingerprint}`);
   return new Promise((resolve, reject) => {
     const server = app.listen(port);
     server.once('listening', () => {

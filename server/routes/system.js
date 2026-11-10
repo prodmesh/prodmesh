@@ -17,6 +17,7 @@ import * as streamStore from '../streamStore.js';
 import * as health from '../health.js';
 import * as settings from '../settings.js';
 import * as backup from '../backup.js';
+import * as identity from '../identity.js';
 import { requirePermission, auditSuccess } from '../httpAuth.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,7 +28,30 @@ const router = express.Router();
 
 // One source for the version, so /api/about and /api/system/version can't
 // disagree about what is running.
-router.get('/api/about', (_req, res) => res.json({ name: 'prodmesh', version: deployment.getVersion().version }));
+// systemId and systemName are additive in v1 (ADR 0013): a client that has
+// seen this server before recognises it by id, whatever its address is now.
+router.get('/api/about', (_req, res) => {
+  const { systemId, name } = identity.getIdentity();
+  res.json({ name: 'prodmesh', version: deployment.getVersion().version, systemId, systemName: name });
+});
+
+/**
+ * The public half of this server's identity (#49): what a peer pins when it
+ * pairs. Open, because none of it is secret — a fingerprint is published so
+ * that two admins can read it to each other. Not in /api/v1 yet: ADR 0013
+ * defers freezing the peer protocol in the release that first implements it.
+ */
+router.get('/api/system/identity', (_req, res) => res.json(identity.getIdentity()));
+
+router.put('/api/system/identity', requirePermission('config.manage'), (req, res) => {
+  try {
+    identity.setSystemName(req.body?.name);
+    auditSuccess(req, 'config.manage', { resourceType: 'system-identity', details: { name: req.body?.name ?? '' } });
+    res.json(identity.getIdentity());
+  } catch (err) {
+    res.status(400).json({ error: String(err.message ?? err) });
+  }
+});
 
 // Shows recorded before label-stamping existed (or while PC was unreachable)
 // have no planTitle. Resolve those plans directly by id — Planning Center

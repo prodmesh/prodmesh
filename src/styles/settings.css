@@ -1552,3 +1552,16 @@
   word-break: break-all;
   line-height: 1.5;
 }
+
+/* System identity: the id and fingerprint are long and read aloud during
+   pairing, so they wrap rather than scroll, and stay monospace. */
+.identity__name { flex: 1; min-width: 0; }
+.identity__name .field { width: 100%; max-width: 420px; box-sizing: border-box; margin-top: 4px; }
+.identity__value {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  word-break: break-all;
+}

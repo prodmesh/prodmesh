@@ -7,6 +7,8 @@ import { CampusesPanel, LogsPanel, RoomConfigPanel, StationsPanel, SystemPanel, 
 
 const api = vi.hoisted(() => ({
   getVersion: vi.fn(),
+  getSystemIdentity: vi.fn(),
+  setSystemName: vi.fn(),
   triggerUpdate: vi.fn(),
   getUserDirectory: vi.fn(),
   createUser: vi.fn(),
@@ -354,7 +356,36 @@ describe('System', () => {
     update: { supported: true, strategy: 'git' as const, reason: null },
   };
 
-  beforeEach(() => vi.clearAllMocks());
+  const identity = {
+    systemId: '6f1c2a9e-0d4b-4c8e-9a51-2b7d3e4f5a60', name: 'Grace Fellowship', nameIsDefault: true,
+    createdAt: 0, signingPublicKey: 'MCowBQYDK2VwAyEA', tlsFingerprint: 'AB:CD:EF:01',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.getSystemIdentity.mockResolvedValue(identity);
+    api.setSystemName.mockResolvedValue({ ...identity, name: 'Grace — North', nameIsDefault: false });
+  });
+
+  it('shows the identity another campus pins, and names the system', async () => {
+    api.getVersion.mockResolvedValue(version);
+    const user = userEvent.setup();
+    render(<SystemPanel />);
+    expect(await screen.findByText(identity.systemId)).toBeInTheDocument();
+    expect(screen.getByText('AB:CD:EF:01')).toBeInTheDocument();
+
+    // Unset, the institution name stands in as the placeholder, and there is
+    // nothing to save until something is typed.
+    const field = screen.getByRole('textbox', { name: /System name/ });
+    expect(field).toHaveValue('');
+    expect(field).toHaveAttribute('placeholder', 'Grace Fellowship');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+
+    await user.type(field, 'Grace — North');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(api.setSystemName).toHaveBeenCalledWith('Grace — North');
+    expect(await screen.findByText('Saved.')).toBeInTheDocument();
+  });
 
   it('offers an update on an install that can perform one', async () => {
     api.getVersion.mockResolvedValue(version);
