@@ -79,7 +79,7 @@ import {
 import type { Church, Site } from '../types';
 import logoUrl from '../assets/prodmesh-logo.svg';
 type Phase = 'loading' | 'setup' | 'login' | 'admin';
-type AdminSection = 'general' | 'integrations' | 'campuses' | 'room' | 'users' | 'stations' | 'tokens' | 'checklists' | 'logs';
+type AdminSection = 'general' | 'integrations' | 'campuses' | 'sites' | 'room' | 'users' | 'stations' | 'tokens' | 'checklists' | 'logs';
 
 export function Settings({ section = 'general' }: { section?: AdminSection }) {
   const [phase, setPhase] = useState<Phase>('loading');
@@ -102,6 +102,7 @@ export function Settings({ section = 'general' }: { section?: AdminSection }) {
     stations: 'Stations',
     tokens: 'API tokens',
     campuses: 'Campuses',
+    sites: 'Sites',
     room: 'Room configuration',
     checklists: 'Checklists',
     logs: 'Logs',
@@ -185,6 +186,7 @@ function AdminPanels({ section }: { section: AdminSection }) {
       {section === 'general' && <><BrandingPanel /><SecurityPanel /><SystemPanel /></>}
       {section === 'integrations' && <><IntegrationEnablePanel /><SecretsPanel /></>}
       {section === 'campuses' && <CampusesPanel />}
+      {section === 'sites' && <SitesPanel />}
       {section === 'room' && <RoomConfigPanel />}
       {section === 'users' && <UserManagementPanel />}
       {section === 'stations' && <StationsPanel />}
@@ -2106,4 +2108,5 @@ export function CampusesPanel() {
 // The room configuration page lives in ./RoomConfig.tsx; re-exported so the
 // route and the tests keep one import for every Admin panel.
 import { RoomConfigPanel } from './RoomConfig';
+import { SitesPanel } from './Sites';
 export { RoomConfigPanel };

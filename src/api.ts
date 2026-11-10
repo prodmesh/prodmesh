@@ -631,6 +631,63 @@ export interface SystemIdentity {
 
 export const getSystemIdentity = () => getJson<SystemIdentity>('/api/system/identity');
 
+// ── Federation (ADR 0017): pairing with another campus's ProdMesh ─────────────
+
+export interface FederationPeer {
+  systemId: string;
+  name: string;
+  address: string;
+  fingerprint: string;
+  state: 'pending' | 'paired' | 'removed';
+  /** Who must act before the pair is live: an admin here, or the other site. */
+  awaiting: 'us' | 'them' | null;
+  createdAt: number;
+  pairedAt: number | null;
+  lastSeenAt: number | null;
+  /** 'unpaired_by_peer', or a reachability message. */
+  lastError: string | null;
+  clockSkewMs: number | null;
+}
+
+export interface FederationOverview {
+  config: {
+    enabled: boolean;
+    bind: string;
+    port: number;
+    address: string;
+    effectiveAddress: string;
+    interfaces: { name: string; address: string }[];
+    warnAllInterfaces: boolean;
+  };
+  listener: { listening: boolean; host: string | null; port: number | null; error: string | null };
+  identity: { systemId: string; name: string; tlsFingerprint: string };
+  peers: FederationPeer[];
+  tokens: { id: string; createdAt: number; expiresAt: number }[];
+}
+
+export const getFederation = () => getJson<FederationOverview>('/api/federation');
+
+async function federationCall<T = FederationOverview>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`/api/federation${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...requestHeaders() },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  await requireOk(res);
+  return res.json() as Promise<T>;
+}
+
+export const saveFederationConfig = (input: Partial<{ enabled: boolean; bind: string; port: number; address: string }>) =>
+  federationCall('PUT', '', input);
+export const createJoinToken = () => federationCall<{ id: string; token: string; expiresAt: number }>('POST', '/tokens');
+export const cancelJoinToken = (id: string) => federationCall('DELETE', `/tokens/${encodeURIComponent(id)}`);
+export const redeemJoinToken = (token: string) => federationCall('POST', '/redeem', { token });
+export const acceptPeer = (systemId: string) => federationCall('POST', `/peers/${encodeURIComponent(systemId)}/accept`);
+export const checkPeer = (systemId: string) => federationCall('POST', `/peers/${encodeURIComponent(systemId)}/probe`);
+export const setPeerAddress = (systemId: string, address: string) =>
+  federationCall('PUT', `/peers/${encodeURIComponent(systemId)}`, { address });
+export const removePeer = (systemId: string) => federationCall('DELETE', `/peers/${encodeURIComponent(systemId)}`);
+
 export async function setSystemName(name: string): Promise<SystemIdentity> {
   const res = await fetch('/api/system/identity', {
     method: 'PUT',

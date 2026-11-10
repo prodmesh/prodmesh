@@ -148,6 +148,19 @@ Triage findings against that bar. Unauthenticated resource exhaustion and
 privilege escalation matter. Passive wire sniffing does not. If you are ever
 tempted to port-forward any of this, don't.
 
+**Plus one authenticated link, off unless switched on.** Federation (ADRs
+0014, 0016, 0017) is the first traffic with a legitimate reason to leave the
+building, so it does not inherit the LAN's bar:
+- it runs on its own port, as mutual TLS, with each side pinned by
+  certificate fingerprint;
+- it serves only `/federation/v1`, never the dashboard;
+- it is never a forwarder to another site's devices.
+
+On that link, sniffing and impersonation **do** matter. Assume a paired peer
+can be compromised: what it sends is untrusted input, and nothing it asserts
+grants authority here. A single-site install never opens the port, and for it
+the paragraph above is the whole threat model.
+
 ## What automated tests can and cannot certify
 
 The suite (`npm test`) covers the settings/PIN/lock engine, config validation,
@@ -170,6 +183,8 @@ change as verified because CI is green — say which half was checked.
 | `PRODMESH_AUTOSTART_TEST=1` | Show autostart ignores the arm window, and a scheduled-time start doesn't wait for the clock. **Dev only.** |
 | `PRODMESH_LOG_FILE` | Override the log path Admin → Logs tails. |
 | `PRODMESH_SECRET_*` | Supply secrets by env instead of `server/data/secrets.json`. |
+| `PRODMESH_FEDERATION_HOST` | Pin the federation listener to one address (tests use `127.0.0.1`). **Dev only**: Admin → Sites chooses the interface. |
+| `PRODMESH_FEDERATION_PROBE_MS` | Peer liveness interval (default 60000). Tests shorten it. |
 | `PORT` | Serve port (default 8080). |
 
 ## Conventions

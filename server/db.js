@@ -431,6 +431,51 @@ const MIGRATIONS = [
       addColumn(d, 'audit_log', 'token_id', 'TEXT');
     },
   },
+  {
+    // Federation (ADR 0017): the sites this one is paired with, and the join
+    // tokens it has issued. A peer is recorded by its system id (#49) and
+    // trusted by its certificate's fingerprint, never by its address, which is
+    // why the address is an ordinary editable column.
+    //
+    // `awaiting` is who must act before the pair is live: 'us' (they redeemed
+    // our token, an admin here has not accepted), 'them' (we redeemed theirs),
+    // or NULL once paired. Removed peers stay, because the audit trail names
+    // them, like users and service tokens.
+    name: 'federation',
+    up(d) {
+      d.exec(`
+        CREATE TABLE IF NOT EXISTS federation_peers (
+          system_id          TEXT PRIMARY KEY,
+          name               TEXT    NOT NULL,
+          address            TEXT    NOT NULL,  -- host:port of its federation listener
+          certificate        TEXT    NOT NULL,  -- PEM, as presented at pairing
+          fingerprint        TEXT    NOT NULL,  -- SHA-256 of it: the pin
+          signing_public_key TEXT    NOT NULL,  -- base64 SPKI DER, Ed25519
+          state              TEXT    NOT NULL CHECK (state IN ('pending','paired','removed')),
+          awaiting           TEXT    CHECK (awaiting IS NULL OR awaiting IN ('us','them')),
+          created_at         INTEGER NOT NULL,
+          paired_at          INTEGER,
+          accepted_by        TEXT,              -- users.id, unenforced
+          last_seen_at       INTEGER,
+          last_error         TEXT,
+          clock_skew_ms      INTEGER
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS federation_peers_fingerprint
+          ON federation_peers (fingerprint) WHERE state != 'removed';
+
+        CREATE TABLE IF NOT EXISTS federation_join_tokens (
+          id           TEXT PRIMARY KEY,
+          secret_hash  TEXT    NOT NULL UNIQUE,  -- SHA-256; the secret itself is never stored
+          created_by   TEXT,
+          created_at   INTEGER NOT NULL,
+          expires_at   INTEGER NOT NULL,
+          used_at      INTEGER,
+          used_by      TEXT,                     -- the redeeming site's system id
+          cancelled_at INTEGER
+        );
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

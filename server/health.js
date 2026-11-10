@@ -28,6 +28,11 @@ export function declare(key) {
   }
 }
 
+/** Stop tracking a key whose integration no longer exists — a removed peer. */
+export function forget(key) {
+  integrations.delete(key);
+}
+
 /** Record one real request's outcome for an integration key. */
 export function report(key, ok, errorMessage) {
   let e = integrations.get(key);

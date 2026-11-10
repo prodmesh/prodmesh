@@ -40,6 +40,8 @@ import calendarRouter from './routes/calendar.js';
 import assistanceRouter from './routes/assistance.js';
 import authRouter from './routes/auth.js';
 import tokensRouter from './routes/tokens.js';
+import federationRouter from './routes/federation.js';
+import * as federation from './federation/link.js';
 import { apiV1 } from './apiV1.js';
 import * as identity from './identity.js';
 import adminConfigRouter from './routes/adminConfig.js';
@@ -131,6 +133,7 @@ app.use(streamRouter);
 app.use(viewsRouter);
 app.use(authRouter);
 app.use(tokensRouter);
+app.use(federationRouter);
 app.use(adminConfigRouter);
 app.use(systemRouter);
 app.use(proPresenterRouter);
@@ -180,6 +183,12 @@ export function start(port = PORT) {
   // paired site has pinned, so it is worth being able to read from the log.
   const me = identity.getIdentity();
   console.log(`[identity] ${me.name} · ${me.systemId} · certificate ${me.tlsFingerprint}`);
+  // The federation listener (ADR 0017): opens only if switched on in Admin →
+  // Sites. A failure here must never stop the dashboard serving its own site.
+  federation.applyConfig().then((status) => {
+    if (status.listening) console.log(`[federation] listening on ${status.host}:${status.port}`);
+    else if (status.error) console.error(`[federation] not listening: ${status.error}`);
+  }).catch((err) => console.error(`[federation] ${err.message}`));
   return new Promise((resolve, reject) => {
     const server = app.listen(port);
     server.once('listening', () => {
