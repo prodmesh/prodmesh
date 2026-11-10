@@ -43,11 +43,13 @@ A separate HTTPS server, with its own port (default **8443**), serving only
   reach 8443 exposes the federation protocol and nothing else. 0016's
   "ProdMesh ↔ ProdMesh on the link port only" is then enforceable by port
   number alone.
-- **it binds one address, chosen by the admin**, never all interfaces. The
-  dashboard deliberately binds everything; a multi-homed box would then offer
-  the federation link on its control-VLAN NIC too, which is exactly the
-  surface 0016 says must not exist. Binding the management interface keeps the
-  link off the control network even where the box has a leg in it.
+- **it binds where the admin says, and on a multi-homed box that should be one
+  interface.** The choice is *all interfaces* or *one named interface*. A
+  multi-homed box binding everything would offer the federation link on its
+  control-VLAN NIC too, which is exactly the surface 0016 says must not exist.
+  So Admin warns when *all interfaces* is chosen on a machine with more than
+  one network connection. Neither choice is forced: see "No network
+  architecture is required" below.
 - **it does not listen at all until federation is switched on.** A single-site
   church never opens the port, and nothing in its threat model changes.
 
@@ -56,6 +58,42 @@ whatever 0016's Tier B says about the operator path. The link carries signed
 identity and is the one channel built to cross a WAN, so it pays for TLS
 unconditionally: it is free here, because we control both ends and pin rather
 than chain.
+
+### No network architecture is required
+
+Nothing here assumes VLANs, a management network or a second NIC. The common
+small case is **two sites on one flat network, one NIC per server**, whether
+that network is a stretched VLAN, a VPN, or one routed LAN. It pairs with no
+network decisions at all:
+
+- **The bind choice defaults to all interfaces when the machine has one
+  network connection**, and in Docker. There is nothing to choose, and the
+  warning above does not appear.
+- **It is an interface by name, not an IP address.** A server on DHCP gets a
+  new address and keeps listening, because `en0` is still `en0`. Binding a
+  literal IP would fail the listener on the first lease change, on a box
+  nobody is watching.
+- **The federation address defaults to the machine's primary address**, and
+  Admin shows it for confirmation rather than asking for it. The admin types
+  one only when the default is wrong: multi-homed, behind NAT, in Docker (where
+  the container's own address is not the one peers reach), or where a DNS name
+  is preferred.
+- **Addresses heal themselves.** Each server's probe of a peer carries its own
+  current federation address, authenticated by the mutual TLS it arrives on, and
+  the peer updates its record. A DHCP lease change on one side is repaired
+  within a minute, through the side whose address did not change. Only both
+  sides changing at once needs an admin to edit an address, and a DHCP
+  reservation or a DNS name avoids even that.
+- **Docker publishes the port** (`8443:8443`) beside the dashboard's, commented
+  out in `docker-compose.yml` until federation is wanted.
+- **The desktop app's first listen raises the OS firewall prompt**, which is
+  Windows Defender Firewall or the macOS application firewall. The Admin screen
+  says so when federation is switched on, rather than leaving a volunteer to
+  guess whether to allow it.
+
+The multi-homed advice is for churches that segment their networks. A church
+that does not segment them is not doing it wrong, and nothing should make it
+feel that way.
 
 ### Both ends present certificates, and the pin is the authentication
 
@@ -99,7 +137,7 @@ pmjoin1.<base64url(JSON)>
 }
 ```
 
-- **`addr` is the federation address the admin configured, not a guess.** A box
+- **`addr` is the federation address the admin confirmed, not a silent guess.** A box
   with a NIC on each of three VLANs has three addresses, and auto-detection
   would sometimes hand the other site one it cannot route to: worst of all,
   the control-VLAN one. The admin chooses it once, in the same place as the
@@ -145,7 +183,7 @@ A migration adds `federation_peers`:
 |---|---|
 | `system_id` | the peer's identity (primary key) |
 | `name` | its display name, refreshed on every probe |
-| `address` | where to reach it; editable by an admin, because IPs move and the pin does not |
+| `address` | where to reach it; updated by the peer's own probes, and editable by an admin, because IPs move and the pin does not |
 | `certificate` | its PEM; the fingerprint is derived from it |
 | `signing_public_key` | for 0014's assertions |
 | `state` | `pending` · `paired` · `removed` |
@@ -182,9 +220,9 @@ per 0016's invariant.
 
 Admin gains a **Sites** section:
 
-- **Federation:** on or off; the bind address (a list of this machine's
-  interfaces to choose from); the port; and the federation address peers
-  should use.
+- **Federation:** on or off; where to listen (*all interfaces*, or one of
+  this machine's interfaces by name); the port; and the federation address
+  peers should use, prefilled.
 - **This server:** its name, id and fingerprint, linked to the System panel
   from #49.
 - **Pair a site:** generate a token, or paste one.
@@ -193,9 +231,10 @@ Admin gains a **Sites** section:
 
 ## Consequences
 
-- **The firewall rule for the link is one port between two hosts.** Nothing
-  else on either server is reachable cross-site, even before any rule is
-  written, because the listener binds only the management interface.
+- **The firewall rule for the link is one port between two hosts.** On a
+  segmented network, binding the management interface keeps the link off the
+  control VLAN even before a rule is written. On a flat network, there is one
+  interface and nothing to keep it off.
 - **`CLAUDE.md`'s threat model is amended in the same change**, as 0014
   requires: *a LAN appliance, plus a mutually authenticated federation link
   that is off unless switched on*.
