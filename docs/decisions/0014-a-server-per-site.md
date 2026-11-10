@@ -160,8 +160,11 @@ will not run an internal CA. So each instance generates a self-signed
 certificate and keypair, and **pairing pins the fingerprint**: an admin on one
 site generates a short-lived join token, an admin on the other redeems it, and
 each records the other's key and fingerprint. Explicit, mutual, and out-of-band
-— discovery never implies trust. mDNS (#18) may *find* an instance; only a human
-pairs one.
+— discovery never implies trust. mDNS (#56) may *find* an instance, but only
+on the same network segment: it is link-local, so it never reaches another
+campus. Between sites the join token is the discovery, since it carries the
+address, system id and fingerprint. Either way, only a human pairs one.
+*(Corrected 2026-11-09: this said mDNS was federation's way to find a peer.)*
 
 ### This changes the threat model, and `CLAUDE.md` must say so
 

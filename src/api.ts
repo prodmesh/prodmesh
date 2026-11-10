@@ -618,6 +618,29 @@ export interface Version {
 
 export const getVersion = () => getJson<Version>('/api/system/version');
 
+/** This installation's identity (#49): what another campus pins when it pairs. */
+export interface SystemIdentity {
+  systemId: string;
+  name: string;
+  /** True while no name is set and the institution name stands in. */
+  nameIsDefault: boolean;
+  createdAt: number;
+  signingPublicKey: string;
+  tlsFingerprint: string;
+}
+
+export const getSystemIdentity = () => getJson<SystemIdentity>('/api/system/identity');
+
+export async function setSystemName(name: string): Promise<SystemIdentity> {
+  const res = await fetch('/api/system/identity', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...requestHeaders() },
+    body: JSON.stringify({ name }),
+  });
+  await requireOk(res);
+  return res.json() as Promise<SystemIdentity>;
+}
+
 // Institution topology (name, sites, Quick Access tiles) — server-owned per
 // ADR 0009; the Admin → Campuses editor saves the whole tree transactionally.
 export const getConfig = () => getJson<Church>('/api/config');
