@@ -1,7 +1,8 @@
 # 0014 — A server per site, federated by hand-off
 
 Status: accepted (2026-10-18) · planned in [PLAN-1.5.md](../PLAN-1.5.md) · implemented by
-[#46](https://github.com/prodmesh/prodmesh/issues/46)
+[#46](https://github.com/prodmesh/prodmesh/issues/46) · pairing and the link detailed in
+[0017](0017-pairing-and-the-federation-link.md)
 
 ## Context
 
