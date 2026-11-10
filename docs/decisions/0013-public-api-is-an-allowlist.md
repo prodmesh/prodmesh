@@ -305,7 +305,19 @@ above stand; these are the details they left open.
 - **Show start and end are now audited.** They never were, which was tolerable
   while only a signed-in operator could do it. A button anywhere on the network
   can now end a service, so who did it has to be on record.
-- **Still to do for v1:** `show/start` needs a `planId` that a Companion button
-  cannot know, since it changes weekly. Before the freeze it should fall back to
-  the plan and time autostart would pick for the room. Then the allowlist, its
-  contract tests, and the written contract.
+- **`show/start` without a `planId` starts the room's current service**:
+  `showManager.currentService`, using autostart's arm window and its
+  nearest-uncompleted-time rule, so a button and the clock never disagree
+  about which service is "now". Outside the window it answers
+  `409 no_current_service` rather than guessing.
+- **Nineteen endpoints, not twenty.** `GET /rooms/:id/propresenter` failed the
+  second test after all: it is gated on `config.manage` because one call fans
+  out to the machine running the service. Its `room:<id>:propresenter` topic
+  carries the same state, so the topic is in v1 and the route is not.
+  `GET /history` needs `reports.view`, which became grantable to tokens. It is
+  a read of reports, not a sharp edge.
+- **The allowlist is `server/apiV1.js`**, the contract is
+  [`docs/API.md`](../API.md), and `apiV1.test.js` fails if the two disagree. It
+  also covers 404 off-list, 405 with `Allow`, v1 answering identically to
+  `/api`, and the promised fields. Right path with the wrong method answers 405
+  rather than 404, so an integrator learns what to send.

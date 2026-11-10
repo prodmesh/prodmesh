@@ -40,6 +40,7 @@ import calendarRouter from './routes/calendar.js';
 import assistanceRouter from './routes/assistance.js';
 import authRouter from './routes/auth.js';
 import tokensRouter from './routes/tokens.js';
+import { apiV1 } from './apiV1.js';
 import adminConfigRouter from './routes/adminConfig.js';
 import systemRouter from './routes/system.js';
 import proPresenterRouter from './routes/proPresenter.js';
@@ -112,6 +113,10 @@ app.use('/api', (_req, res, next) => {
   if (!isSealed()) return next();
   res.status(503).json({ error: 'restored', message: SEALED_MESSAGE, restart: deployment.restartHint() });
 });
+
+// /api/v1 is an allowlist over the same handlers (ADR 0013): it rewrites to
+// /api/… or answers 404. Ahead of the routers, which never see a /v1 path.
+app.use(apiV1);
 
 app.use(resolveIdentity);
 
