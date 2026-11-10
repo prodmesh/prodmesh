@@ -1,7 +1,8 @@
 # 0016 — Federation network boundaries and failure isolation
 
 Status: proposed · 2026-10-18 · extends [0014](0014-a-server-per-site.md) ·
-part of [#46](https://github.com/prodmesh/prodmesh/issues/46)
+part of [#46](https://github.com/prodmesh/prodmesh/issues/46) · the link's listener and pairing are in
+[0017](0017-pairing-and-the-federation-link.md)
 
 ## Context
 
