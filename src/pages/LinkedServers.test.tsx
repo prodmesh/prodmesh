@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SitesPanel } from './Sites';
+import { LinkedServersPanel } from './LinkedServers';
 import type { FederationOverview } from '../api';
 
 const api = vi.hoisted(() => ({
@@ -35,7 +35,7 @@ const peer = (over = {}) => ({
   lastSeenAt: null, lastError: null, clockSkewMs: null, ...over,
 });
 
-describe('Admin → Sites', () => {
+describe('Admin → Linked servers', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('cannot pair until the link is on', async () => {
@@ -43,7 +43,7 @@ describe('Admin → Sites', () => {
       config: { ...base().config, enabled: false },
       listener: { listening: false, host: null, port: null, error: null },
     }));
-    render(<SitesPanel />);
+    render(<LinkedServersPanel />);
     expect(await screen.findByRole('button', { name: 'Create join token' })).toBeDisabled();
     expect(screen.getByText('Switch the link on first.')).toBeInTheDocument();
   });
@@ -54,7 +54,7 @@ describe('Admin → Sites', () => {
         interfaces: [{ name: 'en0', address: '192.0.2.10' }, { name: 'en1', address: '198.51.100.10' }] },
     }));
     const user = userEvent.setup();
-    render(<SitesPanel />);
+    render(<LinkedServersPanel />);
     expect(await screen.findByText(/more than one network connection/)).toBeInTheDocument();
     // Choosing an interface is the fix, and the warning goes with it.
     await user.selectOptions(screen.getByRole('combobox'), 'en0');
@@ -65,7 +65,7 @@ describe('Admin → Sites', () => {
     api.getFederation.mockResolvedValue(base({ peers: [peer()] }));
     api.acceptPeer.mockResolvedValue(base({ peers: [peer({ state: 'paired', awaiting: null, lastSeenAt: Date.now() })] }));
     const user = userEvent.setup();
-    render(<SitesPanel />);
+    render(<LinkedServersPanel />);
     expect(await screen.findByText('Waiting for you to accept')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Accept' }));
     expect(api.acceptPeer).toHaveBeenCalledWith('id-south');
@@ -76,7 +76,7 @@ describe('Admin → Sites', () => {
     api.getFederation.mockResolvedValue(base());
     api.redeemJoinToken.mockResolvedValue({ ...base({ peers: [peer({ awaiting: 'them' })] }), peer: peer({ awaiting: 'them' }) });
     const user = userEvent.setup();
-    render(<SitesPanel />);
+    render(<LinkedServersPanel />);
     await user.type(await screen.findByLabelText('Join with a token'), '  pmjoin1.abc  ');
     await user.click(screen.getByRole('button', { name: 'Pair' }));
     expect(api.redeemJoinToken).toHaveBeenCalledWith('pmjoin1.abc');
@@ -87,13 +87,13 @@ describe('Admin → Sites', () => {
     api.getFederation.mockResolvedValue(base({ peers: [
       peer({ state: 'paired', awaiting: null, lastError: 'unpaired_by_peer', lastSeenAt: Date.now() - 600_000 }),
     ] }));
-    render(<SitesPanel />);
-    expect(await screen.findByText('No longer paired at the other site')).toBeInTheDocument();
+    render(<LinkedServersPanel />);
+    expect(await screen.findByText('No longer paired on the other server')).toBeInTheDocument();
 
     api.getFederation.mockResolvedValue(base({ peers: [
       peer({ state: 'paired', awaiting: null, lastSeenAt: Date.now(), clockSkewMs: -95_000 }),
     ] }));
-    render(<SitesPanel />);
+    render(<LinkedServersPanel />);
     expect(await screen.findByText(/Clock is 95s behind/)).toBeInTheDocument();
   });
 
@@ -101,11 +101,11 @@ describe('Admin → Sites', () => {
     api.getFederation.mockResolvedValue(base({ peers: [peer({ state: 'paired', awaiting: null, lastSeenAt: Date.now() })] }));
     api.removePeer.mockResolvedValue(base());
     const user = userEvent.setup();
-    render(<SitesPanel />);
+    render(<LinkedServersPanel />);
     await user.click(await screen.findByRole('button', { name: /Remove/ }));
     expect(api.removePeer).not.toHaveBeenCalled();
     const dialog = screen.getByRole('dialog', { name: /Unpair Grace — South/ });
-    await user.click(within(dialog).getByRole('button', { name: 'Remove site' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Remove server' }));
     expect(api.removePeer).toHaveBeenCalledWith('id-south');
   });
 });

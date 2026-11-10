@@ -16,6 +16,8 @@ export interface Church {
   sites: Site[];
 }
 
+/** A campus. "Site" in code and stored config, "Campus" on screen: the name is
+ *  in backups and API payloads, so the code keeps it (docs/UI_TEXT.md). */
 export interface Site {
   id: string;
   name: string;

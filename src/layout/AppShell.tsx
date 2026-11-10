@@ -57,7 +57,7 @@ const ADMIN_NAV = [
       { to: '/admin/general', label: 'General', icon: Settings2 },
       { to: '/admin/integrations', label: 'Integrations', icon: Plug },
       { to: '/admin/campuses', label: 'Campuses', icon: Building2 },
-      { to: '/admin/sites', label: 'Sites', icon: Network },
+      { to: '/admin/servers', label: 'Linked servers', icon: Network },
     ],
   },
   {

@@ -79,7 +79,7 @@ import {
 import type { Church, Site } from '../types';
 import logoUrl from '../assets/prodmesh-logo.svg';
 type Phase = 'loading' | 'setup' | 'login' | 'admin';
-type AdminSection = 'general' | 'integrations' | 'campuses' | 'sites' | 'room' | 'users' | 'stations' | 'tokens' | 'checklists' | 'logs';
+type AdminSection = 'general' | 'integrations' | 'campuses' | 'servers' | 'room' | 'users' | 'stations' | 'tokens' | 'checklists' | 'logs';
 
 export function Settings({ section = 'general' }: { section?: AdminSection }) {
   const [phase, setPhase] = useState<Phase>('loading');
@@ -102,7 +102,7 @@ export function Settings({ section = 'general' }: { section?: AdminSection }) {
     stations: 'Stations',
     tokens: 'API tokens',
     campuses: 'Campuses',
-    sites: 'Sites',
+    servers: 'Linked servers',
     room: 'Room configuration',
     checklists: 'Checklists',
     logs: 'Logs',
@@ -186,7 +186,7 @@ function AdminPanels({ section }: { section: AdminSection }) {
       {section === 'general' && <><BrandingPanel /><SecurityPanel /><SystemPanel /></>}
       {section === 'integrations' && <><IntegrationEnablePanel /><SecretsPanel /></>}
       {section === 'campuses' && <CampusesPanel />}
-      {section === 'sites' && <SitesPanel />}
+      {section === 'servers' && <LinkedServersPanel />}
       {section === 'room' && <RoomConfigPanel />}
       {section === 'users' && <UserManagementPanel />}
       {section === 'stations' && <StationsPanel />}
@@ -1606,7 +1606,7 @@ function IdentityRow() {
       <div className="panel__row">
         <div>
           <div className="panel__label">Certificate fingerprint
-            <HelpTip text="Pairing with another campus pins this. Read it to the other site's admin to confirm you are pairing with this server. It changes only if this server's keys are lost." />
+            <HelpTip text="Pairing with another campus pins this. Read it to the other campus's admin to confirm you are pairing with this server. It changes only if this server's keys are lost." />
           </div>
           <code className="identity__value">{me.tlsFingerprint}</code>
         </div>
@@ -2033,16 +2033,16 @@ export function CampusesPanel() {
           </button>
         ))}
         <button className="btn" onClick={() => update((n) => {
-          const id = slugId('new-site', allIds(n));
-          n.sites.push({ id, name: 'New Site', status: 'disabled', auditoriums: [] });
+          const id = slugId('new-campus', allIds(n));
+          n.sites.push({ id, name: 'New Campus', status: 'disabled', auditoriums: [] });
           setSelectedSite(id);
-        })}>+ Add site</button>
+        })}>+ Add campus</button>
       </div>
 
       {site && (
         <div className="campuses__site" key={site.id}>
           <div className="campuses__siterow">
-            <label className="lfield"><span>Site name</span>
+            <label className="lfield"><span>Campus name</span>
               <input className="field" value={site.name}
                 onChange={(e) => update((n) => { n.sites.find((s) => s.id === site.id)!.name = e.target.value; })} />
             </label>
@@ -2054,11 +2054,11 @@ export function CampusesPanel() {
               </SelectField>
             </label>
             <div className="campuses__rowactions">
-              <button className="iconbtn" title="Move site left" aria-label="Move site left"
+              <button className="iconbtn" title="Move campus left" aria-label="Move campus left"
                 onClick={() => update((n) => moveIn(n.sites, n.sites.findIndex((s) => s.id === site.id), -1))}><ArrowUp size={14} /></button>
-              <button className="iconbtn" title="Move site right" aria-label="Move site right"
+              <button className="iconbtn" title="Move campus right" aria-label="Move campus right"
                 onClick={() => update((n) => moveIn(n.sites, n.sites.findIndex((s) => s.id === site.id), 1))}><ArrowDown size={14} /></button>
-              <button className="iconbtn iconbtn--danger" title="Remove site" aria-label="Remove site"
+              <button className="iconbtn iconbtn--danger" title="Remove campus" aria-label="Remove campus"
                 onClick={() => update((n) => {
                   n.sites = n.sites.filter((s) => s.id !== site.id);
                   setSelectedSite(n.sites[0]?.id ?? '');
@@ -2108,5 +2108,5 @@ export function CampusesPanel() {
 // The room configuration page lives in ./RoomConfig.tsx; re-exported so the
 // route and the tests keep one import for every Admin panel.
 import { RoomConfigPanel } from './RoomConfig';
-import { SitesPanel } from './Sites';
+import { LinkedServersPanel } from './LinkedServers';
 export { RoomConfigPanel };

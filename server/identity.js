@@ -68,7 +68,7 @@ function load() {
     writeFileSync(FILES.meta, `${JSON.stringify(meta, null, 2)}\n`);
   }
   const warn = (what) => {
-    if (!fresh) console.warn(`[identity] ${what} was missing and has been regenerated. Paired sites will need to pair again.`);
+    if (!fresh) console.warn(`[identity] ${what} was missing and has been regenerated. Linked servers will need to pair again.`);
   };
 
   if (!existsSync(FILES.signingKey)) {
@@ -98,7 +98,7 @@ function load() {
     // server down; using a mismatched pair would fail every TLS handshake
     // with an error that names neither file. Re-sign, loudly.
     writeFileSync(FILES.tlsCert, selfSignedCertificate(tlsKey, { commonName: `ProdMesh ${meta.systemId}` }));
-    console.warn('[identity] tls.crt did not match tls.key and has been re-signed. Paired sites will need to pair again.');
+    console.warn('[identity] tls.crt did not match tls.key and has been re-signed. Linked servers will need to pair again.');
     return load();
   }
 

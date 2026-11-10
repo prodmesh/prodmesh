@@ -218,7 +218,7 @@ per 0016's invariant.
 
 ### Configuration lives in Admin
 
-Admin gains a **Sites** section:
+Admin gains a **Sites** section (shipped as **Linked servers**: a peer is a server, and one server can run several campuses, so "site" was dropped from the screen; see `docs/UI_TEXT.md`):
 
 - **Federation:** on or off; where to listen (*all interfaces*, or one of
   this machine's interfaces by name); the port; and the federation address

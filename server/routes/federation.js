@@ -52,7 +52,7 @@ router.post('/api/federation/tokens', ...adminOnly, (req, res) => {
   // A token whose address nothing is listening on would fail at the other
   // site with "connection refused", which points at the wrong building.
   if (!link.listenerStatus().listening) {
-    return res.status(409).json({ error: 'Switch federation on first, so the other site can reach this server' });
+    return res.status(409).json({ error: 'Switch federation on first, so the other server can reach this one' });
   }
   const minted = store.mintJoinToken({ createdBy: req.auth?.user?.id ?? null });
   auditSuccess(req, 'federation.pair', { resourceType: 'join-token', resourceId: minted.id, details: { stage: 'token-issued' } });
@@ -87,12 +87,12 @@ router.post('/api/federation/peers/:systemId/accept', ...adminOnly, async (req, 
 
 router.post('/api/federation/peers/:systemId/probe', ...adminOnly, async (req, res) => {
   const peer = await link.probe(req.params.systemId);
-  if (!peer) return res.status(404).json({ error: 'Unknown site' });
+  if (!peer) return res.status(404).json({ error: 'Unknown server' });
   res.json({ peer, ...overview() });
 });
 
 router.put('/api/federation/peers/:systemId', ...adminOnly, (req, res) => {
-  if (!store.getPeer(req.params.systemId)) return res.status(404).json({ error: 'Unknown site' });
+  if (!store.getPeer(req.params.systemId)) return res.status(404).json({ error: 'Unknown server' });
   try {
     const peer = store.setPeerAddress(req.params.systemId, req.body?.address);
     auditSuccess(req, 'federation.configure', { resourceType: 'peer', resourceId: peer.systemId, details: { address: peer.address } });

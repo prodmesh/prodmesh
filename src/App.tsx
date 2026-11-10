@@ -42,7 +42,7 @@ export default function App() {
         <Route path="/admin/tokens" element={<Settings section="tokens" />} />
         <Route path="/admin/checklists" element={<Settings section="checklists" />} />
         <Route path="/admin/campuses" element={<Settings section="campuses" />} />
-        <Route path="/admin/sites" element={<Settings section="sites" />} />
+        <Route path="/admin/servers" element={<Settings section="servers" />} />
         <Route path="/admin/campuses/:roomId" element={<Settings section="room" />} />
         <Route path="/admin/logs" element={<Settings section="logs" />} />
         {/* Room-level pages, reached from Home cards / Services rows.

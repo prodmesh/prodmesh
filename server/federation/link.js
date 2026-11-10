@@ -356,7 +356,7 @@ function stopAllProbes() {
 /** Redeem a join token pasted here: pair with the site that issued it. */
 export async function redeem(tokenText) {
   if (!listenerState.listening) {
-    throw new Error('Switch federation on here first, so the other site can reach this server back');
+    throw new Error('Switch federation on here first, so the other server can reach this one back');
   }
   const token = store.parseJoinToken(tokenText);
   const existing = store.getPeer(token.systemId);
@@ -388,7 +388,7 @@ export async function accept(systemId, acceptedBy) {
 /** Remove a peer: local and immediate, then tell them, best effort. */
 export async function remove(systemId) {
   const row = store.peerRow(systemId);
-  if (!row || row.state === 'removed') throw new Error('Unknown site');
+  if (!row || row.state === 'removed') throw new Error('Unknown server');
   stopProbe(systemId);
   store.markRemoved(systemId);
   // Told AFTER forgetting them locally: if this never arrives, their next

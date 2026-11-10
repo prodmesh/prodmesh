@@ -183,7 +183,7 @@ change as verified because CI is green — say which half was checked.
 | `PRODMESH_AUTOSTART_TEST=1` | Show autostart ignores the arm window, and a scheduled-time start doesn't wait for the clock. **Dev only.** |
 | `PRODMESH_LOG_FILE` | Override the log path Admin → Logs tails. |
 | `PRODMESH_SECRET_*` | Supply secrets by env instead of `server/data/secrets.json`. |
-| `PRODMESH_FEDERATION_HOST` | Pin the federation listener to one address (tests use `127.0.0.1`). **Dev only**: Admin → Sites chooses the interface. |
+| `PRODMESH_FEDERATION_HOST` | Pin the federation listener to one address (tests use `127.0.0.1`). **Dev only**: Admin → Linked servers chooses the interface. |
 | `PRODMESH_FEDERATION_PROBE_MS` | Peer liveness interval (default 60000). Tests shorten it. |
 | `PORT` | Serve port (default 8080). |
 
