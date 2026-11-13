@@ -39,7 +39,16 @@ import { roomStatus } from './connectivityStatus.js';
 import { snapshot } from './health.js';
 
 const watchers = new Map(); // roomId -> AbortController
-const states = new Map(); // roomId -> last published status
+const states = new Map();
+// When each room was last READ successfully, change or not. Publishing is on
+// change, so the publish time says nothing about freshness; a federation
+// digest (ADR 0016) must say when the value was last confirmed.
+const observed = new Map(); // roomId -> ms
+
+/** When this room's value was last confirmed, or null if never/not watched. */
+export const observedAt = (roomId) => observed.get(roomId) ?? null;
+/** The last published value, or undefined while unwatched or not yet read. */
+export const current = (roomId) => states.get(roomId); // roomId -> last published status
 
 // Deliberately slow. Nothing here changes on a human timescale that matters —
 // an integration that dropped thirty seconds ago is still news — and every
@@ -156,6 +165,7 @@ async function watch(roomId, signal) {
     }
     if (signal.aborted) return;
     if (next) {
+      observed.set(roomId, Date.now());
       const key = changeKey(next);
       if (key !== last) {
         last = key;
@@ -178,6 +188,7 @@ function stop(roomId) {
   watchers.get(roomId)?.abort();
   watchers.delete(roomId);
   states.delete(roomId);
+  observed.delete(roomId);
 }
 
 hub.registerTopic('room:*:health', {

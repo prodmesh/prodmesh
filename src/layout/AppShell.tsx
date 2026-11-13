@@ -30,7 +30,8 @@ import { HelpDrawer } from '../components/HelpDrawer';
 import { AssistanceBar } from '../components/AssistanceBar';
 import { AssistanceDialog } from '../components/AssistanceDialog';
 import { ChangePinDialog } from '../components/ChangePinDialog';
-import { ALL_CAMPUSES, CampusContext } from './campus';
+import { ALL_CAMPUSES, CampusContext, remoteCampusId } from './campus';
+import { useRemoteServers } from './remote';
 import { ChurchContext, EMPTY_CHURCH } from './church';
 import { IdentityContext } from '../lib/identity';
 import type { Church } from '../types';
@@ -101,6 +102,7 @@ export function AppShell() {
     () => localStorage.getItem('prodmesh.campus') ?? ALL_CAMPUSES,
   );
   const [church, setChurch] = useState<Church>(EMPTY_CHURCH);
+  const remoteServers = useRemoteServers();
   const [logoStamp, setLogoStamp] = useState<number | null>(null);
   const [identity, setIdentity] = useState<AuthStatus | null>(null);
   const [identityOpen, setIdentityOpen] = useState(false);
@@ -329,6 +331,14 @@ export function AppShell() {
                     {s.name}
                     {s.status !== 'active' ? ' (disabled)' : ''}
                   </option>
+                ))}
+                {/* Linked servers' campuses, under their server's name (ADR 0018). */}
+                {remoteServers.filter((server) => server.campuses.length > 0).map((server) => (
+                  <optgroup key={server.systemId} label={server.name}>
+                    {server.campuses.map((c) => (
+                      <option key={c.id} value={remoteCampusId(server.systemId, c.id)}>{c.name}</option>
+                    ))}
+                  </optgroup>
                 ))}
               </SelectField>
             </div>

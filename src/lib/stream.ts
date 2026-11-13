@@ -148,6 +148,8 @@ export const roomTopic = {
  * rather than a `roomTopic` entry taking a misleading argument.
  */
 export const integrationTopic = (id: 'resi' | 'restream') => `integration:${id}`;
+/** A linked server's room summaries (ADR 0018), polled only while subscribed. */
+export const remoteSummaryTopic = (systemId: string) => `site:${systemId}:summary`;
 
 /** Test hook: drop the connection and every cached value. */
 export function resetStream() {

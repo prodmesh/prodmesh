@@ -15,6 +15,8 @@ const api = vi.hoisted(() => ({
   getAssistance: vi.fn(async () => ({ active: false })),
   requestAssistance: vi.fn(),
   dismissAssistance: vi.fn(),
+  // Linked servers' campuses for the picker (ADR 0018); none here.
+  getRemoteCampuses: vi.fn(async () => []),
   // The sidebar asks for the church's uploaded logo and falls back to the
   // bundled one when the endpoint 404s.
   logoSrc: (stamp?: number | null) => `/api/branding/logo${stamp ? `?v=${stamp}` : ''}`,

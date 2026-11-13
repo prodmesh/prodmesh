@@ -21,6 +21,7 @@ const FP = 'AB:'.repeat(31) + 'AB';
 const base = (over: Partial<FederationOverview> = {}): FederationOverview => ({
   config: {
     enabled: true, bind: 'all', port: 8443, address: '', effectiveAddress: '192.0.2.10:8443',
+    dashboardUrl: '', effectiveDashboardUrl: 'http://192.0.2.10:8080',
     interfaces: [{ name: 'en0', address: '192.0.2.10' }], warnAllInterfaces: false,
   },
   listener: { listening: true, host: 'all', port: 8443, error: null },
@@ -95,6 +96,14 @@ describe('Admin → Linked servers', () => {
     ] }));
     render(<LinkedServersPanel />);
     expect(await screen.findByText(/Clock is 95s behind/)).toBeInTheDocument();
+  });
+
+  it('says when a linked server is too old to share its campuses', async () => {
+    api.getFederation.mockResolvedValue(base({ peers: [
+      peer({ state: 'paired', awaiting: null, lastSeenAt: Date.now(), version: '1.4.2', sharesCampuses: false }),
+    ] }));
+    render(<LinkedServersPanel />);
+    expect(await screen.findByText(/campuses can't be shown: update ProdMesh there \(it runs 1\.4\.2\)/)).toBeInTheDocument();
   });
 
   it('confirms before removing a site', async () => {
