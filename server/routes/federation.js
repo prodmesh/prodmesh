@@ -30,7 +30,7 @@ const overview = () => {
     config: store.describe(),
     listener: link.listenerStatus(),
     identity: { systemId: me.systemId, name: me.name, tlsFingerprint: me.tlsFingerprint },
-    peers: store.listPeers(),
+    peers: store.listPeers().map((peer) => ({ ...peer, ...(link.peerDetails(peer.systemId) ?? {}) })),
     tokens: store.listJoinTokens(),
   };
 };

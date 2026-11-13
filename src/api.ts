@@ -647,6 +647,10 @@ export interface FederationPeer {
   /** 'unpaired_by_peer', or a reachability message. */
   lastError: string | null;
   clockSkewMs: number | null;
+  /** From its last answer, when this server has heard from it since starting. */
+  version?: string | null;
+  /** False when it runs a build from before linked campuses (ADR 0018). */
+  sharesCampuses?: boolean;
 }
 
 export interface FederationOverview {

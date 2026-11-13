@@ -181,6 +181,10 @@ test('each server learns what the other runs, and a rename follows within a prob
     assert.ok(!(secret in server), `${secret} is not public`);
   }
 
+  const [peer] = await peersOf(north);
+  assert.equal(peer.sharesCampuses, true);
+  assert.match(peer.version, /^\d+\.\d+/);
+
   await call(south, 'PUT', '/api/config', {
     name: 'Grace Church',
     sites: [campus('south', 'South Everett', [['south-main', 'Main Auditorium'], ['south-youth', 'Youth Room']])],

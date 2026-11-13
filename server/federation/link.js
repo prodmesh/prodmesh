@@ -34,6 +34,13 @@ import { getVersion } from '../deployment.js';
 import { sourceIp, lockedFor, recordFailure } from '../credentialThrottle.js';
 
 export const healthKey = (systemId) => `peer:${systemId}`;
+
+// What each peer last said about itself that is not worth a column: its
+// version, and whether it shares campuses (ADR 0018). A peer on a build from
+// before the directory answers hello without a revision; without this the
+// only symptom is campuses that never appear, which points nowhere.
+const peerInfo = new Map(); // systemId -> { version, sharesCampuses }
+export const peerDetails = (systemId) => peerInfo.get(systemId) ?? null;
 const CONNECT_TIMEOUT_MS = 5000;
 const PROBE_MS = Number(process.env.PRODMESH_FEDERATION_PROBE_MS) > 0
   ? Number(process.env.PRODMESH_FEDERATION_PROBE_MS) : 60_000;
@@ -337,6 +344,10 @@ export async function probe(systemId) {
       auth.audit({ action: 'federation.pair', result: 'allowed', resourceType: 'peer', resourceId: systemId, details: { stage: 'accepted-by-peer', name: row.name } });
     }
     health.report(key, true);
+    peerInfo.set(systemId, {
+      version: typeof body?.version === 'string' ? body.version.slice(0, 40) : null,
+      sharesCampuses: body?.state !== 'paired' || typeof body?.directoryRevision === 'string',
+    });
     if (body?.state === 'paired' && typeof body.directoryRevision === 'string'
       && body.directoryRevision !== directory.directoryRevision(systemId)) {
       await syncDirectory(systemId);

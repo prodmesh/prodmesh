@@ -98,6 +98,14 @@ describe('Admin → Linked servers', () => {
     expect(await screen.findByText(/Clock is 95s behind/)).toBeInTheDocument();
   });
 
+  it('says when a linked server is too old to share its campuses', async () => {
+    api.getFederation.mockResolvedValue(base({ peers: [
+      peer({ state: 'paired', awaiting: null, lastSeenAt: Date.now(), version: '1.4.2', sharesCampuses: false }),
+    ] }));
+    render(<LinkedServersPanel />);
+    expect(await screen.findByText(/campuses can't be shown: update ProdMesh there \(it runs 1\.4\.2\)/)).toBeInTheDocument();
+  });
+
   it('confirms before removing a site', async () => {
     api.getFederation.mockResolvedValue(base({ peers: [peer({ state: 'paired', awaiting: null, lastSeenAt: Date.now() })] }));
     api.removePeer.mockResolvedValue(base());

@@ -274,6 +274,9 @@ function status(peer: FederationPeer, reachable: boolean) {
   if (peer.awaiting === 'them') return { tone: 'muted', text: `Waiting for ${peer.name} to accept` };
   if (peer.lastError === 'unpaired_by_peer') return { tone: 'bad', text: 'No longer paired on the other server' };
   if (!reachable) return { tone: 'bad', text: peer.lastError ? `Unreachable: ${peer.lastError}` : 'Not yet reached' };
+  if (peer.sharesCampuses === false) {
+    return { tone: 'warn', text: `Connected, but its campuses can't be shown: update ProdMesh there${peer.version ? ` (it runs ${peer.version})` : ''}` };
+  }
   return { tone: 'ok', text: `Connected · seen ${ago(peer.lastSeenAt)}` };
 }
 
