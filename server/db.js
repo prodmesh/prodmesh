@@ -538,6 +538,23 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    // Show automation defaults per (room, Planning Center service type), #58.
+    // Events of that type inherit them; show_config still overrides per event.
+    // Items are named by title — see showConfig.js for why not by id.
+    name: 'show-config-defaults',
+    up(d) {
+      d.exec(`
+        CREATE TABLE IF NOT EXISTS show_config_defaults (
+          room_id         TEXT    NOT NULL,
+          service_type_id TEXT    NOT NULL,
+          config          TEXT    NOT NULL,
+          updated_at      INTEGER NOT NULL,
+          PRIMARY KEY (room_id, service_type_id)
+        );
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

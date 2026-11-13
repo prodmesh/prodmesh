@@ -674,7 +674,8 @@ async function beginShow(roomId, planId, timeId, startedAt, { startedLogging = f
     current: { itemId: null, itemIndex: null, itemName: null, startedAt: null, slideIndex: null, slideCount: null },
     follow: true,
     ppConnected: null,
-    config: showConfig.getConfig(roomId, planId), // per-event automation settings
+    // Per-event automation on top of its service type's default (#58).
+    config: showConfig.effectiveConfig(roomId, planId, serviceType?.id, items),
     servicesLive: null,
     startedLogging, // true when the dashboard turned Smaart's SPL logging on
     abort: new AbortController(),
@@ -904,7 +905,7 @@ function releaseServicesLiveFor(show, why) {
 export function refreshConfig(roomId, planId) {
   const show = shows.get(roomId);
   if (show && show.planId === planId) {
-    show.config = showConfig.getConfig(roomId, planId);
+    show.config = showConfig.effectiveConfig(roomId, planId, show.serviceType?.id, show.items);
     // Unticked mid-service: let go now rather than hold it until show end.
     if (!show.config?.servicesLiveFromProPresenter) releaseServicesLiveFor(show, 'turned off mid-show');
     if (show.current.itemId) syncServicesLive(show, show.current.itemId);
@@ -912,6 +913,12 @@ export function refreshConfig(roomId, planId) {
     restartStreamWatcher(roomId);
     publishShow(roomId);
   }
+}
+
+/** A live show of this service type picks up an edited default (#58). */
+export function refreshConfigForType(roomId, serviceTypeId) {
+  const show = shows.get(roomId);
+  if (show && String(show.serviceType?.id) === String(serviceTypeId)) refreshConfig(roomId, show.planId);
 }
 
 // ── Autostart watcher ────────────────────────────────────────────────────────
@@ -942,6 +949,8 @@ const ARM_CHECK_MS = envMs('PRODMESH_AUTOSTART_ARM_MS', 60 * 1000);
 const PP_POLL_MS = envMs('PRODMESH_AUTOSTART_POLL_MS', 3000);
 const SHOW_POLL_MS = envMs('PRODMESH_SHOW_POLL_MS', 800);
 
+const unmatchedWarned = new Set();
+
 export async function nextArmedEvent(room, now) {
   const plans = [];
   for (const st of room.planningCenter?.serviceTypes ?? []) {
@@ -952,15 +961,26 @@ export async function nextArmedEvent(room, now) {
     // Legacy Services LIVE triggers arrive here already promoted to an
     // autostart item or a scheduled-time start — see
     // showConfig.promoteLegacyServicesLive — so the only question left is
-    // whether this event autostarts at all.
-    const config = showConfig.getConfig(room.id, plan.id);
-    if (!config?.startItemId && !config?.startAtScheduledTime) continue;
+    // whether this event autostarts at all — by its own setting or its
+    // service type's default (#58).
+    if (!showConfig.mayAutostart(room.id, plan.id, plan.serviceTypeId)) continue;
     const st = { id: plan.serviceTypeId, name: plan.serviceTypeName };
     const times = await pco.getPlanTimes(st, plan.id).catch(survive([], `autostart ${room.id}`));
     const window = armWindow(times);
     if (!IGNORE_WINDOW && (!window || now < window.from || now > window.to)) continue;
     const items = await pco.getPlanItems(st, plan.id).catch(survive([], `autostart ${room.id}`));
     if (items.length === 0) continue;
+    const config = showConfig.effectiveConfig(room.id, plan.id, plan.serviceTypeId, items);
+    if (!config?.startItemId && !config?.startAtScheduledTime) {
+      // A default naming an item this plan does not have. Said once per plan
+      // rather than every minute of the arm window.
+      if (!unmatchedWarned.has(plan.id)) {
+        unmatchedWarned.add(plan.id);
+        const title = showConfig.getTypeDefault(room.id, plan.serviceTypeId)?.startItemTitle;
+        console.warn(`[autostart] ${room.id}: ${plan.title ?? plan.id} has no item titled "${title}", so its service type default cannot start it`);
+      }
+      continue;
+    }
     return { plan, config, times, items };
   }
   return null;

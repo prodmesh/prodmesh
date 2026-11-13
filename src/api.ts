@@ -1249,11 +1249,15 @@ export interface ChecklistItem {
   doneAt: number | null;
 }
 
+/** An event's own automation record. The start pair, endItemId and
+ *  servicesLiveFromProPresenter are each OPTIONAL: absent means the event
+ *  inherits its service type default (#58); present, null included, overrides
+ *  it. */
 export interface ShowConfig {
-  startItemId: string | null; // PP lands on this PC item → show autostarts
+  startItemId?: string | null; // PP lands on this PC item → show autostarts
   /** Each service time starts on the clock instead. Excludes startItemId. */
   startAtScheduledTime?: boolean;
-  endItemId: string | null; // last slide of this PC item → show auto-completes
+  endItemId?: string | null; // last slide of this PC item → show auto-completes
   map: Record<string, { ppIndex: number; ppName: string | null } | { disabled: true } | null>;
   /** YouTube broadcast per SERVICE TIME, tri-state. Key ABSENT = auto (record
    *  whatever is live); `null` = not streamed (record nothing, don't look);
@@ -1291,6 +1295,38 @@ export interface EventDetail {
   detail: { artwork: string | null; notes: PlanNote[] };
   checklist: ChecklistItem[];
   showConfig: ShowConfig | null;
+  /** What this event inherits where it sets nothing itself (#58). */
+  automationDefault?: AutomationDefault | null;
+}
+
+/** Show automation saved once per (room, service type), #58. Items are named
+ *  by title, because Planning Center gives each week's plan new item ids. */
+export interface AutomationDefault {
+  startItemTitle: string | null;
+  startAtScheduledTime: boolean;
+  endItemTitle: string | null;
+  servicesLiveFromProPresenter: boolean;
+}
+
+export async function saveAutomationDefault(
+  roomId: string,
+  serviceTypeId: string,
+  def: AutomationDefault,
+): Promise<AutomationDefault> {
+  const res = await fetch(
+    `/api/rooms/${encodeURIComponent(roomId)}/automation-defaults/${encodeURIComponent(serviceTypeId)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json', ...requestHeaders() }, body: JSON.stringify(def) },
+  );
+  await requireOk(res);
+  return ((await res.json()) as { automationDefault: AutomationDefault }).automationDefault;
+}
+
+export async function clearAutomationDefault(roomId: string, serviceTypeId: string): Promise<void> {
+  const res = await fetch(
+    `/api/rooms/${encodeURIComponent(roomId)}/automation-defaults/${encodeURIComponent(serviceTypeId)}`,
+    { method: 'DELETE', headers: requestHeaders() },
+  );
+  await requireOk(res);
 }
 
 export const getEventDetail = (id: string, planId: string) =>

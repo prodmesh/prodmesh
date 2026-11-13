@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, Play, Radio, Square } from 'lucide-react';
 import {
+  clearAutomationDefault,
   clearShowConfig,
+  saveAutomationDefault,
+  type AutomationDefault,
   getPpPlaylist,
   getYouTubeBroadcasts,
   saveShowConfig,
@@ -31,11 +34,43 @@ function broadcastLabel(b: YouTubeBroadcast) {
 const AUTO = '';
 const NONE = '\u0000none';
 const CLOCK = 'clock:scheduled'; // stored as startAtScheduledTime; no PC item id has a colon
+const INHERIT = 'inherit:default'; // the field is absent from the event's record (#58)
+const ON = 'on';
+const OFF = 'off';
 
-const EMPTY: ShowConfig = {
-  startItemId: null, startAtScheduledTime: false, endItemId: null, map: {}, videos: {},
-  servicesLiveFromProPresenter: false,
-};
+// Nothing of its own: every field inherits the service type default.
+const EMPTY: ShowConfig = { map: {}, videos: {} };
+
+/** Does the event set its own start? Either half of the pair says so. */
+const ownsStart = (c: ShowConfig) => c.startAtScheduledTime !== undefined || c.startItemId !== undefined;
+
+const norm = (s: string | null | undefined) => String(s ?? '').trim().toLowerCase();
+
+/** The plan item a default's title names — the server's rule (showConfig.js). */
+function itemByTitle(items: PlanItem[], title: string | null | undefined) {
+  if (!title) return null;
+  return items.find((i) => (i.type ?? 'item') !== 'header' && norm(i.title) === norm(title)) ?? null;
+}
+
+/** An event's settings over its default, as the show will run them. */
+function effective(draft: ShowConfig, def: AutomationDefault | null, items: PlanItem[]) {
+  const ownStart = ownsStart(draft);
+  return {
+    startItemId: ownStart
+      ? draft.startItemId ?? null
+      : def?.startAtScheduledTime ? null : itemByTitle(items, def?.startItemTitle)?.id ?? null,
+    startAtScheduledTime: ownStart ? Boolean(draft.startAtScheduledTime) : Boolean(def?.startAtScheduledTime),
+    endItemId: draft.endItemId !== undefined ? draft.endItemId : itemByTitle(items, def?.endItemTitle)?.id ?? null,
+    servicesLiveFromProPresenter: draft.servicesLiveFromProPresenter !== undefined
+      ? draft.servicesLiveFromProPresenter
+      : Boolean(def?.servicesLiveFromProPresenter),
+  };
+}
+
+/** Drop the three inheritable groups so the event follows its default. */
+function inheritAll(config: ShowConfig): ShowConfig {
+  return { map: config.map, videos: config.videos };
+}
 
 // Per-event show automation (one config per event, shared by all its service
 // times): which PC item autostarts the show, which one auto-completes it at
@@ -47,14 +82,20 @@ export function ShowConfigWidget({
   items,
   times,
   saved,
+  serviceType = null,
+  automationDefault = null,
 }: {
   roomId: string;
   planId: string;
   items: PlanItem[];
   times: PlanTime[];
   saved: ShowConfig | null;
+  /** The plan's service type, whose default this event inherits (#58). */
+  serviceType?: { id: string; name: string } | null;
+  automationDefault?: AutomationDefault | null;
 }) {
   const [draft, setDraft] = useState<ShowConfig>(saved ?? EMPTY);
+  const [def, setDef] = useState<AutomationDefault | null>(automationDefault);
   const [persisted, setPersisted] = useState<ShowConfig | null>(saved); // what the server has
   const [pp, setPp] = useState<PpPlaylist | null | undefined>(undefined); // undefined = loading
   const [mapOpen, setMapOpen] = useState(false);
@@ -93,6 +134,58 @@ export function ShowConfigWidget({
   const setCount = Object.keys(draft.videos ?? {}).length;
   const ppItems = (pp?.items ?? []).filter((i) => i.type !== 'header');
   const overrideCount = Object.values(draft.map).filter(Boolean).length;
+  const eff = effective(draft, def, items);
+  const armed = effective(persisted ?? EMPTY, def, items);
+  const isArmed = Boolean(armed.startItemId || armed.startAtScheduledTime || armed.endItemId || armed.servicesLiveFromProPresenter);
+  const typeName = serviceType?.name ?? 'this service type';
+  const titleOf = (id: string | null) => (id ? items.find((i) => i.id === id)?.title ?? null : null);
+
+  // What the default says, in the words of each control's inherit option.
+  const defStart = def?.startAtScheduledTime ? 'Scheduled time' : def?.startItemTitle ?? 'Never';
+  const defEnd = def?.endItemTitle ?? 'Never';
+  // A default naming an item this plan does not have runs nothing for that
+  // field. Say so where it is chosen — on Sunday it would just not happen.
+  const startMissing = !ownsStart(draft) && !def?.startAtScheduledTime
+    && def?.startItemTitle && !itemByTitle(items, def.startItemTitle);
+  const endMissing = draft.endItemId === undefined && def?.endItemTitle && !itemByTitle(items, def.endItemTitle);
+
+  const saveAsDefault = async () => {
+    if (!serviceType) return;
+    setMsg(null);
+    try {
+      const next = await saveAutomationDefault(roomId, serviceType.id, {
+        startItemTitle: eff.startAtScheduledTime ? null : titleOf(eff.startItemId),
+        startAtScheduledTime: eff.startAtScheduledTime,
+        endItemTitle: titleOf(eff.endItemId),
+        servicesLiveFromProPresenter: eff.servicesLiveFromProPresenter,
+      });
+      setDef(next);
+      // This event now follows the default it just set, so a later change to
+      // the default reaches it like every other event of the type.
+      const own = inheritAll(draft);
+      if (persisted) {
+        const saved = await saveShowConfig(roomId, planId, own);
+        setPersisted(saved);
+        setDraft(saved);
+      } else {
+        setDraft(own);
+      }
+      setMsg(`Saved as the ${typeName} default. Every ${typeName} event in this room uses it unless it sets its own.`);
+    } catch (err) {
+      setMsg(`Couldn’t save: ${err instanceof Error ? err.message : err}`);
+    }
+  };
+
+  const clearDefault = async () => {
+    if (!serviceType) return;
+    try {
+      await clearAutomationDefault(roomId, serviceType.id);
+      setDef(null);
+      setMsg(`Cleared the ${typeName} default.`);
+    } catch (err) {
+      setMsg(`Couldn’t clear: ${err instanceof Error ? err.message : err}`);
+    }
+  };
 
   const save = async () => {
     setMsg(null);
@@ -110,19 +203,21 @@ export function ShowConfigWidget({
     await clearShowConfig(roomId, planId);
     setDraft(EMPTY);
     setPersisted(null);
-    setMsg('Cleared — this event starts and ends manually.');
+    setMsg(def ? `Cleared — this event uses the ${typeName} default.` : 'Cleared — this event starts and ends manually.');
   };
 
   const itemSelect = (
-    value: string | null,
-    onChange: (v: string | null) => void,
+    value: string | null | undefined,
+    onChange: (v: string | null | undefined) => void,
     placeholder: string,
+    inheritLabel: string,
   ) => (
     <SelectField
       className="showcfg__select"
-      value={value ?? ''}
-      onChange={(e) => onChange(e.target.value || null)}
+      value={value === undefined ? INHERIT : value ?? ''}
+      onChange={(e) => onChange(e.target.value === INHERIT ? undefined : e.target.value || null)}
     >
+      <option value={INHERIT}>{inheritLabel}</option>
       <option value="">{placeholder}</option>
       {trackable.map((i) => (
         <option key={i.id} value={i.id}>
@@ -136,8 +231,7 @@ export function ShowConfigWidget({
     <Widget
       title="Show Automation"
       meta={
-        persisted?.startItemId || persisted?.startAtScheduledTime || persisted?.endItemId
-          || persisted?.servicesLiveFromProPresenter ? (
+        isArmed ? (
           <span className="svc__badge svc__badge--live">● armed</span>
         ) : (
           <span className="svc__badge svc__badge--mock">○ manual</span>
@@ -150,7 +244,7 @@ export function ShowConfigWidget({
           Services LIVE with no way to autostart at all, and two dropdowns whose
           difference nobody could see. */}
       <p className="widget__hint">
-        {draft.startAtScheduledTime
+        {eff.startAtScheduledTime
           ? 'Each service time of this event starts on the clock, whatever ProPresenter is showing.'
           : 'The show follows the ProPresenter operator — pre-service slides can loop between services without tripping anything. Applies to every service time of this event.'}
       </p>
@@ -164,12 +258,19 @@ export function ShowConfigWidget({
         </span>
         <SelectField
           className="showcfg__select"
-          value={draft.startAtScheduledTime ? CLOCK : (draft.startItemId ?? '')}
+          value={!ownsStart(draft) ? INHERIT : draft.startAtScheduledTime ? CLOCK : (draft.startItemId ?? '')}
           onChange={(e) => {
             const v = e.target.value;
-            setDraft((d) => ({ ...d, startAtScheduledTime: v === CLOCK, startItemId: v && v !== CLOCK ? v : null }));
+            setDraft((d) => {
+              if (v === INHERIT) {
+                const { startItemId: _a, startAtScheduledTime: _b, ...rest } = d;
+                return rest;
+              }
+              return { ...d, startAtScheduledTime: v === CLOCK, startItemId: v && v !== CLOCK ? v : null };
+            });
           }}
         >
+          <option value={INHERIT}>{typeName} default · {defStart}</option>
           <option value="">Never (start manually)</option>
           <option value={CLOCK}>Scheduled time</option>
           {trackable.length > 0 && (
@@ -188,14 +289,44 @@ export function ShowConfigWidget({
         <span className="showcfg__label">
           <Square size={12} /> Complete at last slide of
         </span>
-        {itemSelect(draft.endItemId, (v) => setDraft((d) => ({ ...d, endItemId: v })), 'Never (end manually)')}
+        {itemSelect(draft.endItemId, (v) => setDraft((d) => {
+          if (v === undefined) {
+            const { endItemId: _e, ...rest } = d;
+            return rest;
+          }
+          return { ...d, endItemId: v };
+        }), 'Never (end manually)', `${typeName} default · ${defEnd}`)}
       </div>
+      {startMissing && (
+        <p className="showcfg__mismatch">No item titled “{def!.startItemTitle}” in this plan, so the default can’t start it. Choose a start for this event.</p>
+      )}
+      {endMissing && (
+        <p className="showcfg__mismatch">No item titled “{def!.endItemTitle}” in this plan, so the default can’t end it.</p>
+      )}
 
-      <label className="showcfg__row">
+      <div className="showcfg__row">
         <span className="showcfg__label"><Radio size={13} /> ProPresenter controls Services LIVE</span>
-        <input type="checkbox" checked={Boolean(draft.servicesLiveFromProPresenter)} onChange={(e) => setDraft((d) => ({ ...d, servicesLiveFromProPresenter: e.target.checked }))} />
-      </label>
-      {draft.servicesLiveFromProPresenter && (
+        <SelectField
+          className="showcfg__select"
+          aria-label="ProPresenter controls Services LIVE"
+          value={draft.servicesLiveFromProPresenter === undefined ? INHERIT : draft.servicesLiveFromProPresenter ? ON : OFF}
+          onChange={(e) => {
+            const v = e.target.value;
+            setDraft((d) => {
+              if (v === INHERIT) {
+                const { servicesLiveFromProPresenter: _s, ...rest } = d;
+                return rest;
+              }
+              return { ...d, servicesLiveFromProPresenter: v === ON };
+            });
+          }}
+        >
+          <option value={INHERIT}>{typeName} default · {def?.servicesLiveFromProPresenter ? 'On' : 'Off'}</option>
+          <option value={ON}>On</option>
+          <option value={OFF}>Off</option>
+        </SelectField>
+      </div>
+      {eff.servicesLiveFromProPresenter && (
         <p className="widget__hint">
           Planning Center Services LIVE follows this show: ProdMesh takes control when the show
           starts, moves it forward with each item, and lets go when the show ends. It never moves
@@ -360,13 +491,23 @@ export function ShowConfigWidget({
         <button className="btn btn--primary btn--sm" onClick={save}>
           Save automation
         </button>
-        {(persisted?.startItemId || persisted?.startAtScheduledTime || persisted?.endItemId
-          || persisted?.servicesLiveFromProPresenter || overrideCount > 0) && (
+        {serviceType && (
+          <button className="btn btn--sm" onClick={saveAsDefault}>
+            Save as {typeName} default
+          </button>
+        )}
+        {persisted && (
           <button className="btn btn--ghost btn--sm" onClick={clear}>
             Clear
           </button>
         )}
       </div>
+      {serviceType && def && (
+        <p className="widget__hint">
+          {typeName} default: start {defStart} · complete after {defEnd} · Services LIVE {def.servicesLiveFromProPresenter ? 'on' : 'off'}.{' '}
+          <button className="linkbtn" onClick={clearDefault}>Clear default</button>
+        </p>
+      )}
       {msg && <p className="showcfg__msg">{msg}</p>}
     </Widget>
   );

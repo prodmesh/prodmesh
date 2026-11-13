@@ -170,6 +170,8 @@ export function EventDetail() {
           planId={planId}
           items={plan.items}
           saved={data.showConfig}
+          serviceType={{ id: plan.serviceTypeId, name: plan.serviceTypeName }}
+          automationDefault={data.automationDefault ?? null}
         />
 
         {detail.notes.length > 0 && (

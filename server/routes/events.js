@@ -95,6 +95,8 @@ router.get('/api/rooms/:id/event/:planId', async (req, res) => {
       detail,
       checklist: checklist.getChecklist(room.id, plan.id, plan.serviceTypeId),
       showConfig: showCfg.getConfig(room.id, plan.id),
+      // What this event inherits where it sets nothing itself (#58).
+      automationDefault: showCfg.getTypeDefault(room.id, plan.serviceTypeId),
     });
   } catch (err) {
     res.status(502).json({ error: String(err.message ?? err) });
@@ -140,6 +142,41 @@ router.delete('/api/rooms/:id/event/:planId/show-config', requirePermission('sho
   showCfg.clearConfig(req.params.id, req.params.planId);
   show.refreshConfig(req.params.id, req.params.planId);
   res.json({ ok: true, showConfig: null });
+});
+
+// Service type defaults (#58): saved once, inherited by every event of that
+// type in this room unless the event sets its own. The service type must be
+// one this room actually follows, so a default cannot be parked on an id that
+// nothing will ever read.
+function followsType(room, serviceTypeId) {
+  return (room?.planningCenter?.serviceTypes ?? []).some((st) => String(st.id) === String(serviceTypeId));
+}
+
+router.put('/api/rooms/:id/automation-defaults/:serviceTypeId', requirePermission('shows.configure'), (req, res) => {
+  const room = rooms[req.params.id];
+  if (!room) return res.status(404).json({ error: 'Unknown room' });
+  if (!followsType(room, req.params.serviceTypeId)) return res.status(404).json({ error: 'This room does not follow that service type' });
+  try {
+    const def = showCfg.setTypeDefault(room.id, req.params.serviceTypeId, req.body ?? {});
+    show.refreshConfigForType(room.id, req.params.serviceTypeId);
+    auditSuccess(req, 'shows.configure', {
+      roomId: room.id, resourceType: 'service-type', resourceId: req.params.serviceTypeId, details: { operation: 'automation-default', ...def },
+    });
+    res.json({ ok: true, automationDefault: def });
+  } catch (err) {
+    res.status(400).json({ error: String(err.message ?? err) });
+  }
+});
+
+router.delete('/api/rooms/:id/automation-defaults/:serviceTypeId', requirePermission('shows.configure'), (req, res) => {
+  const room = rooms[req.params.id];
+  if (!room) return res.status(404).json({ error: 'Unknown room' });
+  showCfg.clearTypeDefault(room.id, req.params.serviceTypeId);
+  show.refreshConfigForType(room.id, req.params.serviceTypeId);
+  auditSuccess(req, 'shows.configure', {
+    roomId: room.id, resourceType: 'service-type', resourceId: req.params.serviceTypeId, details: { operation: 'automation-default-clear' },
+  });
+  res.json({ ok: true, automationDefault: null });
 });
 
 // The ProPresenter playlist to map THIS event against (for the mapping UI):
