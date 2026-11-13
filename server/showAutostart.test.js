@@ -57,3 +57,20 @@ test('an event set to its scheduled time arms without a start item', async () =>
   assert.equal(await nextArmedEvent(room, sundayAt(14, 0)), null, 'same window as an item start');
   showCfg.clearConfig(room.id, 'mock-st1-0');
 });
+
+test('a service type default arms every event of that type, resolved to this plan’s item (#58)', async () => {
+  showCfg.setTypeDefault(room.id, 'st1', { startItemTitle: 'countdown' });
+  const armed = await nextArmedEvent(room, sundayAt(8, 30));
+  assert.ok(armed, 'armed with no per-event config at all');
+  assert.equal(armed.config.startItemId, armed.items.find((i) => i.title === 'Countdown').id);
+
+  // The event's own Never beats the default.
+  showCfg.setConfig(room.id, 'mock-st1-0', { startItemId: null, startAtScheduledTime: false });
+  assert.notEqual((await nextArmedEvent(room, sundayAt(8, 30)))?.plan.id, 'mock-st1-0');
+  showCfg.clearConfig(room.id, 'mock-st1-0');
+
+  // A title this plan lacks arms nothing rather than something else.
+  showCfg.setTypeDefault(room.id, 'st1', { startItemTitle: 'Renamed' });
+  assert.equal(await nextArmedEvent(room, sundayAt(8, 30)), null);
+  showCfg.clearTypeDefault(room.id, 'st1');
+});

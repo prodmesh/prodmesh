@@ -9,6 +9,8 @@ const api = vi.hoisted(() => ({
   getYouTubeBroadcasts: vi.fn(),
   saveShowConfig: vi.fn(),
   clearShowConfig: vi.fn(),
+  saveAutomationDefault: vi.fn(),
+  clearAutomationDefault: vi.fn(),
 }));
 vi.mock('../api', async (importOriginal) => ({ ...await importOriginal<typeof import('../api')>(), ...api }));
 
@@ -33,10 +35,9 @@ describe('Show Automation', () => {
     render(<ShowConfigWidget roomId="r" planId="p" items={items} times={times} saved={null} />);
     await userEvent.selectOptions(within(row(/Autostart service at/)).getByRole('combobox'), 'worship');
     await userEvent.click(screen.getByRole('button', { name: 'Save automation' }));
-    expect(api.saveShowConfig).toHaveBeenCalledWith('r', 'p', expect.objectContaining({
-      startItemId: 'worship',
-      servicesLiveFromProPresenter: false,
-    }));
+    expect(api.saveShowConfig).toHaveBeenCalledWith('r', 'p', expect.objectContaining({ startItemId: 'worship' }));
+    // Untouched, so it is not this event's own: it follows the default (#58).
+    expect(api.saveShowConfig.mock.calls[0][2]).not.toHaveProperty('servicesLiveFromProPresenter');
   });
 
   it('can start on the clock instead of a ProPresenter item', async () => {
@@ -57,7 +58,7 @@ describe('Show Automation', () => {
     // Two dropdowns whose difference nobody could see was half the complaint.
     render(<ShowConfigWidget roomId="r" planId="p" items={items} times={times} saved={null} />);
     const before = screen.getAllByRole('combobox').length;
-    await userEvent.click(screen.getByRole('checkbox', { name: /ProPresenter controls Services LIVE/ }));
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /ProPresenter controls Services LIVE/ }), 'On');
     expect(screen.getAllByRole('combobox')).toHaveLength(before);
     expect(screen.getByText(/lets go when the show ends/)).toBeInTheDocument();
   });
@@ -68,5 +69,50 @@ describe('Show Automation', () => {
     render(<ShowConfigWidget roomId="r" planId="p" items={items} times={times}
       saved={{ startItemId: 'worship', endItemId: null, map: {}, videos: {}, servicesLiveFromProPresenter: true }} />);
     expect(within(row(/Autostart service at/)).getByRole('combobox')).toHaveValue('worship');
+  });
+});
+
+describe('Show Automation defaults per service type (#58)', () => {
+  const sunday = { id: 'st1', name: 'Sunday Morning' };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.getPpPlaylist.mockResolvedValue({ playlist: null });
+    api.saveShowConfig.mockImplementation(async (_room: string, _plan: string, c: ShowConfig) => c);
+    api.saveAutomationDefault.mockImplementation(async (_r: string, _st: string, d: unknown) => d);
+  });
+
+  it('an event with nothing of its own shows and runs its default', () => {
+    render(<ShowConfigWidget roomId="r" planId="p" items={items} times={times} saved={null} serviceType={sunday}
+      automationDefault={{ startItemTitle: 'pre-service slides', startAtScheduledTime: false, endItemTitle: 'Closing', servicesLiveFromProPresenter: true }} />);
+    const start = within(row(/Autostart service at/)).getByRole('combobox');
+    expect(start).toHaveDisplayValue('Sunday Morning default · pre-service slides');
+    expect(screen.getByText('● armed')).toBeInTheDocument();
+    expect(screen.getByText(/lets go when the show ends/)).toBeInTheDocument();
+  });
+
+  it('saving as the default sends titles, not this week\u2019s item ids, and the event then follows it', async () => {
+    render(<ShowConfigWidget roomId="r" planId="p" items={items} times={times} serviceType={sunday}
+      saved={{ startItemId: 'worship', startAtScheduledTime: false, endItemId: 'closing', map: {}, videos: {} }} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Save as Sunday Morning default' }));
+    expect(api.saveAutomationDefault).toHaveBeenCalledWith('r', 'st1', {
+      startItemTitle: 'Worship', startAtScheduledTime: false, endItemTitle: 'Closing', servicesLiveFromProPresenter: false,
+    });
+    expect(api.saveShowConfig).toHaveBeenCalledWith('r', 'p', { map: {}, videos: {} });
+    expect(within(row(/Autostart service at/)).getByRole('combobox')).toHaveDisplayValue('Sunday Morning default · Worship');
+  });
+
+  it('an event can override the default with Never', async () => {
+    render(<ShowConfigWidget roomId="r" planId="p" items={items} times={times} saved={null} serviceType={sunday}
+      automationDefault={{ startItemTitle: 'Worship', startAtScheduledTime: false, endItemTitle: null, servicesLiveFromProPresenter: false }} />);
+    await userEvent.selectOptions(within(row(/Autostart service at/)).getByRole('combobox'), 'Never (start manually)');
+    await userEvent.click(screen.getByRole('button', { name: 'Save automation' }));
+    expect(api.saveShowConfig).toHaveBeenCalledWith('r', 'p', expect.objectContaining({ startItemId: null, startAtScheduledTime: false }));
+  });
+
+  it('warns when the default names an item this plan does not have', () => {
+    render(<ShowConfigWidget roomId="r" planId="p" items={items} times={times} saved={null} serviceType={sunday}
+      automationDefault={{ startItemTitle: 'Countdown', startAtScheduledTime: false, endItemTitle: null, servicesLiveFromProPresenter: false }} />);
+    expect(screen.getByText(/No item titled “Countdown” in this plan/)).toBeInTheDocument();
+    expect(screen.getByText('○ manual')).toBeInTheDocument();
   });
 });
