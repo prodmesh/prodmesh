@@ -1,6 +1,6 @@
 # 0018 — The directory, digests, and visiting another campus
 
-Status: proposed · 2026-11-12 · details [0014](0014-a-server-per-site.md) and
+Status: accepted · 2026-11-12 · details [0014](0014-a-server-per-site.md) and
 [0016](0016-federation-network-boundaries.md) · runs over the link in
 [0017](0017-pairing-and-the-federation-link.md) · part of
 [#46](https://github.com/prodmesh/prodmesh/issues/46)
@@ -142,8 +142,9 @@ value is shown dimmed with its age), and **current**.
 - **The sidebar's campus picker** lists remote campuses under their server's
   name, after this server's own. Choosing one shows that campus's room cards
   rendered from the digest, each with an **Open** button.
-- **All Campuses** on Home includes remote campuses' cards after local ones.
-  It is the screen the digest exists for.
+- **All Campuses** on Home groups cards under a header per campus whenever
+  more than one campus is visible, local campuses first, then each linked
+  server's. It is the screen the digest exists for.
 - **Open** navigates the tab to `dashboardUrl` — plain navigation in the same
   tab, so the browser's own Back returns. Before visiting is built, Open is just
   that link; after, it carries an assertion (below).
