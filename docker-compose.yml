@@ -16,6 +16,11 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+      # The federation link to another campus's ProdMesh (Admin → Linked servers).
+      # Uncomment only when pairing sites. In Admin, leave "Listen on" as All
+      # interfaces (the container's own address is not the one peers reach)
+      # and set "Other sites reach this server at" to this HOST's address.
+      # - "8443:8443"
     volumes:
       # PINs, credentials, the SQLite database, uploaded logo, show history.
       # Back this up and you have backed up the install.

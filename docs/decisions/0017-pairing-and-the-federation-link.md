@@ -1,6 +1,6 @@
 # 0017 — Pairing and the federation link
 
-Status: proposed · 2026-11-09 · details [0014](0014-a-server-per-site.md) and
+Status: accepted · 2026-11-09 · implemented on main · details [0014](0014-a-server-per-site.md) and
 [0016](0016-federation-network-boundaries.md) · part of
 [#46](https://github.com/prodmesh/prodmesh/issues/46) · builds on
 [#49](https://github.com/prodmesh/prodmesh/issues/49)
@@ -218,7 +218,7 @@ per 0016's invariant.
 
 ### Configuration lives in Admin
 
-Admin gains a **Sites** section:
+Admin gains a **Sites** section (shipped as **Linked servers**: a peer is a server, and one server can run several campuses, so "site" was dropped from the screen; see `docs/UI_TEXT.md`):
 
 - **Federation:** on or off; where to listen (*all interfaces*, or one of
   this machine's interfaces by name); the port; and the federation address

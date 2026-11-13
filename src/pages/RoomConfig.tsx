@@ -116,7 +116,7 @@ export function RoomConfigPanel() {
             <input className="field" value={room.name}
               onChange={(e) => update((n) => { findRoom(n).room.name = e.target.value; })} />
           </label>
-          <label className="lfield"><span>Site</span>
+          <label className="lfield"><span>Campus</span>
             <SelectField value={owner.id}
               onChange={(e) => update((n) => {
                 const from = findRoom(n);

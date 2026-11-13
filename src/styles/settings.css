@@ -1565,3 +1565,41 @@
   font-size: 0.74rem;
   word-break: break-all;
 }
+
+/* Admin → Linked servers (ADR 0017) */
+.servers__grid {
+  display: grid;
+  /* Wraps rather than overflowing: the address column is the one people
+     type into, so it is never squeezed narrower than an address. */
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.servers__grid label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.servers__grid .field, .servers__grid .selectfield { width: 100%; box-sizing: border-box; }
+.servers__pair { display: grid; grid-template-columns: 1fr 1.4fr; gap: 20px; margin-top: 8px; }
+.servers__pair > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.servers__paste { width: 100%; box-sizing: border-box; resize: vertical; word-break: break-all; font-size: 0.74rem; }
+.servers__pair .btn { align-self: flex-start; }
+.servers__tokens { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.servers__tokens li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.78rem; }
+.servers__state { font-size: 0.8rem; }
+.servers__state--ok { color: var(--ok); }
+.servers__state--warn { color: var(--warn-text); }
+.servers__state--bad { color: var(--danger); }
+.servers__state--muted { color: var(--text-dim); }
+/* A peer row: name and actions on one line, status and the fingerprint
+   across the whole row beneath. A three-column row starved the middle column
+   to a single character at narrow widths, and a 95-character fingerprint
+   then printed as a vertical strip. */
+.servers__peer {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "who actions" "status status";
+  row-gap: 6px;
+}
+.servers__peer .users__identity { grid-area: who; }
+.servers__peer .users__actions { grid-area: actions; flex-wrap: wrap; }
+.servers__peerstatus { grid-area: status; display: flex; flex-direction: column; gap: 2px; padding-left: 40px; }
+@media (max-width: 980px) {
+  .servers__pair { grid-template-columns: 1fr; }
+}

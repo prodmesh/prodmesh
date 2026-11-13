@@ -33,3 +33,17 @@ inline (the admin PIN's "resetting it means editing a file on the server"), and
 the copy stays timeless. Note the step-title tips pass `place="below"`: a
 tooltip above a title that near the top of the window is clipped by the
 viewport.
+
+## Words for places and boxes
+
+Two things that are easy to blur, so the screen keeps them apart:
+
+- **Campus**: a place with rooms. Admin → Campuses edits them; the sidebar
+  filters by them. The code and stored config call this a `site`
+  (`Church.sites`, a room's `site`) and keep doing so, because the name is in
+  backups and API payloads; on screen it is always "campus".
+- **Server**: one ProdMesh install. Pairing links servers (Admin → Linked
+  servers), and the identity row says "this server". One server can run
+  several campuses, so never say "campus" where the thing meant is the box.
+
+Never write "site" on screen for either.
