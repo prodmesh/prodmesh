@@ -503,6 +503,15 @@ export async function resetUserPin(userId: string, pin: string): Promise<Managed
 }
 
 /** Revoke or restore access. Not a delete: the audit trail points at the row. */
+/** Remove an account for good (#57). Its name stays on the audit log. */
+export async function removeUser(userId: string): Promise<void> {
+  const res = await fetch(`/api/users/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+    headers: requestHeaders(),
+  });
+  await requireOk(res);
+}
+
 export async function setUserActive(userId: string, active: boolean): Promise<ManagedUser> {
   const res = await fetch(`/api/users/${encodeURIComponent(userId)}/active`, {
     method: 'PUT',

@@ -38,6 +38,7 @@ import {
   updateGroup,
   setUserGroups,
   setUserActive,
+  removeUser,
   resetUserPin,
   getStations,
   updateStation,
@@ -217,7 +218,7 @@ function guardError(err: unknown, who: string): Feedback {
     return { kind: 'err', text: `${who} holds permissions you do not, so only a full administrator can change their access.` };
   }
   if (code.includes('cannot_deactivate_yourself')) {
-    return { kind: 'err', text: 'You cannot revoke your own access — nobody could undo it but you.' };
+    return { kind: 'err', text: 'You cannot revoke or remove your own account. Ask another administrator.' };
   }
   return fail(err);
 }
@@ -225,6 +226,7 @@ function guardError(err: unknown, who: string): Feedback {
 export function UserManagementPanel() {
   const [directory, setDirectory] = useState<UserDirectory | null>(null);
   const [resetting, setResetting] = useState<ManagedUser | null>(null);
+  const [removing, setRemoving] = useState<ManagedUser | null>(null);
   const [editingGroup, setEditingGroup] = useState<PermissionGroup | null>(null);
   // Only a full administrator may reset somebody else's PIN — see the route.
   // Guidance, not enforcement: an identity that has not loaded yet answers yes
@@ -354,6 +356,9 @@ export function UserManagementPanel() {
                   >
                     {entry.active ? 'Revoke access' : 'Restore access'}
                   </button>
+                  <button className="btn btn--ghost btn--sm" aria-label={`Remove ${entry.displayName}`} onClick={() => setRemoving(entry)}>
+                    <Trash2 size={13} /> Remove
+                  </button>
                 </>
               )}
             </div>
@@ -406,6 +411,30 @@ export function UserManagementPanel() {
           onClose={() => setEditingGroup(null)}
           onSaved={(text) => { setEditingGroup(null); setMsg(ok(text)); refresh(); }}
         />
+      )}
+      {removing && (
+        <div className="confirm" role="dialog" aria-modal="true" aria-labelledby="remove-user-title">
+          <div className="confirm__card">
+            <p className="eyebrow">Remove user</p>
+            <p className="confirm__text" id="remove-user-title">
+              Remove <strong>{removing.displayName}</strong> (@{removing.username}) for good? Their name stays on the audit log. This cannot be undone.
+            </p>
+            <div className="confirm__buttons">
+              <button className="confirm__cancel" onClick={() => setRemoving(null)}>Cancel</button>
+              <button className="confirm__ok" onClick={async () => {
+                const who = removing;
+                setRemoving(null);
+                try {
+                  await removeUser(who.id);
+                  setMsg(ok(`Removed ${who.displayName}.`));
+                } catch (err) {
+                  setMsg(guardError(err, who.displayName));
+                }
+                refresh();
+              }}>Remove</button>
+            </div>
+          </div>
+        </div>
       )}
       {resetting && (
         <ResetPinDialog

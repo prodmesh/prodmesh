@@ -520,6 +520,24 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    // Removing a user (#57). The account row goes — username free for reuse,
+    // PIN, groups and Planning Center link gone — but the audit trail, service
+    // tokens and pairings still hold its id, unenforced. This is the name those
+    // rows show for it afterwards, so "who did this" stays answerable without
+    // the account still existing. Nothing here can sign in or be restored.
+    name: 'former-users',
+    up(d) {
+      d.exec(`
+        CREATE TABLE IF NOT EXISTS former_users (
+          id           TEXT PRIMARY KEY,   -- the removed users.id
+          username     TEXT NOT NULL,
+          display_name TEXT NOT NULL,
+          removed_at   INTEGER NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

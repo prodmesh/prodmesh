@@ -344,10 +344,11 @@ router.put('/api/users/:userId/pin', requirePermission('users.manage'), (req, re
   }
 });
 
-/** Deactivate or restore an account — how access is revoked when somebody
- *  leaves. Not a delete: the audit trail points at these rows. */
-router.put('/api/users/:userId/active', requirePermission('users.manage'), (req, res) => {
-  const active = req.body?.active === true;
+/**
+ * The guards revoking and removing share. Answers the refusal, or null when
+ * the caller may act on this account.
+ */
+function refuseAccountChange(req, res) {
   if (req.auth?.user?.id === req.params.userId) {
     // Nobody has ever meant to do this, and the person who does it is by
     // definition the one who can no longer undo it.
@@ -359,6 +360,14 @@ router.put('/api/users/:userId/active', requirePermission('users.manage'), (req,
     const over = (target?.permissions ?? []).filter((p) => !mine.has(p));
     if (over.length) return res.status(403).json({ error: 'cannot_manage_higher_privilege', permissions: over });
   }
+  return null;
+}
+
+/** Deactivate or restore an account — how access is revoked when somebody
+ *  leaves. Not a delete: the audit trail points at these rows. */
+router.put('/api/users/:userId/active', requirePermission('users.manage'), (req, res) => {
+  const active = req.body?.active === true;
+  if (refuseAccountChange(req, res)) return;
   try {
     const user = auth.setUserActive(req.params.userId, active);
     auditSuccess(req, 'users.manage', {
@@ -367,6 +376,22 @@ router.put('/api/users/:userId/active', requirePermission('users.manage'), (req,
     res.json({ user });
   } catch (err) {
     res.status(400).json({ error: String(err.message ?? err) });
+  }
+});
+
+/** Remove an account for good (#57). Its name stays on the audit trail; see
+ *  authStore.removeUser. */
+router.delete('/api/users/:userId', requirePermission('users.manage'), (req, res) => {
+  if (refuseAccountChange(req, res)) return;
+  try {
+    const user = auth.removeUser(req.params.userId);
+    auditSuccess(req, 'users.manage', {
+      resourceType: 'user', resourceId: user.id, details: { operation: 'remove', username: user.username },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    const message = String(err.message ?? err);
+    res.status(message === 'Unknown user' ? 404 : 400).json({ error: message });
   }
 });
 
