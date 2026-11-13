@@ -22,12 +22,21 @@ export async function readCustomVariable(companion, name) {
   const url = `${baseUrl(companion)}/api/custom-variable/${encodeURIComponent(name)}/value`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+    // A missing variable is a 404 "Not found": the machine answered, so it is
+    // NOT evidence Companion is down (INTEGRATION-NOTES). A church that uses
+    // Companion for widgets and buttons but never made $(roomState) saw
+    // "Companion offline" while every other feature worked (PR #53). Health
+    // stays green; the caller learns the variable is missing, by code.
+    if (res.status === 404) {
+      report(healthKey(companion), true);
+      throw Object.assign(new Error(`Companion has no custom variable $(${name})`), { code: 'variable_missing' });
+    }
     if (!res.ok) throw new Error(`Companion GET ${name} → HTTP ${res.status}`);
     const value = (await res.text()).trim();
     report(healthKey(companion), true);
     return value;
   } catch (err) {
-    report(healthKey(companion), false, String(err.message ?? err));
+    if (err.code !== 'variable_missing') report(healthKey(companion), false, String(err.message ?? err));
     throw err;
   }
 }
@@ -39,7 +48,15 @@ export async function readCustomVariable(companion, name) {
  */
 export async function ping(companion) {
   if (companion.variable) {
-    const value = await readCustomVariable(companion, companion.variable);
+    let value;
+    try {
+      value = await readCustomVariable(companion, companion.variable);
+    } catch (err) {
+      // Reachable, just without the room-mode variable: the probe passes and
+      // says what is missing, rather than failing a working Companion.
+      if (err.code === 'variable_missing') return `reachable, but $(${companion.variable}) is not defined`;
+      throw err;
+    }
     // Report the SHAPE of the answer, not the bytes. This string is surfaced
     // to the operator through the connectivity status chip, so echoing the
     // response verbatim turned a mistyped (or malicious) host into a readable

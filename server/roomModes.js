@@ -27,6 +27,12 @@ export async function readRoomState(room) {
     const raw = await readCustomVariable(room.companion, room.state.variable);
     return { mode: rawToModeId(room, raw), raw, online: true, source: 'companion', protection };
   } catch (err) {
+    // Companion answered but has no such variable: it is online, and the
+    // room's mode is simply not something it reports. Unknown, without the
+    // `error` that would mark Companion as down (PR #53).
+    if (err.code === 'variable_missing') {
+      return { mode: null, raw: '', online: true, source: 'companion', protection, missingVariable: room.state.variable };
+    }
     // Unknown, not a guess. `source` stays 'companion' so a broken live room
     // and a simulated one never share a shape; `error` says why.
     return {

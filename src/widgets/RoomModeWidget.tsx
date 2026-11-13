@@ -52,7 +52,11 @@ export function RoomModeWidget({ roomId }: WidgetProps) {
 
   const detail = offline
     ? 'Companion offline'
-    : protection?.active
+    : state?.missingVariable
+      // Reachable, but this Companion has no room-mode variable. Not a fault:
+      // a room can use Companion for buttons and widgets without one (#53).
+      ? `No $(${state.missingVariable}) in Companion`
+      : protection?.active
       ? (protection.label ?? 'Schedule protection')
       : null;
 

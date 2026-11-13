@@ -39,6 +39,9 @@ export interface RoomState {
   source: 'companion' | 'mock';
   protection: Protection;
   error?: string;
+  /** Companion is reachable but has no custom variable by this name, so the
+   *  room's mode is unknown without Companion being down. */
+  missingVariable?: string;
 }
 
 async function getJson<T>(url: string): Promise<T> {

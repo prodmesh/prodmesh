@@ -8,11 +8,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { createServer } from 'node:net';
+import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 process.env.PRODMESH_DATA_DIR ??= mkdtempSync(join(tmpdir(), 'prodmesh-roommodes-'));
 const { readRoomState, applyMode } = await import('./roomModes.js');
+const companion = await import('./companion.js');
+const health = await import('./health.js');
 
 // A port that is guaranteed dead: bind, read it, close.
 const probe = createServer();
@@ -57,4 +60,28 @@ test('a simulated room keeps its in-memory mode and is not a fault', async () =>
 
   assert.deepEqual(await applyMode(simRoom, modes[0]), { online: false, source: 'mock' });
   assert.equal((await readRoomState(simRoom)).mode, 'sunday');
+});
+
+// A Companion that answers, but has no $(roomState): what a church sees when
+// it uses Companion for buttons and widgets and never made the room-mode
+// variable (PR #53). Companion's answer for a missing variable is a 404 with
+// the body "Not found" (INTEGRATION-NOTES).
+test('a reachable Companion without the room-mode variable is online, with the mode unknown', async () => {
+  const server = http.createServer((req, res) => {
+    if (req.url === '/api/custom-variable/roomState/value') { res.writeHead(404); res.end('Not found'); return; }
+    res.writeHead(200); res.end('ok');
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const room = { ...liveRoom, id: 'rm-novar', companion: { host: '127.0.0.1', port: server.address().port } };
+  try {
+    const s = await readRoomState(room);
+    assert.equal(s.mode, null);
+    assert.equal(s.online, true, 'Companion answered, so it is not offline');
+    assert.equal(s.error, undefined, 'and nothing is at fault');
+    assert.equal(s.missingVariable, 'roomState');
+    assert.equal(health.snapshot()[companion.healthKey(room.companion)].ok, true, 'health stays green');
+    assert.match(await companion.ping({ ...room.companion, variable: 'roomState' }), /not defined/);
+  } finally {
+    server.close();
+  }
 });
