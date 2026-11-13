@@ -37,11 +37,25 @@ test('readCustomVariable returns the trimmed value and URL-encodes the name', as
 
 test('readCustomVariable rejects with the status on a non-2xx response', async () => {
   const srv = await fakeCompanion((_req, res) => {
-    res.statusCode = 404;
-    res.end('no such variable');
+    res.statusCode = 500;
+    res.end('boom');
   });
   try {
-    await assert.rejects(readCustomVariable(srv.companion, 'roomState'), /HTTP 404/);
+    await assert.rejects(readCustomVariable(srv.companion, 'roomState'), /HTTP 500/);
+  } finally {
+    await srv.close();
+  }
+});
+
+// Companion's 404 means the variable does not exist, not that Companion is
+// down (#53): a distinct code, so callers can say which.
+test('readCustomVariable reports a missing variable as missing, by code', async () => {
+  const srv = await fakeCompanion((_req, res) => {
+    res.statusCode = 404;
+    res.end('Not found');
+  });
+  try {
+    await assert.rejects(readCustomVariable(srv.companion, 'roomState'), (err) => err.code === 'variable_missing' && /\$\(roomState\)/.test(err.message));
   } finally {
     await srv.close();
   }

@@ -122,6 +122,20 @@ describe('mode buttons', () => {
     expect(screen.queryByText('Simulated')).not.toBeInTheDocument();
   });
 
+  // Companion answered but has no room-mode variable (#53): live, mode unknown,
+  // and the missing variable named — not "offline".
+  it('names a missing room-mode variable instead of calling Companion offline', async () => {
+    api.getRoomState.mockResolvedValue({
+      ...baseState, mode: null, raw: '', online: true, source: 'companion', missingVariable: 'roomState',
+    });
+    const user = userEvent.setup();
+    renderPage();
+    expect(await screen.findByText('Companion live')).toBeInTheDocument();
+    await openModePanel(user);
+    expect(screen.getByText('$(roomState)')).toBeInTheDocument();
+    expect(screen.queryByText('Companion offline')).not.toBeInTheDocument();
+  });
+
   it('calls a simulated room simulated, not offline', async () => {
     api.getRoomState.mockResolvedValue({ ...baseState, online: false, source: 'mock' });
     renderPage();

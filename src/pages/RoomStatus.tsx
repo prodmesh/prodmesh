@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { HelpTip } from '../components/HelpTip';
 import { Link, useParams } from 'react-router-dom';
 import { LayoutGrid, Lock, Radio, Wifi, WifiOff } from 'lucide-react';
 import {
@@ -228,6 +229,14 @@ export function RoomStatus() {
         >
           <span className="mode-hero__label">Current mode</span>
           <span className="mode-hero__mode">{currentMode?.label ?? 'Unknown'}</span>
+          {/* Companion answered but has no room-mode variable (#53): say
+              what is missing instead of calling a working Companion down. */}
+          {state.missingVariable && (
+            <span className="mode-hero__note">
+              No <code>$({state.missingVariable})</code> variable in Companion
+              <HelpTip text="This room's mode comes from that Companion custom variable. Create it in Companion, or turn Room Mode off for this room in its settings if it is not used." />
+            </span>
+          )}
         </div>
 
         <p className="widget__hint">Set the room to…</p>

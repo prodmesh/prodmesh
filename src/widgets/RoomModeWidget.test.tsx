@@ -74,6 +74,17 @@ describe('RoomModeWidget', () => {
     expect(screen.queryByText('Sunday Service')).not.toBeInTheDocument();
   });
 
+  it('names a missing room-mode variable, and is not a fault', async () => {
+    // The shape readRoomState emits when Companion answers 404 for the
+    // variable (roomModes.test.js pins it): online, no error (#53).
+    show();
+    await push(state({ online: true, source: 'companion', raw: '', mode: null, missingVariable: 'roomState' }));
+    expect(await screen.findByText('No $(roomState) in Companion')).toBeInTheDocument();
+    expect(screen.getByText('Unknown mode')).toBeInTheDocument();
+    expect(screen.queryByText(/Companion offline/)).not.toBeInTheDocument();
+    expect(document.querySelector('.wgt--fault')).toBeNull();
+  });
+
   it('does not call a mock room offline, because that is not a fault', async () => {
     // A mock room reports online:false and source:'mock' as a matter of
     // course — nothing is wired up, which is the expected state of a demo or
