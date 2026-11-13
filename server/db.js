@@ -493,6 +493,33 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    // Visiting (ADR 0018). A person from a linked server arrives as a local
+    // user row marked with where they come from, so sessions, the audit trail
+    // and permission checks need no second shape. Such a row can never sign
+    // in by PIN; it only arrives with an assertion from its home server.
+    //
+    // visitor_rules: what this server lets people from that peer do, as JSON
+    // [{ group: '*' | '<their group name>', permissions: [...] }]. NULL means
+    // the default (reports.view for everyone), decided in authStore.
+    name: 'federation-visiting',
+    up(d) {
+      addColumn(d, 'users', 'origin_system_id', 'TEXT');
+      addColumn(d, 'users', 'origin_user_id', 'TEXT');
+      addColumn(d, 'users', 'origin_groups', 'TEXT');
+      addColumn(d, 'federation_peers', 'visitor_rules', 'TEXT');
+      d.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS users_by_origin
+          ON users (origin_system_id, origin_user_id) WHERE origin_system_id IS NOT NULL;
+
+        -- Each assertion is single-use: its nonce is kept until it expires.
+        CREATE TABLE IF NOT EXISTS federation_visit_nonces (
+          nonce      TEXT PRIMARY KEY,
+          expires_at INTEGER NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

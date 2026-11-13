@@ -17,6 +17,7 @@ const api = vi.hoisted(() => ({
   dismissAssistance: vi.fn(),
   // Linked servers' campuses for the picker (ADR 0018); none here.
   getRemoteCampuses: vi.fn(async () => []),
+  isVisiting: vi.fn(() => false),
   // The sidebar asks for the church's uploaded logo and falls back to the
   // bundled one when the endpoint 404s.
   logoSrc: (stamp?: number | null) => `/api/branding/logo${stamp ? `?v=${stamp}` : ''}`,
@@ -190,5 +191,38 @@ describe('room-only station', () => {
 
     expect(await screen.findByText('Users page content')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument();
+  });
+});
+
+describe('a visitor from a linked server (ADR 0018)', () => {
+  beforeEach(() => {
+    api.getAbout.mockResolvedValue({ version: '1.0.0' });
+    api.getConfig.mockResolvedValue({ name: 'Test Church', sites: [] });
+  });
+
+  it('is not asked to name a station, and the account says where they came from', async () => {
+    api.getAuthStatus.mockResolvedValue({
+      ...authenticated, admin: false, permissions: ['reports.view'], station: null,
+      user: { ...authenticated.user!, username: 'srivera@grace-north', originSystemId: 'peer-1' },
+      visitor: { systemId: 'peer-1', server: 'Grace — North' },
+    });
+    renderShell('/room/north-main');
+    expect(await screen.findByText(/visiting from Grace — North/)).toBeInTheDocument();
+    expect(screen.queryByText('Name this machine')).not.toBeInTheDocument();
+  });
+
+  it('an anonymous browser that arrived by Open is not asked either', async () => {
+    api.isVisiting.mockReturnValue(true);
+    api.getAuthStatus.mockResolvedValue({ ...authenticated, authenticated: false, user: null, station: null });
+    renderShell('/room/north-main');
+    await screen.findByText('Room page content');
+    expect(screen.queryByText('Name this machine')).not.toBeInTheDocument();
+    api.isVisiting.mockReturnValue(false);
+  });
+
+  it('an unregistered browser of our own still is', async () => {
+    api.getAuthStatus.mockResolvedValue({ ...authenticated, authenticated: false, user: null, station: null });
+    renderShell('/room/north-main');
+    expect(await screen.findByText('Name this machine')).toBeInTheDocument();
   });
 });

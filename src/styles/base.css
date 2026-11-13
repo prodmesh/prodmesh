@@ -563,8 +563,11 @@ input[type='checkbox']:disabled {
   letter-spacing: normal;
   white-space: normal;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  /* display, not visibility: a hidden bubble still takes layout space, and
+     one beside a "?" near a panel's right edge gave the whole page a
+     horizontal scrollbar. The fade-in survives via @starting-style. */
+  display: none;
   opacity: 0;
-  visibility: hidden;
   transition: opacity 120ms ease;
   pointer-events: none;
   z-index: 30;
@@ -582,10 +585,44 @@ input[type='checkbox']:disabled {
 
 .helptip:hover .helptip__bubble,
 .helptip__btn:focus-visible + .helptip__bubble {
+  display: block;
   opacity: 1;
-  visibility: visible;
+}
+
+@starting-style {
+  .helptip:hover .helptip__bubble,
+  .helptip__btn:focus-visible + .helptip__bubble {
+    opacity: 0;
+  }
 }
 
 .confirm__ok--danger {
   --mode-color: var(--danger);
+}
+
+/* Arriving from a linked server (ADR 0018): a moment, outside the shell. */
+.visit {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--bg);
+}
+
+.visit__card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
+  max-width: 440px;
+  width: 100%;
+  padding: 28px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+}
+
+.visit__text {
+  margin: 0;
+  color: var(--text-dim);
 }

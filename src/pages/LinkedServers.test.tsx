@@ -14,6 +14,7 @@ const api = vi.hoisted(() => ({
   checkPeer: vi.fn(),
   setPeerAddress: vi.fn(),
   removePeer: vi.fn(),
+  setVisitorRules: vi.fn(),
 }));
 vi.mock('../api', async (importOriginal) => ({ ...await importOriginal<typeof import('../api')>(), ...api }));
 
@@ -104,6 +105,30 @@ describe('Admin → Linked servers', () => {
     ] }));
     render(<LinkedServersPanel />);
     expect(await screen.findByText(/campuses can't be shown: update ProdMesh there \(it runs 1\.4\.2\)/)).toBeInTheDocument();
+  });
+
+  it('edits what people from a linked server may do here, from the grantable list only', async () => {
+    api.getFederation.mockResolvedValue(base({
+      peers: [peer({ state: 'paired', awaiting: null, lastSeenAt: Date.now(), visitorRules: [{ group: '*', permissions: ['reports.view'] }] })],
+      visitorPermissions: [
+        { id: 'reports.view', label: 'View reports', description: '' },
+        { id: 'shows.operate', label: 'Operate shows', description: '' },
+      ],
+    }));
+    api.setVisitorRules.mockResolvedValue(base());
+    const user = userEvent.setup();
+    render(<LinkedServersPanel />);
+    await user.click(await screen.findByRole('button', { name: 'Visitors' }));
+    const dialog = screen.getByRole('dialog', { name: /What people from Grace — South may do here/ });
+    expect(within(dialog).getAllByRole('checkbox')).toHaveLength(2);
+    await user.click(within(dialog).getByRole('button', { name: 'Add group rule' }));
+    await user.type(within(dialog).getByLabelText('Group name'), 'Tech Directors');
+    await user.click(within(dialog).getAllByRole('checkbox', { name: 'Operate shows' })[1]);
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(api.setVisitorRules).toHaveBeenCalledWith('id-south', [
+      { group: '*', permissions: ['reports.view'] },
+      { group: 'Tech Directors', permissions: ['shows.operate'] },
+    ]);
   });
 
   it('confirms before removing a site', async () => {

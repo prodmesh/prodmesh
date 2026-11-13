@@ -244,6 +244,11 @@ export function markRemoved(systemId) {
     // Unpairing forgets what they run, too (ADR 0018): an unreachable peer
     // keeps its last directory, a removed one does not.
     db.prepare('DELETE FROM federation_directory WHERE system_id = ?').run(systemId);
+    // And its visitors: their rows stay, because the audit trail names them,
+    // but they can no longer act here and their sessions end now.
+    db.prepare(`DELETE FROM user_sessions WHERE user_id IN
+      (SELECT id FROM users WHERE origin_system_id = ?)`).run(systemId);
+    db.prepare('UPDATE users SET active = 0 WHERE origin_system_id = ?').run(systemId);
   })();
   return getPeer(systemId);
 }

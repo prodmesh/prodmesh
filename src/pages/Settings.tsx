@@ -360,6 +360,30 @@ export function UserManagementPanel() {
           </div>
         ))}
       </div>
+      {/* People who arrived from a linked server (ADR 0018). Read-only: their
+          groups are their home server's, and what they may do here is set per
+          server in Admin → Linked servers. */}
+      {(directory.visitors?.length ?? 0) > 0 && (
+        <div className="users__list">
+          <h3>Visitors from linked servers</h3>
+          {directory.visitors!.map((v) => (
+            <div className={`users__row${v.active ? '' : ' users__row--revoked'}`} key={v.id}>
+              <div className="users__identity">
+                <span className="users__avatar" aria-hidden="true"><CircleUser size={28} /></span>
+                <span><strong>{v.displayName}</strong><small>@{v.username} · from {v.serverName ?? 'a removed server'}{v.active ? '' : ' · no longer linked'}</small></span>
+              </div>
+              <p className="users__summary">
+                {v.permissions.length
+                  ? directory.permissions.filter((p) => v.permissions.includes(p.id)).map((p) => p.label).join(' · ')
+                  : 'Read-only'}
+              </p>
+              <div className="users__actions">
+                <Link className="btn btn--sm" to="/admin/servers">Linked servers</Link>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <Msg msg={msg} />
       {creating === 'user' && (
         <CreateUserDialog

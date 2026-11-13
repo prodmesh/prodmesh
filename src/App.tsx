@@ -17,6 +17,7 @@ import { DisplayView } from './pages/DisplayView';
 import { Settings } from './pages/Settings';
 import { Setup } from './pages/Setup';
 import './styles/index.css';
+import { Visit } from './pages/Visit';
 
 export default function App() {
   return (
@@ -29,6 +30,9 @@ export default function App() {
           wall shows. Outside the shell for the same reason /setup is: there is
           no sidebar to offer and nobody to click it. */}
       <Route path="/display/:roomId/:key" element={<DisplayView />} />
+      {/* Arriving from a linked server's Open (ADR 0018): trades the pass in
+          the fragment for a session, then goes where it was pointed. */}
+      <Route path="/visit" element={<Visit />} />
       <Route element={<AppShell />}>
         <Route path="/" element={<Home />} />
         <Route path="/services" element={<Services />} />

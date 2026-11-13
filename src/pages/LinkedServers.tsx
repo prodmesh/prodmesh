@@ -22,8 +22,10 @@ import {
   removePeer,
   saveFederationConfig,
   setPeerAddress,
+  setVisitorRules,
   type FederationOverview,
   type FederationPeer,
+  type VisitorRule,
 } from '../api';
 import { Msg, fail, ok, type Feedback } from './settingsShared';
 
@@ -283,6 +285,7 @@ function status(peer: FederationPeer, reachable: boolean) {
 function PeersPanel({ data, onChange }: { data: FederationOverview; onChange: (d: FederationOverview) => void }) {
   const [removing, setRemoving] = useState<FederationPeer | null>(null);
   const [editing, setEditing] = useState<{ peer: FederationPeer; address: string } | null>(null);
+  const [visitors, setVisitors] = useState<FederationPeer | null>(null);
   const [msg, setMsg] = useState<Feedback>(null);
 
   const act = async (fn: () => Promise<FederationOverview>, done?: string) => {
@@ -330,6 +333,9 @@ function PeersPanel({ data, onChange }: { data: FederationOverview; onChange: (d
                 {peer.awaiting !== 'us' && (
                   <button className="btn btn--sm" onClick={() => act(() => checkPeer(peer.systemId))}>Check</button>
                 )}
+                {peer.state === 'paired' && (
+                  <button className="btn btn--sm" onClick={() => setVisitors(peer)}>Visitors</button>
+                )}
                 <button className="btn btn--sm" onClick={() => setEditing({ peer, address: peer.address })}>Address</button>
                 <button className="btn btn--ghost btn--sm stations__revoke" onClick={() => setRemoving(peer)}><Trash2 size={13} /> Remove</button>
               </div>
@@ -358,6 +364,18 @@ function PeersPanel({ data, onChange }: { data: FederationOverview; onChange: (d
         </div>
       )}
 
+      {visitors && (
+        <VisitorRulesDialog
+          peer={visitors}
+          grantable={data.visitorPermissions ?? []}
+          onClose={() => setVisitors(null)}
+          onSave={async (rules) => {
+            await act(() => setVisitorRules(visitors.systemId, rules), 'Saved.');
+            setVisitors(null);
+          }}
+        />
+      )}
+
       {removing && (
         <div className="confirm" role="dialog" aria-modal="true" aria-labelledby="remove-peer-title">
           <div className="confirm__card">
@@ -376,5 +394,69 @@ function PeersPanel({ data, onChange }: { data: FederationOverview; onChange: (d
         </div>
       )}
     </section>
+  );
+}
+
+// ── What people from a linked server may do here (ADR 0018) ─────────────────
+//
+// Rules match the group names the other server says its person is in. That
+// server can claim any group, so a rule is as strong as this server's trust in
+// that server's admins, and the dialog says so. Only operational permissions
+// are offered; nothing administrative can be granted to a visitor at all.
+
+function VisitorRulesDialog({ peer, grantable, onClose, onSave }: {
+  peer: FederationPeer;
+  grantable: { id: string; label: string; description: string }[];
+  onClose: () => void;
+  onSave: (rules: VisitorRule[]) => Promise<void>;
+}) {
+  const [rules, setRules] = useState<VisitorRule[]>(
+    () => (peer.visitorRules ?? [{ group: '*', permissions: ['reports.view'] }]).map((r) => ({ ...r, permissions: [...r.permissions] })),
+  );
+  const update = (i: number, next: Partial<VisitorRule>) => setRules((rs) => rs.map((r, j) => (j === i ? { ...r, ...next } : r)));
+  const toggle = (i: number, pid: string) => update(i, {
+    permissions: rules[i].permissions.includes(pid) ? rules[i].permissions.filter((p) => p !== pid) : [...rules[i].permissions, pid],
+  });
+
+  return (
+    <div className="confirm" role="dialog" aria-modal="true" aria-labelledby="visitor-rules-title">
+      <div className="confirm__card servers__rules">
+        <p className="eyebrow">{peer.name}</p>
+        <p className="confirm__text" id="visitor-rules-title">What people from {peer.name} may do here
+          <HelpTip text={`Groups are the names ${peer.name} gives. It can claim any group, so a rule is only as safe as your trust in its admins. Changes apply on their next request.`} />
+        </p>
+        {rules.map((rule, i) => (
+          <fieldset className="servers__rule" key={i}>
+            <legend className="sr-only">Rule {i + 1}</legend>
+            <div className="servers__rulehead">
+              {rule.group === '*'
+                ? <strong>Everyone from {peer.name}</strong>
+                : <input className="field" aria-label="Group name" value={rule.group} placeholder="Their group name"
+                  onChange={(e) => update(i, { group: e.target.value })} />}
+              <button className="btn btn--ghost btn--sm" aria-label="Remove rule" onClick={() => setRules((rs) => rs.filter((_, j) => j !== i))}>
+                <Trash2 size={13} />
+              </button>
+            </div>
+            {grantable.map((perm) => (
+              <label className="servers__perm" key={perm.id} title={perm.description}>
+                <input type="checkbox" checked={rule.permissions.includes(perm.id)} onChange={() => toggle(i, perm.id)} />
+                {perm.label}
+              </label>
+            ))}
+          </fieldset>
+        ))}
+        <div className="panel__controls">
+          <button className="btn btn--sm" onClick={() => setRules((rs) => [...rs, { group: '', permissions: [] }])}>Add group rule</button>
+          {!rules.some((r) => r.group === '*') && (
+            <button className="btn btn--sm" onClick={() => setRules((rs) => [{ group: '*', permissions: [] }, ...rs])}>Add rule for everyone</button>
+          )}
+        </div>
+        <div className="confirm__buttons">
+          <button className="confirm__cancel" onClick={onClose}>Cancel</button>
+          <button className="confirm__ok" disabled={rules.some((r) => !r.group.trim())}
+            onClick={() => onSave(rules.map((r) => ({ ...r, group: r.group.trim() })))}>Save</button>
+        </div>
+      </div>
+    </div>
   );
 }

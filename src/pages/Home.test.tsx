@@ -71,7 +71,7 @@ describe('Home with linked servers (ADR 0018)', () => {
 
     // A remote card opens the room on the other server, in this tab.
     const card = screen.getByText('Sanctuary').closest('a')!;
-    expect(card).toHaveAttribute('href', 'http://192.0.2.20:8080/room/south-main');
+    expect(card).toHaveAttribute('href', 'http://192.0.2.20:8080/visit#to=%2Froom%2Fsouth-main');
     expect(card).not.toHaveAttribute('target');
   });
 
