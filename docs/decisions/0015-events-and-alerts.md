@@ -2,7 +2,7 @@
 
 Status: accepted (2026-10-18) · planned in [PLAN-1.5.md](../PLAN-1.5.md) · implemented by
 [#47](https://github.com/prodmesh/prodmesh/issues/47) · **amended by
-[0019](0019-signals-rules-and-actions.md)** (proposed): `monitor_events`
+[0019](0019-signals-rules-and-actions.md)** (2026-11-13): `monitor_events`
 becomes a general `signals` table that automations share, severity becomes
 optional, and the SNMP and Dante sensors move into the core instead of a
 `prodmesh-watch` sidecar

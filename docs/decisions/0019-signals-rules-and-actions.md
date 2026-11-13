@@ -1,6 +1,6 @@
 # 0019 — Signals, rules and actions: one spine for alerts and automations
 
-Status: proposed · 2026-11-13 · amends [0015](0015-events-and-alerts.md) ·
+Status: accepted · 2026-11-13 · amends [0015](0015-events-and-alerts.md) ·
 reshapes [#51](https://github.com/prodmesh/prodmesh/issues/51) · constrains
 [#47](https://github.com/prodmesh/prodmesh/issues/47)
 

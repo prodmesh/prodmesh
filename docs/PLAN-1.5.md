@@ -256,7 +256,7 @@ somebody else's timeline.
 ## The `prodmesh-watch` spike ([#51](https://github.com/prodmesh/prodmesh/issues/51))
 
 > **Reshaped by [ADR 0019](./decisions/0019-signals-rules-and-actions.md)
-> (proposed, 2026-11-13).** The privilege and ingest arguments below do not
+> (accepted 2026-11-13).** The privilege and ingest arguments below do not
 > survive a closer look: SNMP and Dante presence become core sources in 1.6,
 > `prodmesh-watch` is not built, and #51 becomes the contract for *external*
 > sources (`prodmesh-rta`, timecode, a church's existing monitoring). Kept below
