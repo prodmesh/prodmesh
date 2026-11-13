@@ -25,7 +25,7 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
-import { clearToken, getAuthStatus, getConfig, logoSrc, logoutAdmin, type AuthStatus, type Station } from '../api';
+import { clearToken, getAuthStatus, getConfig, isVisiting, logoSrc, logoutAdmin, type AuthStatus, type Station } from '../api';
 import { HelpDrawer } from '../components/HelpDrawer';
 import { AssistanceBar } from '../components/AssistanceBar';
 import { AssistanceDialog } from '../components/AssistanceDialog';
@@ -93,6 +93,12 @@ function Glyph({ icon: Icon, size = 19 }: { icon: LucideIcon; size?: number }) {
 // the bottom; Admin pages add a second panel of their own sections beside it.
 // Pages render inside <Outlet /> and own no chrome. Room-level
 // pages (/room/…) still exist below this nav — Home/Services link into them.
+
+/** A browser here that is not one of our stations should be asked to become
+ *  one — unless it came from a linked server (ADR 0018): that person is
+ *  visiting, and naming a station in someone else's building is noise. */
+const needsStation = (s: AuthStatus) => !s.station && !s.visitor && !isVisiting();
+
 export function AppShell() {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(
@@ -123,8 +129,8 @@ export function AppShell() {
   useEffect(() => {
     getAuthStatus().then((s) => {
       setIdentity(s);
-      if (!s.station) setIdentityOpen(true);
-    }).catch(() => setIdentityOpen(true));
+      if (needsStation(s)) setIdentityOpen(true);
+    }).catch(() => { if (!isVisiting()) setIdentityOpen(true); });
   }, []);
 
   // Server-owned topology (ADR 0009): fetch at boot, refetch when the
@@ -220,7 +226,7 @@ export function AppShell() {
     };
     const refresh = () => getAuthStatus().then((status) => {
       setIdentity(status);
-      if (!status.station) setIdentityOpen(true);
+      if (needsStation(status)) setIdentityOpen(true);
     }).catch(() => {});
     window.addEventListener('prodmesh:auth-required', open);
     window.addEventListener('prodmesh:auth-changed', refresh);
@@ -248,7 +254,9 @@ export function AppShell() {
     });
   };
 
-  const stationName = identity?.station?.name ?? 'Unregistered station';
+  const stationName = identity?.visitor
+    ? `visiting from ${identity.visitor.server ?? 'a linked server'}`
+    : identity?.station?.name ?? 'Unregistered station';
   const operatorName = identity?.user?.displayName ?? 'Read-only';
 
   // A station pinned to its room ("Room only when locked") browses just that

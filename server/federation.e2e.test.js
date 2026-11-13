@@ -248,6 +248,89 @@ test('a digest flows only while someone watches, with an observation time on eac
   assert.ok(!res || res.ok, 'the stream itself still opens');
 });
 
+// ── ADR 0018: visiting ──────────────────────────────────────────────────────
+
+const as = (site, token, method, path, body) => fetch(site.base + path, {
+  method,
+  headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  body: body === undefined ? undefined : JSON.stringify(body),
+});
+const passFrom = (url) => new URLSearchParams(new URL(url).hash.slice(1));
+
+let visitorToken;
+test('Open signs a pass at home; the other server admits a read-only visitor once', async () => {
+  // Anonymous at home: nobody to vouch for.
+  assert.equal((await as(north, null, 'POST', '/api/federation/visit', { systemId: south.identity.systemId })).status, 401);
+
+  const { url } = await (await call(north, 'POST', '/api/federation/visit', {
+    systemId: south.identity.systemId, path: '/room/south-main',
+  })).json();
+  assert.ok(url.startsWith(`http://127.0.0.1:${south.port}/visit#`), url);
+  const params = passFrom(url);
+  assert.equal(params.get('to'), '/room/south-main');
+  const pass = params.get('pass');
+  assert.match(pass, /^pmvisit1\./);
+
+  const arrived = await (await as(south, null, 'POST', '/api/federation/arrive', { pass })).json();
+  assert.ok(arrived.token, JSON.stringify(arrived));
+  assert.match(arrived.user.username, /^admin@/);
+  assert.equal(arrived.user.originSystemId, north.identity.systemId);
+  assert.deepEqual(arrived.permissions, ['reports.view'], 'pairing alone lets a visitor read');
+  visitorToken = arrived.token;
+
+  // Single use.
+  const again = await (await as(south, null, 'POST', '/api/federation/arrive', { pass })).json();
+  assert.equal(again.reason, 'replayed');
+
+  // Known as a visitor, without a station, and without any admin reach.
+  const status = await (await as(south, visitorToken, 'GET', '/api/auth/status')).json();
+  assert.equal(status.authenticated, true);
+  assert.equal(status.visitor.systemId, north.identity.systemId);
+  assert.equal(status.admin, false);
+  assert.equal((await as(south, visitorToken, 'GET', '/api/users')).status, 403);
+  // No onward vouching to a third server.
+  assert.equal((await as(south, visitorToken, 'POST', '/api/federation/visit', { systemId: north.identity.systemId })).status, 403);
+});
+
+test('a forged, tampered or misdirected pass is refused', async () => {
+  const { url } = await (await call(north, 'POST', '/api/federation/visit', { systemId: south.identity.systemId })).json();
+  const pass = passFrom(url).get('pass');
+  const [body, sig] = pass.slice('pmvisit1.'.length).split('.');
+  const claims = JSON.parse(Buffer.from(body, 'base64url').toString());
+  const tampered = `pmvisit1.${Buffer.from(JSON.stringify({ ...claims, groups: [...claims.groups, 'Elevated'] })).toString('base64url')}.${sig}`;
+  const t = await (await as(south, null, 'POST', '/api/federation/arrive', { pass: tampered })).json();
+  assert.equal(t.reason, 'bad_signature', JSON.stringify(t));
+  // Made for South, presented to North: North is not its own peer.
+  assert.equal((await (await as(north, null, 'POST', '/api/federation/arrive', { pass })).json()).reason, 'unknown_issuer');
+  assert.equal((await (await as(south, null, 'POST', '/api/federation/arrive', { pass: 'nonsense' })).json()).reason, 'malformed');
+});
+
+test('what a visitor may do is the visited server’s rule, cut to the grantable list', async () => {
+  const north_ = north.identity.systemId;
+  const refused = await call(south, 'PUT', `/api/federation/peers/${north_}/visitors`, {
+    rules: [{ group: '*', permissions: ['users.manage'] }],
+  });
+  assert.equal(refused.status, 400, 'nothing administrative can be granted to a visitor');
+  const override = await call(south, 'PUT', `/api/federation/peers/${north_}/visitors`, {
+    rules: [{ group: '*', permissions: ['rooms.mode.override_lock'] }],
+  });
+  assert.equal(override.status, 400, 'nor overriding a schedule lock');
+
+  const ok = await json(await call(south, 'PUT', `/api/federation/peers/${north_}/visitors`, {
+    rules: [{ group: '*', permissions: ['reports.view'] }, { group: 'administrators', permissions: ['shows.operate'] }],
+  }));
+  assert.equal(ok.status, 200);
+  // Takes effect on the visitor's next request, no new pass needed. North's
+  // admin account is in North's Administrators group, matched case-blind.
+  const status = await (await as(south, visitorToken, 'GET', '/api/auth/status')).json();
+  assert.deepEqual(status.permissions, ['reports.view', 'shows.operate']);
+
+  const users = await (await call(south, 'GET', '/api/users')).json();
+  assert.ok(!users.users.some((u) => u.originSystemId), 'visitors are not in the local user list');
+  assert.equal(users.visitors.length, 1);
+  assert.equal(users.visitors[0].originSystemId, north_);
+});
+
 // A raw client on the federation port, presenting a certificate of its own.
 function rawFederation(port, { cert = true, path = '/federation/v1/hello', method = 'GET', body } = {}) {
   const key = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).privateKey;
@@ -307,4 +390,7 @@ test('removing a site is immediate here and agreed there', async () => {
   const health = await (await call(north, 'GET', '/api/system/health')).json();
   assert.equal(health.integrations[`peer:${south.identity.systemId}`], undefined, 'no longer probed or reported');
   assert.deepEqual(await remoteOf(north), [], 'and its campuses are forgotten');
+  // South agreed it was unpaired; North's visitor there is nobody now.
+  const status = await (await as(south, visitorToken, 'GET', '/api/auth/status')).json();
+  assert.equal(status.authenticated, false, 'unpairing ends a visit');
 });

@@ -253,6 +253,8 @@ export interface CurrentUser {
   displayName: string;
   planningCenterPersonId: string | null;
   avatarUrl?: string | null;
+  /** The linked server a visitor comes from (ADR 0018); null for local users. */
+  originSystemId?: string | null;
 }
 
 export interface AuthStatus {
@@ -262,6 +264,8 @@ export interface AuthStatus {
   user: CurrentUser | null;
   permissions: string[];
   station: Station | null;
+  /** Signed in from a linked server: not this building's station to name. */
+  visitor?: { systemId: string; server: string | null } | null;
 }
 
 export const getAuthStatus = () =>
@@ -401,6 +405,20 @@ export interface UserDirectory {
   users: ManagedUser[];
   groups: PermissionGroup[];
   permissions: { id: string; label: string; description: string }[];
+  /** People who arrived from linked servers (ADR 0018). Read-only here. */
+  visitors?: Visitor[];
+}
+
+export interface Visitor {
+  id: string;
+  username: string;
+  displayName: string;
+  originSystemId: string;
+  serverName: string | null;
+  groups: string[];
+  permissions: string[];
+  active: boolean;
+  lastArrivedAt: number | null;
 }
 
 export const getUserDirectory = () => getJson<UserDirectory>('/api/users');
@@ -651,6 +669,8 @@ export interface FederationPeer {
   version?: string | null;
   /** False when it runs a build from before linked campuses (ADR 0018). */
   sharesCampuses?: boolean;
+  /** What people from this server may do here. */
+  visitorRules?: VisitorRule[];
 }
 
 export interface FederationOverview {
@@ -669,7 +689,12 @@ export interface FederationOverview {
   identity: { systemId: string; name: string; tlsFingerprint: string };
   peers: FederationPeer[];
   tokens: { id: string; createdAt: number; expiresAt: number }[];
+  /** What may be granted to visitors at all. */
+  visitorPermissions?: { id: string; label: string; description: string }[];
 }
+
+/** `group` is a group name at their server, or '*' for everyone from it. */
+export interface VisitorRule { group: string; permissions: string[] }
 
 export const getFederation = () => getJson<FederationOverview>('/api/federation');
 
@@ -690,6 +715,32 @@ export interface RemoteServer {
 }
 
 export const getRemoteCampuses = () => getJson<RemoteServer[]>('/api/federation/campuses');
+
+export const setVisitorRules = (systemId: string, rules: VisitorRule[]) =>
+  federationCall('PUT', `/peers/${encodeURIComponent(systemId)}/visitors`, { rules });
+
+/** Leaving: a signed pass to another server, as a URL to navigate to. */
+export const visitServer = (systemId: string, path: string) =>
+  federationCall<{ url: string }>('POST', '/visit', { systemId, path });
+
+/** Arriving: trade a pass from a linked server for a session here. */
+export async function arriveWithPass(pass: string) {
+  const res = await fetch('/api/federation/arrive', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pass }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(body.error ?? `HTTP ${res.status}`), { reason: body.reason as string | undefined });
+  return body as { token: string; user: CurrentUser; permissions: string[]; server: string; expiresAt: number };
+}
+
+// A browser that arrived from a linked server, signed in or not, is not one of
+// this building's stations. Remembered so the shell does not ask it to name
+// itself (ADR 0018); it can still register from the account menu.
+const VISITING_KEY = 'pm_visiting';
+export const markVisiting = () => { try { localStorage.setItem(VISITING_KEY, '1'); } catch { /* private mode */ } };
+export const isVisiting = () => { try { return localStorage.getItem(VISITING_KEY) === '1'; } catch { return false; } };
 
 /** Every value carries when the other server last confirmed it, or null. */
 export interface RemoteRoomDigest {

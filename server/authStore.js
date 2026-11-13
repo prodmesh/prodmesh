@@ -148,6 +148,8 @@ export function revokeStation(stationId) {
 }
 
 function permissionsFor(userId) {
+  const origin = getDb().prepare('SELECT origin_system_id, origin_groups FROM users WHERE id = ?').get(userId);
+  if (origin?.origin_system_id) return visitorPermissions(origin.origin_system_id, JSON.parse(origin.origin_groups ?? '[]')) ?? [];
   const rows = getDb().prepare(
     `SELECT pg.system_key AS systemKey, gp.permission_id AS permission
        FROM user_groups ug
@@ -166,11 +168,15 @@ function publicUser(row) {
     username: row.username,
     displayName: row.display_name ?? row.displayName,
     planningCenterPersonId: row.planning_center_person_id ?? row.planningCenterPersonId ?? null,
+    // The linked server a visitor comes from (ADR 0018); null for local users.
+    originSystemId: row.origin_system_id ?? null,
   };
 }
 
 export function authenticate(username, pin, stationId = null) {
-  const row = getDb().prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE AND active = 1').get(String(username ?? '').trim());
+  // A visitor's row has no usable PIN and may never sign in by one: it only
+  // arrives with an assertion from its home server (ADR 0018).
+  const row = getDb().prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE AND active = 1 AND origin_system_id IS NULL').get(String(username ?? '').trim());
   if (!row || !verifyPin(pin, row.pin_hash)) return null;
   const token = crypto.randomBytes(32).toString('hex');
   const now = Date.now();
@@ -188,6 +194,12 @@ export function resolveSession(token) {
   ).get(digest(token));
   if (!row) return null;
   if (row.expires_at <= Date.now()) {
+    getDb().prepare('DELETE FROM user_sessions WHERE token_hash = ?').run(digest(token));
+    return null;
+  }
+  // A visitor whose home server is no longer paired is nobody here: unpairing
+  // is revocation (ADR 0014), checked on every request, not just at arrival.
+  if (row.origin_system_id && !visitorPermissions(row.origin_system_id, [])) {
     getDb().prepare('DELETE FROM user_sessions WHERE token_hash = ?').run(digest(token));
     return null;
   }
@@ -320,7 +332,7 @@ export function getUser(userId) {
 
 export function listDirectory() {
   const db = getDb();
-  const users = db.prepare('SELECT id FROM users ORDER BY display_name').all().map((r) => getUser(r.id));
+  const users = db.prepare('SELECT id FROM users WHERE origin_system_id IS NULL ORDER BY display_name').all().map((r) => getUser(r.id));
   const groups = db.prepare('SELECT id, name, system_key AS systemKey FROM permission_groups ORDER BY name').all().map((group) => ({
     ...group,
     permissions: group.systemKey === 'admin'
@@ -347,6 +359,7 @@ export function createGroup({ name, permissions = [] }) {
 }
 
 export function updateUserGroups(userId, groupIds) {
+  assertLocalUser(userId);
   const db = getDb();
   if (!getUser(userId)) throw new Error('Unknown user');
   // The built-in administrator is the way back into a box in a building, and
@@ -377,6 +390,7 @@ export function updateUserGroups(userId, groupIds) {
  * copy is the one the login route re-projects from.
  */
 export function setUserPin(userId, pin) {
+  assertLocalUser(userId);
   const db = getDb();
   const user = getUser(userId);
   if (!user) throw new Error('Unknown user');
@@ -409,6 +423,7 @@ export function pinMatches(userId, pin) {
  * rather than "immediate on their next request".
  */
 export function setUserActive(userId, active) {
+  assertLocalUser(userId);
   const db = getDb();
   if (!getUser(userId)) throw new Error('Unknown user');
   if (!active && adminUser()?.id === userId) {
@@ -491,6 +506,125 @@ export const TOKEN_PERMISSIONS = [
 ];
 
 export const TOKEN_PREFIX = 'pmt_';
+
+// ── Visitors from linked servers (ADR 0018) ──────────────────────────────────
+
+/**
+ * What a visitor may be granted at all. The service-token set less its one
+ * sharp edge: a token is minted by this server's own admin, a visitor is
+ * vouched for by a server this one does not control, so overriding a
+ * scheduled lock stays off. Nothing administrative is on either list, which is
+ * how ADR 0016's "a compromised peer never gains privileged access here" is
+ * enforced by a list rather than by an admin's care.
+ */
+export const VISITOR_PERMISSIONS = TOKEN_PERMISSIONS.filter((p) => p !== 'rooms.mode.override_lock');
+
+/** Pairing alone lets a visitor read; anything more is an admin's decision here. */
+export const DEFAULT_VISITOR_RULES = [{ group: '*', permissions: ['reports.view'] }];
+
+const VISITOR_SESSION_TTL = 60 * 60 * 1000;
+
+/** Rules as stored for a peer, or the default. */
+export function visitorRules(systemId) {
+  const row = getDb().prepare('SELECT visitor_rules FROM federation_peers WHERE system_id = ?').get(systemId);
+  return row?.visitor_rules ? JSON.parse(row.visitor_rules) : DEFAULT_VISITOR_RULES;
+}
+
+/** Validate and store a peer's visitor rules. Throws on anything not grantable. */
+export function setVisitorRules(systemId, input) {
+  if (!Array.isArray(input) || input.length > 20) throw new Error('Rules must be a list of at most 20');
+  const rules = input.map((rule) => {
+    const group = String(rule?.group ?? '').trim();
+    if (!group || group.length > 80) throw new Error('Each rule names a group, or * for everyone');
+    const permissions = [...new Set(Array.isArray(rule.permissions) ? rule.permissions : [])];
+    const bad = permissions.find((p) => !VISITOR_PERMISSIONS.includes(p));
+    if (bad) throw new Error(`${bad} cannot be granted to visitors`);
+    return { group, permissions: permissions.sort() };
+  });
+  getDb().prepare('UPDATE federation_peers SET visitor_rules = ? WHERE system_id = ?').run(JSON.stringify(rules), systemId);
+  return rules;
+}
+
+/**
+ * A visitor's permissions here: the union of every rule that matches them, cut
+ * to the grantable list. Group names come from their home server's assertion,
+ * so a compromised home can claim any group; a rule is therefore exactly as
+ * strong as this server's trust in that server's admins (ADR 0016).
+ * Null when the home server is not paired, which ends the visit.
+ */
+export function visitorPermissions(systemId, groups) {
+  const peer = getDb().prepare('SELECT state FROM federation_peers WHERE system_id = ?').get(systemId);
+  if (peer?.state !== 'paired') return null;
+  const mine = new Set(groups.map((g) => String(g).toLowerCase()));
+  const out = new Set();
+  for (const rule of visitorRules(systemId)) {
+    if (rule.group === '*' || mine.has(rule.group.toLowerCase())) {
+      for (const p of rule.permissions) if (VISITOR_PERMISSIONS.includes(p)) out.add(p);
+    }
+  }
+  return [...out].sort();
+}
+
+function assertLocalUser(userId) {
+  const row = getDb().prepare('SELECT origin_system_id FROM users WHERE id = ?').get(userId);
+  if (row?.origin_system_id) throw new Error('Visitors are managed by their home server');
+}
+
+const usernameSlug = (name) => String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'linked';
+
+/**
+ * The local row for a visitor, created on first arrival and kept current after.
+ * Username is <theirs>@<their server>, which no local user can have: local
+ * usernames may not contain '@'.
+ */
+export function upsertVisitor({ systemId, serverName, sub, username, displayName, groups }) {
+  const db = getDb();
+  const existing = db.prepare('SELECT id FROM users WHERE origin_system_id = ? AND origin_user_id = ?').get(systemId, sub);
+  const display = String(displayName || username).slice(0, 80);
+  const groupJson = JSON.stringify(groups.slice(0, 20).map((g) => String(g).slice(0, 80)));
+  if (existing) {
+    db.prepare('UPDATE users SET display_name = ?, origin_groups = ?, active = 1 WHERE id = ?').run(display, groupJson, existing.id);
+    return existing.id;
+  }
+  const base = `${usernameSlug(username)}@${usernameSlug(serverName)}`;
+  const taken = (u) => db.prepare('SELECT 1 FROM users WHERE username = ? COLLATE NOCASE').get(u);
+  const uname = taken(base) ? `${base}-${systemId.slice(0, 4)}-${crypto.randomBytes(2).toString('hex')}` : base;
+  const userId = id();
+  // pin_hash is NOT NULL; '!' is no hash verifyPin can match, and authenticate
+  // refuses origin rows before it would look.
+  db.prepare(`INSERT INTO users (id, username, display_name, pin_hash, created_at, origin_system_id, origin_user_id, origin_groups)
+              VALUES (?, ?, ?, '!', ?, ?, ?, ?)`).run(userId, uname, display, Date.now(), systemId, sub, groupJson);
+  return userId;
+}
+
+/** An hour, no station: a visitor is re-admitted by pressing Open again. */
+export function createVisitorSession(userId) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const now = Date.now();
+  getDb().prepare(
+    'INSERT INTO user_sessions (token_hash, user_id, station_id, created_at, expires_at) VALUES (?, ?, NULL, ?, ?)',
+  ).run(digest(token), userId, now, now + VISITOR_SESSION_TTL);
+  const row = getDb().prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  return { token, user: publicUser(row), permissions: permissionsFor(userId), expiresAt: now + VISITOR_SESSION_TTL };
+}
+
+/** Visitors seen here, for Admin → Users (read-only). */
+export function listVisitors() {
+  return getDb().prepare(`
+    SELECT u.id, u.username, u.display_name AS displayName, u.origin_system_id AS originSystemId,
+           u.origin_groups AS groups, u.active, u.created_at AS createdAt,
+           p.name AS serverName, p.state AS serverState,
+           (SELECT MAX(created_at) FROM user_sessions s WHERE s.user_id = u.id) AS lastArrivedAt
+      FROM users u LEFT JOIN federation_peers p ON p.system_id = u.origin_system_id
+     WHERE u.origin_system_id IS NOT NULL
+     ORDER BY u.display_name
+  `).all().map((r) => ({
+    ...r,
+    groups: JSON.parse(r.groups ?? '[]'),
+    active: Boolean(r.active) && r.serverState === 'paired',
+    permissions: visitorPermissions(r.originSystemId, JSON.parse(r.groups ?? '[]')) ?? [],
+  }));
+}
 const TOKEN_NAME_MAX = 60;
 // A token's last-used time is for an administrator deciding whether it is
 // safe to revoke; to the minute is plenty, and a Companion poller should not

@@ -10,7 +10,9 @@ import express from 'express';
 import * as auth from '../authStore.js';
 import * as store from '../federation/store.js';
 import * as link from '../federation/link.js';
-import { remoteServers } from '../federation/directory.js';
+import { remoteServers, getDirectory } from '../federation/directory.js';
+import * as visit from '../federation/visit.js';
+import { sourceIp, refuseIfLocked, recordFailure } from '../credentialThrottle.js';
 import { getIdentity } from '../identity.js';
 import { requirePermission, auditSuccess } from '../httpAuth.js';
 
@@ -30,7 +32,15 @@ const overview = () => {
     config: store.describe(),
     listener: link.listenerStatus(),
     identity: { systemId: me.systemId, name: me.name, tlsFingerprint: me.tlsFingerprint },
-    peers: store.listPeers().map((peer) => ({ ...peer, ...(link.peerDetails(peer.systemId) ?? {}) })),
+    peers: store.listPeers().map((peer) => ({
+      ...peer,
+      ...(link.peerDetails(peer.systemId) ?? {}),
+      visitorRules: auth.visitorRules(peer.systemId),
+    })),
+    // What may be granted to visitors at all, labelled, for the rules editor.
+    visitorPermissions: auth.PERMISSIONS
+      .filter(([pid]) => auth.VISITOR_PERMISSIONS.includes(pid))
+      .map(([pid, label, description]) => ({ id: pid, label, description })),
     tokens: store.listJoinTokens(),
   };
 };
@@ -42,6 +52,67 @@ const fail = (res, err, status = 400) => res.status(status).json({ error: String
 // paired with (ADR 0018) — pairing is the decision to share that. It carries
 // names and a dashboard address, never a federation address or fingerprint.
 router.get('/api/federation/campuses', (_req, res) => res.json(remoteServers()));
+
+// ── Visiting (ADR 0018) ──────────────────────────────────────────────────────
+
+/**
+ * Leaving: sign a pass for the person signed in here, naming the linked server
+ * they are opening. A session only — a service token is an app, not a person,
+ * and a visitor here may not be vouched onward to a third server (there is no
+ * transitivity: we would be vouching for someone we did not admit).
+ */
+router.post('/api/federation/visit', (req, res) => {
+  const user = req.auth?.user;
+  if (!user) return res.status(401).json({ error: 'sign_in_required' });
+  if (user.originSystemId) return res.status(403).json({ error: 'Visitors cannot be passed on to another server' });
+  const systemId = String(req.body?.systemId ?? '');
+  const peer = store.peerRow(systemId);
+  const dir = getDirectory(systemId);
+  if (!peer || peer.state !== 'paired' || !dir?.dashboardUrl) return res.status(404).json({ error: 'Unknown server' });
+  const groups = (auth.getUser(user.id)?.groups ?? []).map((g) => g.name);
+  const pass = visit.sign({ aud: systemId, user, groups });
+  const to = visit.safePath(req.body?.path);
+  auditSuccess(req, 'federation.visit', { resourceType: 'peer', resourceId: systemId, details: { name: peer.name, path: to } });
+  // In the fragment: never sent to the server, never in a log or a Referer.
+  const fragment = new URLSearchParams({ pass, to }).toString();
+  res.json({ url: `${dir.dashboardUrl}/visit#${fragment}` });
+});
+
+/**
+ * Arriving: a browser presents a pass from a linked server and gets an
+ * ordinary session for a local visitor row. Throttled like every other
+ * credential door; refusals are audited with the reason.
+ */
+router.post('/api/federation/arrive', (req, res) => {
+  const keys = [{ k: `fedarrive:${sourceIp(req)}`, after: 10 }];
+  if (refuseIfLocked(res, keys)) return;
+  let who;
+  try {
+    who = visit.verify(req.body?.pass);
+  } catch (err) {
+    recordFailure(keys);
+    auth.audit({ action: 'federation.arrive', result: 'denied', details: { reason: err.code ?? 'error', from: sourceIp(req) } });
+    return res.status(err.code === 'clock' ? 409 : 403).json({ error: String(err.message), reason: err.code ?? 'error' });
+  }
+  const userId = auth.upsertVisitor(who);
+  const session = auth.createVisitorSession(userId);
+  auth.audit({
+    userId, action: 'federation.arrive', result: 'allowed', resourceType: 'peer', resourceId: who.systemId,
+    details: { from: who.serverName, as: who.username },
+  });
+  res.status(201).json({ ...session, server: who.serverName });
+});
+
+router.put('/api/federation/peers/:systemId/visitors', ...adminOnly, (req, res) => {
+  if (!store.getPeer(req.params.systemId)) return res.status(404).json({ error: 'Unknown server' });
+  try {
+    const rules = auth.setVisitorRules(req.params.systemId, req.body?.rules);
+    auditSuccess(req, 'federation.configure', { resourceType: 'peer', resourceId: req.params.systemId, details: { visitorRules: rules } });
+    res.json(overview());
+  } catch (err) {
+    fail(res, err);
+  }
+});
 
 router.get('/api/federation', ...adminOnly, (_req, res) => res.json(overview()));
 

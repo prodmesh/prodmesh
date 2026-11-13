@@ -6,6 +6,7 @@ import { rooms } from '../roomsStore.js';
 import * as settings from '../settings.js';
 import * as pco from '../integrations/planningCenter.js';
 import * as auth from '../authStore.js';
+import * as fedStore from '../federation/store.js';
 import { bearer, requirePermission, auditSuccess } from '../httpAuth.js';
 import { sourceIp, recordFailure, clearFailures, refuseIfLocked } from '../credentialThrottle.js';
 
@@ -191,11 +192,17 @@ router.get('/api/auth/status', async (req, res) => {
     user: user ? { ...user, avatarUrl: pcProfile?.avatarUrl ?? null } : null,
     permissions: req.auth?.permissions ?? [],
     station: req.station ?? null,
+    // Signed in from a linked server (ADR 0018). The shell does not ask a
+    // visitor to name a station: this is not their building.
+    visitor: user?.originSystemId
+      ? { systemId: user.originSystemId, server: fedStore.getPeer(user.originSystemId)?.name ?? null }
+      : null,
   });
 });
 
 router.get('/api/users', requirePermission('users.manage'), async (_req, res) => {
   const directory = auth.listDirectory();
+  directory.visitors = auth.listVisitors();
   directory.users = await Promise.all(directory.users.map(async (user) => {
     const profile = user.planningCenterPersonId
       ? await pco.getPersonProfile(user.planningCenterPersonId).catch(() => null)

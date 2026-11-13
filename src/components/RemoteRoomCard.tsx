@@ -1,5 +1,5 @@
 import { ExternalLink, Lock, Radio } from 'lucide-react';
-import type { RemoteDigest, RemoteRoomDigest, RemoteServer } from '../api';
+import { getToken, visitServer, type RemoteDigest, type RemoteRoomDigest, type RemoteServer } from '../api';
 
 // A room on a linked server (ADR 0018), drawn from that server's digest.
 //
@@ -44,7 +44,9 @@ export function RemoteRoomCard({ server, room, digest }: {
   const d: RemoteRoomDigest | undefined = digest?.reachable ? digest.rooms[room.id] : undefined;
   const mode = d?.mode;
   const next = d?.next;
-  const href = server.dashboardUrl ? `${server.dashboardUrl}/room/${encodeURIComponent(room.id)}` : null;
+  const href = server.dashboardUrl
+    ? `${server.dashboardUrl}/visit#${new URLSearchParams({ to: `/room/${room.id}` })}`
+    : null;
 
   const body = (
     <>
@@ -107,9 +109,27 @@ export function RemoteRoomCard({ server, room, digest }: {
   );
 
   const className = `roomcard roomcard--remote${unreachable ? ' roomcard--unreachable' : ''}`;
+
+  // Signed in here: ask this server for a pass, so the person arrives at the
+  // other one known by name (ADR 0018). Not signed in, or the pass cannot be
+  // had: the plain link still goes there, through /visit so that browser is
+  // not asked to register as one of their stations. A modified click (new
+  // tab) is left to the browser and takes the plain link.
+  const open = async (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!getToken() || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+    event.preventDefault();
+    const plain = event.currentTarget.href; // currentTarget is gone after the await
+    try {
+      const { url } = await visitServer(server.systemId, `/room/${room.id}`);
+      window.location.assign(url);
+    } catch {
+      window.location.assign(plain);
+    }
+  };
+
   // Same tab, so the browser's Back returns here. A server that gave no
   // usable address gets a card that is not a link rather than a broken one.
   return href
-    ? <a className={className} href={href} title={`Open on ${server.name}`}>{body}</a>
+    ? <a className={className} href={href} onClick={open} title={`Open on ${server.name}`}>{body}</a>
     : <div className={className}>{body}</div>;
 }
