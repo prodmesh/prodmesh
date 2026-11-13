@@ -1,4 +1,5 @@
-// Admin → Sites: federation configuration, pairing, and peers (ADR 0017).
+// Admin → Linked servers: federation configuration, pairing, and peers
+// (ADR 0017), and the other servers' campuses for the dashboard (ADR 0018).
 //
 // On the DASHBOARD port, for administrators. The other campus never calls
 // these: it talks to federation/link.js on the federation port, and these
@@ -9,6 +10,7 @@ import express from 'express';
 import * as auth from '../authStore.js';
 import * as store from '../federation/store.js';
 import * as link from '../federation/link.js';
+import { remoteServers } from '../federation/directory.js';
 import { getIdentity } from '../identity.js';
 import { requirePermission, auditSuccess } from '../httpAuth.js';
 
@@ -34,6 +36,12 @@ const overview = () => {
 };
 
 const fail = (res, err, status = 400) => res.status(status).json({ error: String(err.message ?? err) });
+
+// The other servers' campuses and rooms, for Home and the campus picker.
+// Not admin-only: anyone who can see this dashboard sees the campuses it is
+// paired with (ADR 0018) — pairing is the decision to share that. It carries
+// names and a dashboard address, never a federation address or fingerprint.
+router.get('/api/federation/campuses', (_req, res) => res.json(remoteServers()));
 
 router.get('/api/federation', ...adminOnly, (_req, res) => res.json(overview()));
 

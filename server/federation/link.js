@@ -24,6 +24,9 @@ import https from 'node:https';
 import tls from 'node:tls';
 import express from 'express';
 import * as store from './store.js';
+import * as directory from './directory.js';
+import * as digest from './digest.js';
+import * as hub from '../streamHub.js';
 import * as health from '../health.js';
 import * as auth from '../authStore.js';
 import { getIdentity, privateIdentity } from '../identity.js';
@@ -34,6 +37,9 @@ export const healthKey = (systemId) => `peer:${systemId}`;
 const CONNECT_TIMEOUT_MS = 5000;
 const PROBE_MS = Number(process.env.PRODMESH_FEDERATION_PROBE_MS) > 0
   ? Number(process.env.PRODMESH_FEDERATION_PROBE_MS) : 60_000;
+// How often a digest is pulled while someone here is watching (ADR 0018).
+const DIGEST_MS = Number(process.env.PRODMESH_FEDERATION_DIGEST_MS) > 0
+  ? Number(process.env.PRODMESH_FEDERATION_DIGEST_MS) : 10_000;
 
 // ── Outbound: one pinned request ─────────────────────────────────────────────
 
@@ -190,6 +196,9 @@ app.get('/federation/v1/hello', (req, res) => {
     store.markPaired(peer.system_id);
     auth.audit({ action: 'federation.pair', result: 'allowed', resourceType: 'peer', resourceId: peer.system_id, details: { stage: 'accepted-by-peer', name: peer.name } });
     startProbe(peer.system_id);
+    // Probe back now rather than at our next minute, so each side has the
+    // other's directory within seconds of the Accept.
+    setImmediate(() => { probe(peer.system_id).catch(() => {}); });
   }
   const now = store.peerRow(peer.system_id);
   store.recordContact(peer.system_id, {
@@ -203,8 +212,23 @@ app.get('/federation/v1/hello', (req, res) => {
     now: Date.now(),
     // How THIS side sees the pair, so the caller can show "waiting".
     state: now.state === 'paired' ? 'paired' : 'pending',
+    // The caller fetches the directory only when this changes (ADR 0018).
+    directoryRevision: now.state === 'paired' ? directory.localDirectory().revision : null,
   });
 });
+
+// The routes below share what this server runs, so only a peer whose pairing
+// is complete gets them. A peer still waiting on an Accept here has proved it
+// holds a token, not that anyone here agreed.
+const pairedOnly = (req, res, next) => (
+  req.peer.state === 'paired' ? next() : res.status(403).json({ error: 'not_accepted' })
+);
+
+/** What this server runs: active campuses and room names (ADR 0018). */
+app.get('/federation/v1/directory', pairedOnly, (_req, res) => res.json(directory.localDirectory()));
+
+/** A summary of every room in the directory, from values already held. */
+app.get('/federation/v1/digest', pairedOnly, (_req, res) => res.json(digest.localDigest()));
 
 /** The other side removed us. Agree, so both lists say the same thing. */
 app.post('/federation/v1/unpair', (req, res) => {
@@ -313,12 +337,89 @@ export async function probe(systemId) {
       auth.audit({ action: 'federation.pair', result: 'allowed', resourceType: 'peer', resourceId: systemId, details: { stage: 'accepted-by-peer', name: row.name } });
     }
     health.report(key, true);
+    if (body?.state === 'paired' && typeof body.directoryRevision === 'string'
+      && body.directoryRevision !== directory.directoryRevision(systemId)) {
+      await syncDirectory(systemId);
+    }
   } catch (err) {
     store.recordContact(systemId, { ok: false, error: String(err.message) });
     health.report(key, false, err.message);
   }
   return store.getPeer(systemId);
 }
+
+/**
+ * Fetch and cache a peer's directory. Failures are recorded on the peer row
+ * by the next probe, not here: a directory that cannot be fetched leaves the
+ * last good one in place, which is the degrade posture ADR 0014 asks for.
+ */
+export async function syncDirectory(systemId) {
+  const row = store.peerRow(systemId);
+  if (!row || row.state !== 'paired') return null;
+  try {
+    const { status, body } = await request(row, 'GET', '/federation/v1/directory');
+    if (status !== 200) return null;
+    const dir = directory.validateDirectory(body);
+    directory.storeDirectory(systemId, dir);
+    return dir;
+  } catch (err) {
+    console.warn(`[federation] directory from ${row.name}: ${err.message}`);
+    return null;
+  }
+}
+
+// ── Digests: site:<systemId>:summary, polled only while watched ──────────────
+//
+// The topic a remote room card subscribes to. The hub's refcount starts the
+// poll on the first subscriber and stops it on the last (ADR 0014), so a
+// paired server nobody here is looking at is never asked for a digest.
+
+const digestPolls = new Map(); // systemId -> { timer, inFlight }
+const digestTopic = (systemId) => `site:${systemId}:summary`;
+
+async function pollDigest(systemId) {
+  const poll = digestPolls.get(systemId);
+  if (!poll || poll.inFlight) return; // at most one request per peer in flight
+  poll.inFlight = true;
+  const row = store.peerRow(systemId);
+  try {
+    const dir = directory.getDirectory(systemId);
+    if (!row || row.state !== 'paired' || !dir) return;
+    const known = dir.campuses.flatMap((c) => c.rooms.map((r) => r.id));
+    let value;
+    try {
+      const { status, body } = await request(row, 'GET', '/federation/v1/digest');
+      if (status !== 200) throw new Error(`${row.name} answered ${status}`);
+      const d = digest.validateDigest(body, known);
+      // Built from a directory we do not have: fetch it, so the next tick can
+      // name every room (ADR 0018).
+      if (d.revision && d.revision !== dir.revision) syncDirectory(systemId).catch(() => {});
+      value = { systemId, reachable: true, fetchedAt: Date.now(), error: null, ...d };
+    } catch (err) {
+      value = { systemId, reachable: false, fetchedAt: Date.now(), error: String(err.message), rooms: {} };
+    }
+    if (digestPolls.has(systemId)) hub.publish(digestTopic(systemId), value);
+  } finally {
+    if (digestPolls.has(systemId)) digestPolls.get(systemId).inFlight = false;
+  }
+}
+
+hub.registerTopic('site:*:summary', {
+  // Only a paired server with a directory: subscribing starts network work,
+  // and the stream endpoint is anonymous (see streamHub's note on valid()).
+  valid: (systemId) => store.peerRow(systemId)?.state === 'paired' && Boolean(directory.directoryRevision(systemId)),
+  start: (systemId) => {
+    if (digestPolls.has(systemId)) return;
+    const timer = setInterval(() => { pollDigest(systemId).catch(() => {}); }, DIGEST_MS);
+    timer.unref?.();
+    digestPolls.set(systemId, { timer, inFlight: false });
+    pollDigest(systemId).catch(() => {});
+  },
+  stop: (systemId) => {
+    clearInterval(digestPolls.get(systemId)?.timer);
+    digestPolls.delete(systemId);
+  },
+});
 
 /**
  * Probe a peer on an interval. Only peers this side has accepted (paired) or

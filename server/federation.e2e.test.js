@@ -33,6 +33,7 @@ async function boot(label) {
       PORT: String(site.port),
       PRODMESH_FEDERATION_HOST: '127.0.0.1',
       PRODMESH_FEDERATION_PROBE_MS: '250',
+      PRODMESH_FEDERATION_DIGEST_MS: '250',
       NODE_ENV: 'test',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -150,6 +151,99 @@ test('an address change on one side heals on the other through the link', async 
   await call(north, 'PUT', '/api/federation', { address: `127.0.0.1:${north.fedPort}` });
 });
 
+// ── ADR 0018: the directory and digests ─────────────────────────────────────
+
+const campus = (id, name, rooms, status = 'active') => ({
+  id, name, status, auditoriums: rooms.map(([rid, rname]) => ({ id: rid, name: rname, tiles: [] })),
+});
+const remoteOf = async (site) => (await (await fetch(`${site.base}/api/federation/campuses`)).json());
+
+test('each server learns what the other runs, and a rename follows within a probe', async () => {
+  const put = await call(south, 'PUT', '/api/config', {
+    name: 'Grace Church',
+    sites: [
+      campus('south', 'South Campus', [['south-main', 'Main Auditorium'], ['south-youth', 'Youth Room']]),
+      campus('chapel', 'Chapel Campus', [['chapel-main', 'Chapel']], 'disabled'),
+    ],
+  });
+  assert.equal(put.status, 200, await put.text());
+
+  // Anonymous, like the rest of the dashboard's reads.
+  const [server] = await until(async () => {
+    const list = await remoteOf(north);
+    return list[0]?.campuses?.[0]?.rooms?.length === 2 ? list : null;
+  }, 'North to fetch South’s directory');
+  assert.equal(server.systemId, south.identity.systemId);
+  assert.deepEqual(server.campuses.map((c) => c.id), ['south'], 'a disabled campus is not published');
+  assert.match(server.dashboardUrl, /^http:\/\/127\.0\.0\.1:\d+$/);
+  assert.equal(server.reachable, true);
+  for (const secret of ['address', 'fingerprint', 'certificate']) {
+    assert.ok(!(secret in server), `${secret} is not public`);
+  }
+
+  await call(south, 'PUT', '/api/config', {
+    name: 'Grace Church',
+    sites: [campus('south', 'South Everett', [['south-main', 'Main Auditorium'], ['south-youth', 'Youth Room']])],
+  });
+  await until(async () => (await remoteOf(north))[0]?.campuses[0]?.name === 'South Everett', 'North to see the rename');
+
+  // The remote rooms are not North's rooms: nothing local learned of them.
+  const rooms = await (await fetch(`${north.base}/api/rooms`)).json();
+  assert.ok(!rooms.some((r) => r.id.startsWith('south')), 'remote rooms never enter the local room list');
+});
+
+/** Read an SSE stream until `match(data)` holds for a message on `topic`. */
+async function streamUntil(site, topic, match, what, ms = 8000) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  let last;
+  try {
+    const res = await fetch(`${site.base}/api/stream?topics=${encodeURIComponent(topic)}`, { signal: ctl.signal });
+    const decoder = new TextDecoder();
+    let buf = '';
+    for await (const chunk of res.body) {
+      buf += decoder.decode(chunk, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const frame = buf.slice(0, i);
+        buf = buf.slice(i + 2);
+        const line = frame.split('\n').find((l) => l.startsWith('data: '));
+        if (!line) continue;
+        const msg = JSON.parse(line.slice(6));
+        if (msg.topic === topic) last = msg.data;
+        if (msg.topic === topic && match(msg.data)) return msg.data;
+      }
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') throw err;
+  } finally {
+    clearTimeout(timer);
+    ctl.abort();
+  }
+  return assert.fail(`timed out waiting for ${what}; last: ${JSON.stringify(last)}`);
+}
+
+test('a digest flows only while someone watches, with an observation time on each value', async () => {
+  const topic = `site:${south.identity.systemId}:summary`;
+  const digest = await streamUntil(north, topic,
+    (d) => d.reachable && d.rooms['south-main']?.health?.observedAt != null,
+    'a digest with South’s room health observed');
+  const room = digest.rooms['south-main'];
+  assert.equal(room.show.active, false);
+  assert.ok(Math.abs(room.health.observedAt - Date.now()) < 10_000);
+  // A room added in Admin starts without room-mode control, and a room with
+  // no mode says nothing about one rather than "unknown".
+  assert.ok(!('mode' in room));
+  assert.ok(Array.isArray(room.health.integrations));
+  assert.ok('south-youth' in digest.rooms);
+
+  // A topic for something that is not a paired server is refused, not polled:
+  // the stream is anonymous and subscribing starts network work.
+  const bogus = `site:${crypto.randomUUID()}:summary`;
+  const res = await fetch(`${north.base}/api/stream?topics=${bogus}`, { signal: AbortSignal.timeout(500) }).catch(() => null);
+  assert.ok(!res || res.ok, 'the stream itself still opens');
+});
+
 // A raw client on the federation port, presenting a certificate of its own.
 function rawFederation(port, { cert = true, path = '/federation/v1/hello', method = 'GET', body } = {}) {
   const key = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).privateKey;
@@ -208,4 +302,5 @@ test('removing a site is immediate here and agreed there', async () => {
   await until(async () => (await peersOf(south)).length === 0, 'South to agree it was unpaired');
   const health = await (await call(north, 'GET', '/api/system/health')).json();
   assert.equal(health.integrations[`peer:${south.identity.systemId}`], undefined, 'no longer probed or reported');
+  assert.deepEqual(await remoteOf(north), [], 'and its campuses are forgotten');
 });

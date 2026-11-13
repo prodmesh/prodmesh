@@ -65,11 +65,15 @@ const formatAddress = ({ host, port }) => `${host}:${port}`;
  * address  — what peers should dial. Empty means "this machine's primary
  *            address", which is right on a flat single-NIC network and is
  *            only typed when it is wrong (multi-homed, NAT, Docker, DNS).
+ * dashboardUrl — where a BROWSER at another campus opens this server (ADR
+ *            0018). Not the federation address: another port, maybe another
+ *            name, maybe https. Empty means the federation host on the
+ *            dashboard port, typed only when that is wrong.
  */
 export function getConfig() {
   const row = getDb().prepare('SELECT value FROM app_config WHERE key = ?').get(CONFIG_KEY);
   const stored = row ? JSON.parse(row.value) : {};
-  return { enabled: false, bind: 'all', port: DEFAULT_PORT, address: '', ...stored };
+  return { enabled: false, bind: 'all', port: DEFAULT_PORT, address: '', dashboardUrl: '', ...stored };
 }
 
 export function setConfig(input) {
@@ -92,6 +96,11 @@ export function setConfig(input) {
     if (address && !parseAddress(address, next.port)) throw new Error('Address must be a hostname or IPv4 address, optionally with :port');
     next.address = address;
   }
+  if (input.dashboardUrl !== undefined) {
+    const url = String(input.dashboardUrl).trim();
+    if (url && !normalizeDashboardUrl(url)) throw new Error('Dashboard address must be an http:// or https:// address with no path, like http://192.0.2.10:8080');
+    next.dashboardUrl = url ? normalizeDashboardUrl(url) : '';
+  }
   getDb().prepare(
     'INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
   ).run(CONFIG_KEY, JSON.stringify(next));
@@ -106,6 +115,31 @@ export function federationAddress(cfg = getConfig()) {
   return formatAddress({ host, port: cfg.port });
 }
 
+/**
+ * An absolute http(s) origin, or null. Used for our own setting and for the
+ * one a peer sends in its directory, which is only ever a navigation target
+ * for a browser — this server never fetches it — but is still refused unless
+ * it is plainly an origin, so a peer cannot hand our users a javascript: or
+ * data: URL behind an Open button.
+ */
+export function normalizeDashboardUrl(value) {
+  const text = String(value ?? '').trim();
+  if (!text || text.length > 300) return null;
+  let url;
+  try { url = new URL(text); } catch { return null; }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  if (url.username || url.password || url.search || url.hash) return null;
+  if (url.pathname !== '/' && url.pathname !== '') return null;
+  return url.origin;
+}
+
+/** Where a browser elsewhere opens this server's dashboard. */
+export function dashboardUrl(cfg = getConfig()) {
+  if (cfg.dashboardUrl) return cfg.dashboardUrl;
+  const { host } = parseAddress(federationAddress(cfg), cfg.port);
+  return `http://${host}:${Number(process.env.PORT) || 8080}`;
+}
+
 /** Everything the Admin screen shows about this side, with the warning ADR
  *  0017 asks for: binding everything on a multi-homed box. */
 export function describe() {
@@ -113,6 +147,7 @@ export function describe() {
   return {
     ...cfg,
     effectiveAddress: federationAddress(cfg),
+    effectiveDashboardUrl: dashboardUrl(cfg),
     interfaces: listInterfaces(),
     warnAllInterfaces: cfg.bind === 'all' && multiHomed(),
   };
@@ -203,7 +238,13 @@ export function markPaired(systemId, acceptedBy = null) {
 }
 
 export function markRemoved(systemId) {
-  getDb().prepare("UPDATE federation_peers SET state = 'removed', awaiting = NULL WHERE system_id = ?").run(systemId);
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare("UPDATE federation_peers SET state = 'removed', awaiting = NULL WHERE system_id = ?").run(systemId);
+    // Unpairing forgets what they run, too (ADR 0018): an unreachable peer
+    // keeps its last directory, a removed one does not.
+    db.prepare('DELETE FROM federation_directory WHERE system_id = ?').run(systemId);
+  })();
   return getPeer(systemId);
 }
 

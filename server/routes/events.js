@@ -19,24 +19,11 @@ import { requirePermission, permissionRequired, auditSuccess } from '../httpAuth
 import { applyMode, modeLockError } from '../roomModes.js';
 import { bump } from '../roomStateWatcher.js';
 import { survive, unexpected } from '../health.js';
+import { stOf, upcomingForRoom } from '../roomService.js';
 
 const router = express.Router();
 
 // ── Planning Center Services (read-only plan display) ──────────────────────────
-
-const stOf = (plan) => ({ id: plan.serviceTypeId, name: plan.serviceTypeName });
-
-// Upcoming plans across ALL of a room's service types, soonest first.
-async function upcomingForRoom(pc, limit) {
-  const types = pc.serviceTypes ?? [];
-  const lists = await Promise.all(
-    types.map((st) => pco.getUpcomingPlans(st, limit).catch(() => [])),
-  );
-  return lists
-    .flat()
-    .sort((a, b) => new Date(a.sortDate) - new Date(b.sortDate))
-    .slice(0, limit);
-}
 
 // Overview: next service per configured room (for Quick Access). Rooms are
 // fetched in parallel (Promise.all keeps map order) so a slow Planning Center

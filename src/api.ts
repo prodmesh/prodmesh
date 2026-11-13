@@ -656,6 +656,8 @@ export interface FederationOverview {
     port: number;
     address: string;
     effectiveAddress: string;
+    dashboardUrl: string;
+    effectiveDashboardUrl: string;
     interfaces: { name: string; address: string }[];
     warnAllInterfaces: boolean;
   };
@@ -667,6 +669,40 @@ export interface FederationOverview {
 
 export const getFederation = () => getJson<FederationOverview>('/api/federation');
 
+// ── Other servers' campuses (ADR 0018) ───────────────────────────────────────
+
+export interface RemoteCampus { id: string; name: string; rooms: { id: string; name: string }[] }
+
+/** A linked server, as the dashboard sees it: what it runs and where to open it. */
+export interface RemoteServer {
+  systemId: string;
+  name: string;
+  /** Where a browser opens that server, or null if it gave none usable. */
+  dashboardUrl: string | null;
+  reachable: boolean;
+  lastSeenAt: number | null;
+  fetchedAt: number;
+  campuses: RemoteCampus[];
+}
+
+export const getRemoteCampuses = () => getJson<RemoteServer[]>('/api/federation/campuses');
+
+/** Every value carries when the other server last confirmed it, or null. */
+export interface RemoteRoomDigest {
+  mode?: { id: string | null; label: string | null; color: string | null; online: boolean | null; locked: boolean | null; observedAt: number | null };
+  show?: { active: boolean; startedAt: number | null; observedAt: number | null };
+  health?: { integrations: { id: string; label: string; state: 'ok' | 'down' | 'mock' | 'unknown' }[]; observedAt: number | null };
+  next?: { title: string | null; dates: string | null; at: number | null; observedAt: number | null } | null;
+}
+
+export interface RemoteDigest {
+  systemId: string;
+  reachable: boolean;
+  fetchedAt: number;
+  error: string | null;
+  rooms: Record<string, RemoteRoomDigest>;
+}
+
 async function federationCall<T = FederationOverview>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api/federation${path}`, {
     method,
@@ -677,7 +713,7 @@ async function federationCall<T = FederationOverview>(method: string, path: stri
   return res.json() as Promise<T>;
 }
 
-export const saveFederationConfig = (input: Partial<{ enabled: boolean; bind: string; port: number; address: string }>) =>
+export const saveFederationConfig = (input: Partial<{ enabled: boolean; bind: string; port: number; address: string; dashboardUrl: string }>) =>
   federationCall('PUT', '', input);
 export const createJoinToken = () => federationCall<{ id: string; token: string; expiresAt: number }>('POST', '/tokens');
 export const cancelJoinToken = (id: string) => federationCall('DELETE', `/tokens/${encodeURIComponent(id)}`);

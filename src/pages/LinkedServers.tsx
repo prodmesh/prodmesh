@@ -71,9 +71,11 @@ function LinkPanel({ data, onChange }: { data: FederationOverview; onChange: (d:
   const [bind, setBind] = useState(config.bind);
   const [port, setPort] = useState(String(config.port));
   const [address, setAddress] = useState(config.address);
+  const [dashboardUrl, setDashboardUrl] = useState(config.dashboardUrl);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Feedback>(null);
-  const dirty = bind !== config.bind || port !== String(config.port) || address !== config.address;
+  const dirty = bind !== config.bind || port !== String(config.port) || address !== config.address
+    || dashboardUrl !== config.dashboardUrl;
 
   const save = async (patch: Parameters<typeof saveFederationConfig>[0]) => {
     setBusy(true);
@@ -132,6 +134,12 @@ function LinkPanel({ data, onChange }: { data: FederationOverview; onChange: (d:
           </span>
           <input className="field mono" value={address} placeholder={config.effectiveAddress} onChange={(e) => setAddress(e.target.value)} />
         </label>
+        <label>
+          <span className="panel__label">People open this server at
+            <HelpTip text="The dashboard address someone at another campus uses. Their room cards open it. Leave it blank to use this computer's address on the dashboard port; type one for a DNS name or https." />
+          </span>
+          <input className="field mono" value={dashboardUrl} placeholder={config.effectiveDashboardUrl} onChange={(e) => setDashboardUrl(e.target.value)} />
+        </label>
       </div>
       {config.warnAllInterfaces && bind === 'all' && (
         <p className="settings__warn">
@@ -141,7 +149,7 @@ function LinkPanel({ data, onChange }: { data: FederationOverview; onChange: (d:
       )}
       <div className="panel__controls">
         <button className="btn btn--primary" disabled={!dirty || busy}
-          onClick={() => save({ bind, port: Number(port), address })}>Save</button>
+          onClick={() => save({ bind, port: Number(port), address, dashboardUrl })}>Save</button>
       </div>
       <Msg msg={msg} />
     </section>

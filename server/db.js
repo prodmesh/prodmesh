@@ -476,6 +476,23 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    // What each paired server last said it runs (ADR 0018). A cache, read by
+    // the All Campuses view and nothing else: the rooms pipeline builds from
+    // site_rooms, and a remote room in there would have this server dialling
+    // another building's devices (ADR 0014).
+    name: 'federation-directory',
+    up(d) {
+      d.exec(`
+        CREATE TABLE IF NOT EXISTS federation_directory (
+          system_id  TEXT PRIMARY KEY,
+          revision   TEXT    NOT NULL,
+          body       TEXT    NOT NULL,  -- validated JSON, as served to the browser
+          fetched_at INTEGER NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

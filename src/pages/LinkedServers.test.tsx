@@ -21,6 +21,7 @@ const FP = 'AB:'.repeat(31) + 'AB';
 const base = (over: Partial<FederationOverview> = {}): FederationOverview => ({
   config: {
     enabled: true, bind: 'all', port: 8443, address: '', effectiveAddress: '192.0.2.10:8443',
+    dashboardUrl: '', effectiveDashboardUrl: 'http://192.0.2.10:8080',
     interfaces: [{ name: 'en0', address: '192.0.2.10' }], warnAllInterfaces: false,
   },
   listener: { listening: true, host: 'all', port: 8443, error: null },

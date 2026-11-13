@@ -40,6 +40,36 @@
   gap: 12px;
 }
 
+/* A header per campus when more than one is on screen (ADR 0018). */
+.home__campus {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.home__campus + .home__campus {
+  margin-top: 8px;
+}
+
+.home__campus-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.home__campus-server {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.61rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 @media (max-width: 980px) {
   .home__rooms {
     grid-template-columns: 1fr;
@@ -62,6 +92,28 @@
 
 .roomcard:hover {
   background: var(--bg-tile);
+}
+
+/* A room on a linked server (ADR 0018). Unreachable greys the whole card;
+   a stale value dims just that value and says its age. */
+.roomcard--unreachable {
+  opacity: 0.55;
+}
+
+.roomcard__status--stale {
+  opacity: 0.6;
+}
+
+.roomcard__age {
+  margin-left: 6px;
+  color: var(--warn-text);
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+}
+
+.roomcard__muted {
+  color: var(--text-faint);
+  font-size: 0.85rem;
 }
 
 /* With Companion disabled there is no Room Mode or connection state to

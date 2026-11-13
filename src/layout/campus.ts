@@ -17,3 +17,8 @@ export const useCampus = () => useContext(CampusContext);
 export function inCampus(campusId: string, site: string | null | undefined) {
   return campusId === ALL_CAMPUSES || !site || site === campusId;
 }
+
+/** A campus on a linked server is `<systemId>/<campusId>`. A local campus id
+ *  can never contain a slash, so the two cannot collide (ADR 0018). */
+export const remoteCampusId = (systemId: string, campusId: string) => `${systemId}/${campusId}`;
+export const isRemoteCampus = (campusId: string) => campusId.includes('/');
