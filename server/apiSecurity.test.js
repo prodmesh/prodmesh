@@ -574,6 +574,47 @@ test('deactivating revokes access immediately, and cannot reach @admin or yourse
   assert.ok((await post('/api/auth/login', { username: 'leaver', pin: '4545' }, null, station.token)).ok);
 });
 
+test('removing a user deletes the account but keeps its name on the audit log (#57)', async () => {
+  const g = auth.createGroup({ name: 'Removers', permissions: ['users.manage'] });
+  const me = auth.createUser({ username: 'remover', displayName: 'Remover', pin: '6767', groupIds: [g.id] });
+  const gone = auth.createUser({ username: 'gone', displayName: 'Gone Person', pin: '7878', groupIds: [g.id] });
+  const boss = auth.createUser({
+    username: 'boss', displayName: 'Boss', pin: '8989',
+    groupIds: [auth.listDirectory().groups.find((x) => x.systemKey === 'admin').id],
+  });
+  const login = async (username, pin) =>
+    (await (await post('/api/auth/login', { username, pin }, null, station.token)).json()).token;
+  const token = await login('remover', '6767');
+  const goneToken = await login('gone', '7878');
+  auth.audit({ userId: gone.id, action: 'rooms.mode', result: 'success' });
+
+  const del = (userId) => fetch(`${base}/api/users/${userId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}`, 'X-Prodmesh-Station': station.token },
+  });
+
+  assert.equal((await del(me.id)).status, 403, 'not yourself');
+  const over = await del(boss.id);
+  assert.equal(over.status, 403, 'not someone holding more than you');
+  assert.equal((await over.json()).error, 'cannot_manage_higher_privilege');
+  assert.ok(auth.getUser(boss.id));
+  assert.throws(() => auth.removeUser(auth.listDirectory().users.find((u) => u.username === 'admin').id), /cannot be removed/);
+
+  assert.equal((await del(gone.id)).status, 200);
+  assert.equal(auth.getUser(gone.id), null);
+  assert.ok(!auth.listDirectory().users.some((u) => u.id === gone.id), 'gone from the users list');
+  // Out at once: the live session ends and the PIN no longer opens anything.
+  const status = await fetch(`${base}/api/auth/status`, { headers: { Authorization: `Bearer ${goneToken}` } }).then((r) => r.json());
+  assert.equal(status.authenticated ?? false, false);
+  assert.equal((await post('/api/auth/login', { username: 'gone', pin: '7878' }, null, station.token)).status, 401);
+  // History still says who it was.
+  const row = auth.listAudit(500).find((a) => a.action === 'rooms.mode' && a.username === 'gone');
+  assert.equal(row?.userName, 'Gone Person');
+  // The username is free for somebody new.
+  assert.ok(auth.createUser({ username: 'gone', displayName: 'New Person', pin: '1357', groupIds: [] }));
+  assert.equal((await del(gone.id)).status, 404, 'removing twice is not found');
+});
+
 test('a group cannot be given permissions its editor does not hold', async () => {
   const g = auth.createGroup({ name: 'Group Editors', permissions: ['users.manage'] });
   auth.createUser({ username: 'grpadm', displayName: 'Group Admin', pin: '5656', groupIds: [g.id] });

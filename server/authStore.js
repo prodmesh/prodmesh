@@ -440,6 +440,35 @@ export function setUserActive(userId, active) {
 }
 
 /**
+ * Remove an account for good (#57). Revoking access is the reversible step;
+ * this is for somebody who has left.
+ *
+ * The row is deleted, not hidden: the username is free to give to somebody
+ * else, and the PIN hash and Planning Center link are gone. What survives is
+ * the name, in former_users, because audit rows and service tokens keep the
+ * id and should go on saying who it was. Foreign keys are not enforced here
+ * (see db.js), so groups and sessions are deleted explicitly rather than by
+ * cascade.
+ */
+export function removeUser(userId) {
+  assertLocalUser(userId);
+  const db = getDb();
+  const user = getUser(userId);
+  if (!user) throw new Error('Unknown user');
+  // The way back into a box in a building; see setUserActive.
+  if (adminUser()?.id === userId) throw new Error(`@${ADMIN_USERNAME} cannot be removed`);
+  db.transaction(() => {
+    db.prepare(
+      'INSERT OR REPLACE INTO former_users (id, username, display_name, removed_at) VALUES (?, ?, ?, ?)',
+    ).run(userId, user.username, user.displayName, Date.now());
+    db.prepare('DELETE FROM user_sessions WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM user_groups WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+  })();
+  return user;
+}
+
+/**
  * Change a group's name and the permissions it carries.
  *
  * Administrators is refused: its `['*']` is computed from `system_key` in
@@ -470,9 +499,11 @@ export function listAudit(limit = 200) {
   return getDb().prepare(
     `SELECT a.id, a.ts, a.action, a.resource_type AS resourceType, a.resource_id AS resourceId,
             a.room_id AS roomId, a.plan_id AS planId, a.result, a.details,
-            u.display_name AS userName, u.username, s.name AS stationName, t.name AS tokenName
+            COALESCE(u.display_name, f.display_name) AS userName, COALESCE(u.username, f.username) AS username,
+            s.name AS stationName, t.name AS tokenName
        FROM audit_log a
        LEFT JOIN users u ON u.id = a.user_id
+       LEFT JOIN former_users f ON f.id = a.user_id
        LEFT JOIN stations s ON s.id = a.station_id
        LEFT JOIN service_tokens t ON t.id = a.token_id
       ORDER BY a.ts DESC, a.id DESC LIMIT ?`,
@@ -678,8 +709,9 @@ export function createServiceToken({ name, permissions, createdBy = null }) {
 
 export function getServiceToken(tokenId) {
   const row = getDb().prepare(
-    `SELECT t.*, u.display_name AS created_by_name
+    `SELECT t.*, COALESCE(u.display_name, f.display_name) AS created_by_name
        FROM service_tokens t LEFT JOIN users u ON u.id = t.created_by
+       LEFT JOIN former_users f ON f.id = t.created_by
       WHERE t.id = ?`,
   ).get(tokenId);
   return row ? publicToken(row) : null;
@@ -687,8 +719,9 @@ export function getServiceToken(tokenId) {
 
 export function listServiceTokens() {
   return getDb().prepare(
-    `SELECT t.*, u.display_name AS created_by_name
+    `SELECT t.*, COALESCE(u.display_name, f.display_name) AS created_by_name
        FROM service_tokens t LEFT JOIN users u ON u.id = t.created_by
+       LEFT JOIN former_users f ON f.id = t.created_by
       ORDER BY t.revoked_at IS NOT NULL, t.created_at DESC`,
   ).all().map(publicToken);
 }

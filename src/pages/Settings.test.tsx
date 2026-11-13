@@ -15,6 +15,7 @@ const api = vi.hoisted(() => ({
   createGroup: vi.fn(),
   setUserGroups: vi.fn(),
   setUserActive: vi.fn(),
+  removeUser: vi.fn(),
   resetUserPin: vi.fn(),
   updateGroup: vi.fn(),
   getStations: vi.fn(),
@@ -176,6 +177,22 @@ describe('Users & access', () => {
     const row = (await screen.findByText('Photo User')).closest('.users__row') as HTMLElement;
     await userEvent.click(within(row).getByRole('button', { name: 'Revoke access' }));
     expect(api.setUserActive).toHaveBeenCalledWith('with-photo', false);
+  });
+
+  it('removes a user only after a confirmation that says it cannot be undone (#57)', async () => {
+    api.removeUser.mockResolvedValue(undefined);
+    asIdentity(['*'], <UserManagementPanel />);
+    const row = (await screen.findByText('Photo User')).closest('.users__row') as HTMLElement;
+    await userEvent.click(within(row).getByRole('button', { name: 'Remove Photo User' }));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent(/cannot be undone/);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(api.removeUser).not.toHaveBeenCalled();
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Remove Photo User' }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+    expect(api.removeUser).toHaveBeenCalledWith('with-photo');
+    expect(await screen.findByText('Removed Photo User.')).toBeInTheDocument();
   });
 
   it('explains a refused group change instead of silently springing back', async () => {
