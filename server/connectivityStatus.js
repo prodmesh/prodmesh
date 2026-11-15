@@ -14,7 +14,7 @@ import * as rta from './integrations/rta.js';
 import * as openSoundMeter from './integrations/openSoundMeter.js';
 import * as companion from './companion.js';
 import * as obs from './integrations/obs.js';
-import { snapshot } from './health.js';
+import { snapshot, report } from './health.js';
 
 const errText = (err) => String(err?.message ?? err);
 
@@ -53,6 +53,10 @@ async function companionStatus(cfg) {
   }
 }
 
+// Analysis keys whose current failure this probe recorded (port unreachable),
+// as opposed to the meter's own stream failing. Bounded by configured rooms.
+const probeDown = new Set();
+
 async function analysisStatus(cfg) {
   if (cfg?.mock) return { ok: null, mock: true, detail: 'Simulated meter (dev room)' };
   if (!cfg?.source) return null;
@@ -65,11 +69,23 @@ async function analysisStatus(cfg) {
   const label = cfg.source === 'rta' ? 'RTA app' : 'Smaart';
   const key = (cfg.source === 'rta' ? rta : smaart).healthKey(cfg);
   const reach = await tcpReachable(cfg.host, key.split(':').pop());
-  if (!reach.ok) return { ok: false, detail: reach.detail };
+  // Tell the health registry what this probe saw, as the ProPresenter and
+  // Companion pings do. Without it the room's dot could be red while no issue
+  // was raised (#47), and a monitor that disagrees with itself is not trusted.
+  if (!reach.ok) {
+    probeDown.add(key);
+    report(key, false, reach.detail);
+    return { ok: false, detail: reach.detail };
+  }
   // The port answers; whether the API conversation itself works is what the
-  // health registry saw the last time the meter actually streamed.
+  // health registry saw the last time the meter actually streamed. A failure
+  // this probe recorded itself is not that, and the port answering clears it.
   const snap = snapshot()[key];
-  if (snap?.ok === false) return { ok: false, detail: snap.lastError?.message ?? `${label} API error` };
+  if (snap?.ok === false && !probeDown.has(key)) {
+    return { ok: false, detail: snap.lastError?.message ?? `${label} API error` };
+  }
+  probeDown.delete(key);
+  report(key, true);
   return { ok: true, detail: `${label} port answering` };
 }
 

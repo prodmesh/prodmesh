@@ -72,15 +72,15 @@ test('removeInstance erases only that service', () => {
   assert.equal(store.aggregate('other__t').count, 1);
 });
 
-test('retention prunes by age, and is disabled by a non-positive window', () => {
+test('retention prunes by age, and is disabled by a non-positive window', async () => {
   const old = Date.now() - 400 * 86_400_000;
   store.record(ROOM, INSTANCE, old, 5);
   store.record(ROOM, INSTANCE, Date.now(), 6);
 
-  assert.equal(store.prune(0), 0, '0 days must mean "keep everything", not "delete everything"');
-  assert.equal(store.prune(-1), 0);
+  assert.equal(await store.prune(0), 0, '0 days must mean "keep everything", not "delete everything"');
+  assert.equal(await store.prune(-1), 0);
   assert.equal(store.aggregate(INSTANCE).count, 2);
 
-  assert.equal(store.prune(365), 1);
+  assert.equal(await store.prune(365), 1);
   assert.equal(store.aggregate(INSTANCE).count, 1);
 });

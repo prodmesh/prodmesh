@@ -17,6 +17,24 @@
 
 const integrations = new Map(); // key → { lastSuccess, lastError, consecutiveFailures }
 
+// Who else wants to know (signalProducers.js turns these into signals). Called
+// on EVERY report, synchronously, from inside the transport choke points — so
+// a listener must be a few comparisons and at most a queue push, never I/O.
+const reportListeners = new Set();
+
+/** Hear every report: fn(key, ok, consecutiveFailuresBefore, entry). */
+export function onReport(fn) {
+  reportListeners.add(fn);
+  return () => reportListeners.delete(fn);
+}
+
+const forgetListeners = new Set();
+/** Hear a key stop being tracked: fn(key). */
+export function onForget(fn) {
+  forgetListeners.add(fn);
+  return () => forgetListeners.delete(fn);
+}
+
 /**
  * Register a configured integration before it's ever contacted, so the health
  * surface lists everything that SHOULD be reachable — not just what happened
@@ -30,7 +48,10 @@ export function declare(key) {
 
 /** Stop tracking a key whose integration no longer exists — a removed peer. */
 export function forget(key) {
-  integrations.delete(key);
+  if (!integrations.delete(key)) return;
+  for (const fn of forgetListeners) {
+    try { fn(key); } catch (err) { unexpected('health listener', err); }
+  }
 }
 
 /** Record one real request's outcome for an integration key. */
@@ -40,6 +61,7 @@ export function report(key, ok, errorMessage) {
     e = { lastSuccess: null, lastError: null, consecutiveFailures: 0 };
     integrations.set(key, e);
   }
+  const before = e.consecutiveFailures;
   if (ok) {
     if (e.consecutiveFailures > 0) {
       console.log(
@@ -52,6 +74,11 @@ export function report(key, ok, errorMessage) {
     e.consecutiveFailures += 1;
     e.lastError = { ts: Date.now(), message: String(errorMessage ?? 'unknown error') };
     if (e.consecutiveFailures === 1) console.error(`[health] ${key}: ${e.lastError.message}`);
+  }
+  for (const fn of reportListeners) {
+    // A listener's bug must never become the integration's failure: report()
+    // runs inside the choke points' own try/catch.
+    try { fn(key, ok, before, e); } catch (err) { unexpected('health listener', err); }
   }
 }
 

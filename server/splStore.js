@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { getDb } from './db.js';
+import { pruneTable, register } from './retention.js';
 
 // `spl` is the row's Leq (one instantaneous reading from a slow analyzer, or a
 // second of energy-averaged fast ones). `peak` is the loudest single sample
@@ -126,20 +127,13 @@ export function removeInstance(instanceId) {
 // aggregate (leq/peak/ca) survives in show_summaries. Prune samples older than
 // PRODMESH_SPL_RETENTION_DAYS (default 90; 0 or negative disables).
 
-export function prune(days = Number(process.env.PRODMESH_SPL_RETENTION_DAYS ?? 90)) {
-  if (!Number.isFinite(days) || days <= 0) return 0;
-  const cutoff = Date.now() - days * 86_400_000;
-  const { changes } = getDb().prepare('DELETE FROM spl_samples WHERE ts < ?').run(cutoff);
-  if (changes) console.log(`[spl] pruned ${changes} samples older than ${days} days`);
-  return changes;
+export function prune(days = Number(process.env.PRODMESH_SPL_RETENTION_DAYS ?? 90), isBusy) {
+  return pruneTable({ table: 'spl_samples', days, isBusy, label: 'SPL samples' });
 }
 
-/** Prune now and then daily — the Producer runs for weeks between restarts. */
+/** Prune daily, in chunks and never while a show is live (retention.js). */
 export function startRetention() {
-  prune();
-  const t = setInterval(prune, 86_400_000);
-  t.unref?.();
-  return t;
+  register('SPL samples', (isBusy) => prune(undefined, isBusy));
 }
 
 export { round1 };

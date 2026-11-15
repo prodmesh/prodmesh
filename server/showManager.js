@@ -30,6 +30,7 @@ import * as summaries from './showSummaries.js';
 import * as showConfig from './showConfig.js';
 import { armWindow, dueScheduledTime, pickAutostartTime, shouldAutostart, shouldAutoComplete, armsAutoComplete } from './autoShow.js';
 import { survive, unexpected } from './health.js';
+import * as signals from './signals.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SHOWS_DIR = join(process.env.PRODMESH_DATA_DIR ?? join(__dirname, 'data'), 'shows');
@@ -614,7 +615,7 @@ async function findPlan(room, planId) {
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
-async function beginShow(roomId, planId, timeId, startedAt, { startedLogging = false, fallbackItems = [] } = {}) {
+async function beginShow(roomId, planId, timeId, startedAt, { startedLogging = false, fallbackItems = [], by = 'operator', restored = false } = {}) {
   const room = rooms[roomId];
   if (!room) throw new Error('Unknown room');
 
@@ -688,6 +689,16 @@ async function beginShow(roomId, planId, timeId, startedAt, { startedLogging = f
   if (youtube.isConfigured(room.youtube)) show.streamStats = streamStore.runningStats(instanceId(show));
   persistShow(show);
   publishShow(roomId);
+  // A restart resuming a show is not a show starting: a rule that runs "when
+  // the show starts" must not run again because the server rebooted.
+  signals.emit({
+    kind: restored ? 'show.restored' : 'show.started',
+    source: 'show',
+    roomId,
+    subject: instanceId(show),
+    summary: `${room.name}: ${restored ? 'show resumed after a restart' : 'show started'}`,
+    data: { planId, timeId, serviceTypeId: serviceType?.id ?? null, items: items.length, by: restored ? 'restart' : by },
+  });
   startPoller(show);
   startSplWatcher(roomId); // capture runs with the show, not the browsers
   // restart, not start: a watcher may already be running for a viewer, on the
@@ -697,23 +708,29 @@ async function beginShow(roomId, planId, timeId, startedAt, { startedLogging = f
   return show;
 }
 
+/** Is a show live in this room right now? */
+export const isShowLive = (roomId) => shows.has(roomId);
+
+/** Is a show live anywhere on this server? */
+export const anyShowLive = () => shows.size > 0;
+
 /** Instance ids of currently-live shows (their summary rows may be stale). */
 export function activeInstanceIds() {
   return [...shows.values()].map(instanceId);
 }
 
-export async function startShow(roomId, planId, timeId = 'default') {
+export async function startShow(roomId, planId, timeId = 'default', { by = 'operator' } = {}) {
   const existing = shows.get(roomId);
   if (existing) {
     const err = new Error('A show is already active in this room');
     err.code = 'conflict';
     throw err;
   }
-  await beginShow(roomId, planId, timeId, Date.now());
+  await beginShow(roomId, planId, timeId, Date.now(), { by });
   return getState(roomId);
 }
 
-export function endShow(roomId) {
+export function endShow(roomId, { reason = 'operator' } = {}) {
   const show = shows.get(roomId);
   if (!show) {
     const err = new Error('No active show in this room');
@@ -746,6 +763,14 @@ export function endShow(roomId) {
   else stopStreamWatcher(roomId);
   stopShowLogging(show);
   publishShow(roomId);
+  signals.emit({
+    kind: 'show.ended',
+    source: 'show',
+    roomId,
+    subject: instanceId(show),
+    summary: `${rooms[roomId]?.name ?? roomId}: show ended`,
+    data: { planId: show.planId, timeId: show.timeId, reason, durationMs: Date.now() - show.startedAt },
+  });
   return getState(roomId);
 }
 
@@ -815,7 +840,7 @@ function onPoll(show, s) {
     if (show.current.itemId !== show.config?.endItemId) show.endArmed = false;
     else if (armsAutoComplete(show.config, show.current)) show.endArmed = true;
     if (shouldAutoComplete(show.config, show.current, show.endArmed)) {
-      endShow(show.roomId);
+      endShow(show.roomId, { reason: 'auto-complete' });
       return;
     }
   }
@@ -836,7 +861,19 @@ function applyCurrent(show, itemId, fallbackName, index) {
     { roomId: show.roomId, planId: show.planId, timeId: show.timeId },
     { itemId, itemName: name, itemIndex: index, plannedLength: pc?.length ?? null },
   );
-  if (changed) syncServicesLive(show, itemId);
+  if (changed) {
+    syncServicesLive(show, itemId);
+    // About thirty a service: an item is a change worth a signal, a slide is
+    // not (the timeline already records slides).
+    signals.emit({
+      kind: 'show.item.started',
+      source: 'show',
+      roomId: show.roomId,
+      subject: instanceId(show),
+      summary: name ? `${rooms[show.roomId]?.name ?? show.roomId}: ${name}` : null,
+      data: { itemId, itemName: name, itemIndex: index ?? null, plannedLength: pc?.length ?? null, follow: show.follow },
+    });
+  }
 }
 
 // ProPresenter is the source of truth when this explicit event option is on.
@@ -1035,7 +1072,7 @@ async function watchClock(roomId, armed, isCompleted, started, signal) {
       // show by hand in the same instant, that person is running the service.
       started.add(key(timeId));
       try {
-        await startShow(roomId, armed.plan.id, timeId);
+        await startShow(roomId, armed.plan.id, timeId, { by: 'autostart' });
         console.log(`[autostart] ${roomId}: scheduled time — show started for ${key(timeId)}`);
       } catch (err) {
         // A conflict means somebody started a show by hand in the same
@@ -1118,7 +1155,7 @@ async function autostartLoop(roomId, signal) {
         const timeId = pickAutostartTime(armed.times, Date.now(), isCompleted);
         if (timeId) {
           try {
-            await startShow(roomId, armed.plan.id, timeId);
+            await startShow(roomId, armed.plan.id, timeId, { by: 'autostart' });
             console.log(`[autostart] ${roomId}: show started for ${armed.plan.id}__${timeId}`);
           } catch (err) {
             // A conflict means somebody started it by hand first. Anything
@@ -1174,7 +1211,7 @@ export function syncAutomation() {
     ctl.abort();
     autostartWatchers.delete(roomId);
     if (shows.has(roomId)) {
-      try { endShow(roomId); } catch { /* already gone */ }
+      try { endShow(roomId, { reason: 'room removed' }); } catch { /* already gone */ }
     }
     timerWatchers.get(roomId)?.abort();
     timerWatchers.delete(roomId);
@@ -1197,6 +1234,7 @@ export async function restoreShows() {
         await beginShow(meta.roomId, meta.planId, meta.timeId ?? 'default', meta.startedAt ?? Date.now(), {
           startedLogging: Boolean(meta.startedLogging),
           fallbackItems: Array.isArray(meta.items) ? meta.items : [],
+          restored: true,
         });
       }
     } catch {

@@ -224,3 +224,24 @@ test('a transient inside an aggregated second survives the bucket flush', async 
     await srv.close();
   }
 });
+
+test('a show emits signals at its points of change: started, each item, ended', async () => {
+  const signals = await import('./signals.js');
+  const plan = (await pco.getUpcomingPlans(ST, 5))[0];
+  const items = await pco.getPlanItems(ST, plan.id);
+  signals.flushNow();
+  const since = signals.list({ limit: 1 })[0]?.id ?? 0;
+
+  await sm.startShow(ROOM, plan.id, 'tsig', { by: 'autostart' });
+  sm.setCurrent(ROOM, { itemId: items[1].id });
+  sm.setCurrent(ROOM, { itemId: items[1].id }); // the same item again is not a change
+  sm.endShow(ROOM);
+  signals.flushNow();
+
+  const mine = signals.list({ limit: 50, roomId: ROOM }).filter((s) => s.id > since).reverse();
+  assert.deepEqual(mine.map((s) => s.kind), ['show.started', 'show.item.started', 'show.ended']);
+  assert.equal(mine[0].data.by, 'autostart');
+  assert.equal(mine[1].data.itemName, items[1].title);
+  assert.equal(mine[2].data.reason, 'operator');
+  assert.equal(mine[0].subject, `${plan.id}__tsig`);
+});

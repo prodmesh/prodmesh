@@ -1,6 +1,7 @@
 // Planning Center plans, event detail, show config, checklists, and reports.
 
 import express from 'express';
+import { noteMode, actorOf } from '../signalProducers.js';
 
 import { rooms } from '../roomsStore.js';
 import * as pco from '../integrations/planningCenter.js';
@@ -252,6 +253,7 @@ router.post('/api/rooms/:id/event/:planId/checklist/:itemId', requirePermission(
       if (lockError) return res.status(lockError.status).json(lockError.body);
       await applyMode(room, mode); // throws → 502 below, item stays unchecked
       bump(room.id); // an automated checklist item moves the mode; screens follow
+      noteMode(room.id, mode.id, { by: actorOf(req) });
     }
 
     checklist.setItem(room.id, plan.id, item.id, done);

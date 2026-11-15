@@ -62,10 +62,33 @@ async function slackApi(method, payload) {
   }
 }
 
+/**
+ * Make untrusted text safe to interpolate into a Slack message. THE one copy:
+ * every path that puts text into Slack goes through it (ADR 0015).
+ *
+ * Station names are unauthenticated, device names and trap strings will be,
+ * so anyone who can reach the port picks them. Unescaped, a station called
+ * `Booth <https://evil.example|Click to approve>` has the church's own trusted
+ * bot post that link into the tech channel, a far better phish than an
+ * external DM. Slack's mrkdwn needs only &, < and > escaped. @here, @channel
+ * and @everyone get a zero-width space, so text cannot ping the whole channel.
+ */
+export const escapeText = (s) =>
+  String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/@(here|channel|everyone)\b/gi, '@\u200b$1');
+
 /** Post to the configured channel. Returns { channel, ts } for later updates. */
 export async function postMessage(text) {
   const body = await slackApi('chat.postMessage', { channel: cfg('channel'), text });
   return { channel: body.channel, ts: body.ts };
+}
+
+/** Replace a previously posted message's text, so one post tracks one alert. */
+export function updateMessage(channel, ts, text) {
+  return slackApi('chat.update', { channel, ts, text });
 }
 
 /** React to a previously posted message (default ✅). */
