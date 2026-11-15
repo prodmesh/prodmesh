@@ -14,6 +14,8 @@ import { listenOnLoopback } from './testServer.js';
 process.env.PRODMESH_DATA_DIR = mkdtempSync(join(tmpdir(), 'prodmesh-alerts-'));
 
 const slackCalls = [];
+let reactions = []; // what reactions.get reports
+process.env.PRODMESH_ALERT_ACK_POLL_MS = '30';
 const fakeSlack = http.createServer((req, res) => {
   let raw = '';
   req.on('data', (c) => (raw += c));
@@ -25,6 +27,8 @@ const fakeSlack = http.createServer((req, res) => {
     if (method === 'chat.postMessage') {
       return res.end(JSON.stringify({ ok: true, channel: payload.channel, ts: `ts-${slackCalls.length}` }));
     }
+    if (method === 'reactions.get') return res.end(JSON.stringify({ ok: true, message: { reactions } }));
+    if (method === 'users.info') return res.end(JSON.stringify({ ok: true, user: { profile: { display_name: 'Riley' } } }));
     return res.end(JSON.stringify({ ok: true }));
   });
 });
@@ -68,6 +72,7 @@ beforeEach(async () => {
   health.reset();
   live.clear();
   slackCalls.length = 0;
+  reactions = [];
   getDb().exec('DELETE FROM alerts; DELETE FROM signals;');
 });
 
@@ -294,4 +299,43 @@ test('unauthenticated signals may raise alerts but not drive room-changing actio
     ['alert', 'companion.press'],
     'only a rule that explicitly accepts it',
   );
+});
+
+test('👀 on the Slack post claims the issue, by that person, on the record', async () => {
+  const auth = await import('./authStore.js');
+  live.add('north-main');
+  health.report(PP, false, 'x');
+  health.report(PP, false, 'x');
+  await settle();
+  assert.equal(posts().length, 1);
+  reactions = [{ name: 'eyes', users: ['U123'], count: 1 }];
+  await settle(120);
+  const [a] = alerts.listOpen();
+  assert.equal(a.state, 'acknowledged');
+  assert.equal(a.ackedBy, 'Riley');
+  assert.match(updates().at(-1).payload.text, /:eyes: Riley is on it/);
+  assert.ok(auth.listAudit(20).some((r) => r.action === 'alerts.acknowledge'));
+});
+
+test('a service report gets the issues that overlapped it in that room, with time to claim', async () => {
+  const t0 = Date.now();
+  live.add('north-main');
+  health.report(PP, false, 'x');
+  health.report(PP, false, 'x');
+  health.report('planningCenter', false, 'x');
+  health.report('planningCenter', false, 'x');
+  health.report('peer:far', false, 'x');
+  health.report('peer:far', false, 'x');
+  await settle();
+  const [pp] = alerts.listOpen().filter((a) => a.subject === PP);
+  alerts.acknowledge(pp.id, 'Sam');
+
+  const issues = alerts.during('north-main', t0, Date.now());
+  assert.deepEqual(issues.map((i) => i.title).sort(), [
+    'Main Auditorium · ProPresenter is unreachable',
+    'Planning Center is unreachable',
+  ], 'its own room and the whole org, never a linked server');
+  assert.ok(issues.find((i) => i.title.includes('ProPresenter')).claimedAfterMs >= 0);
+  assert.equal(alerts.during('north-youth', t0).length, 1, 'another room sees only the org-wide one');
+  assert.equal(alerts.during('north-main', Date.now() + 60_000, Date.now() + 120_000).length, 2, 'still open, so it overlaps later too');
 });

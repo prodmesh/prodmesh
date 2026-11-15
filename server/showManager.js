@@ -286,6 +286,15 @@ const SERVICE_LEAD_MS = 30 * 60 * 1000;
 const SERVICE_TAIL_MS = 60 * 60 * 1000;
 
 async function serviceSoon(roomId) {
+  return inServiceWindow(roomId, SERVICE_LEAD_MS, SERVICE_TAIL_MS);
+}
+
+/**
+ * Is `now` within `leadMs` before this room's next service time and `tailMs`
+ * after it? Planning Center reads are cached for ten minutes, so asking every
+ * minute costs nothing on the wire.
+ */
+export async function inServiceWindow(roomId, leadMs, tailMs) {
   const types = rooms[roomId]?.planningCenter?.serviceTypes ?? [];
   if (!types.length) return false;
   const now = Date.now();
@@ -294,7 +303,7 @@ async function serviceSoon(roomId) {
       const times = await pco
         .getPlanTimes({ id: plan.serviceTypeId, name: plan.serviceTypeName }, plan.id)
         .catch(survive([], `service window ${roomId}`));
-      const window = armWindow(times, SERVICE_LEAD_MS, SERVICE_TAIL_MS);
+      const window = armWindow(times, leadMs, tailMs);
       if (window && now >= window.from && now <= window.to) return true;
     }
   }

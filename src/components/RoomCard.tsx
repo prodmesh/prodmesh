@@ -9,6 +9,7 @@ import {
 } from '../api';
 import { useQuery } from '../lib/useQuery';
 import { useTopic, roomTopic } from '../lib/stream';
+import { forRoom, useOpenIssues, worst } from '../lib/issues';
 
 const REFRESH_MS = 30 * 1000;
 
@@ -35,6 +36,8 @@ export function RoomCard({ room, showRoomMode = true }: { room: RoomMeta; showRo
   // mode change appears immediately instead of up to 30s later.
   const state = useTopic<RoomState>(roomTopic.mode(room.id));
   const show = useTopic<ShowState>(roomTopic.show(room.id));
+  const issues = forRoom(useOpenIssues(), room.id);
+  const level = worst(issues);
   // The plan is a Planning Center fetch on a slow clock, not a live value —
   // useQuery shares one request and one interval across every card and page
   // that wants it.
@@ -54,11 +57,22 @@ export function RoomCard({ room, showRoomMode = true }: { room: RoomMeta; showRo
           <span className="roomcard__id mono">{room.id}</span>
           <span className="roomcard__name">{room.name}</span>
         </span>
-        {show?.active && (
-          <span className="roomcard__live">
-            <Radio size={12} /> LIVE
-          </span>
-        )}
+        <span className="roomcard__badges">
+          {level && (
+            <span
+              className={`roomcard__issues roomcard__issues--${level}`}
+              title={issues.map((i) => i.title).join('\n')}
+              aria-label={`${issues.length} open issue${issues.length === 1 ? '' : 's'}`}
+            >
+              {issues.length}
+            </span>
+          )}
+          {show?.active && (
+            <span className="roomcard__live">
+              <Radio size={12} /> LIVE
+            </span>
+          )}
+        </span>
       </div>
 
       {showRoomMode && <div className="roomcard__status">

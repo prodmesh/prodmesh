@@ -34,6 +34,7 @@ import * as hub from './streamHub.js';
 import * as slack from './integrations/slack.js';
 import * as signals from './signals.js';
 import { unexpected } from './health.js';
+import * as auth from './authStore.js';
 
 export const FLAP_WINDOW = 10 * 60_000;
 export const FLAPPING_AT = 3; // reopenings within the window before we say "flapping"
@@ -80,6 +81,8 @@ export function publicView(a) {
   return {
     id: a.id,
     title: a.title,
+    // Which kind of thing, never which address: "proPresenter", not its key.
+    integration: a.subject ? String(a.subject).split(/[@:]/)[0] : null,
     severity: a.severity,
     state: a.state,
     roomIds: a.roomIds,
@@ -112,6 +115,23 @@ export function listRecent({ limit = RECENT_LIMIT, before = null } = {}) {
     .prepare(`SELECT * FROM alerts ${before != null ? 'WHERE id < ?' : ''} ORDER BY id DESC LIMIT ${n}`)
     .all(...(before != null ? [Number(before)] : []))
     .map(row);
+}
+
+/**
+ * Issues that overlapped a service in a room, for its report: anything open at
+ * some point between `from` and `to` that affected that room, or every room
+ * (Planning Center down). A linked server's outage interrupted nothing here.
+ * The public view plus when it was claimed, which is the number that tells a
+ * team whether the monitor is working for them.
+ */
+export function during(roomId, from, to = Date.now()) {
+  return getDb()
+    .prepare('SELECT * FROM alerts WHERE first_seen <= ? AND (resolved_at IS NULL OR resolved_at >= ?) ORDER BY first_seen')
+    .all(to, from)
+    .map(row)
+    .filter((a) => !String(a.subject ?? '').startsWith('peer:'))
+    .filter((a) => a.roomIds.length === 0 || a.roomIds.includes(roomId))
+    .map((a) => ({ ...publicView(a), claimedAfterMs: a.ackedAt ? a.ackedAt - a.firstSeen : null }));
 }
 
 /** Subjects with an alert still open, so a restart can still resolve them. */
@@ -202,6 +222,7 @@ function syncSlack(a, { post = false } = {}) {
     .postMessage(slackText(a))
     .then((posted) => {
       db.prepare('UPDATE alerts SET slack_channel = ?, slack_ts = ? WHERE id = ?').run(posted.channel, posted.ts, a.id);
+      startAckPolling();
       // It may have moved on while the post was in flight.
       const now = get(a.id);
       if (now && now.state !== a.state) syncSlack(now);
@@ -209,6 +230,59 @@ function syncSlack(a, { post = false } = {}) {
     .catch(() => {
       db.prepare('UPDATE alerts SET notified_at = NULL WHERE id = ?').run(a.id);
     });
+}
+
+// ── 👀 in Slack means "on it" ─────────────────────────────────────────────────
+//  The same gesture the help button taught (assistance.js): a tech on their
+//  phone in the hallway should not need a browser to say "mine". While any
+//  posted issue is unclaimed, its reactions are read every ACK_POLL_MS; the
+//  first 👀 claims it, by that person's Slack name. Polling stops when nothing
+//  is waiting, so a quiet week costs no requests at all.
+
+const ACK_EMOJI = 'eyes';
+const ACK_POLL_MS = Number(process.env.PRODMESH_ALERT_ACK_POLL_MS ?? 10_000);
+let ackTimer = null;
+
+const unclaimedPosts = () => listOpen().filter((a) => a.state === 'open' && a.slack);
+
+async function pollAcks() {
+  for (const a of unclaimedPosts()) {
+    try {
+      const reactions = await slack.getMessageReactions(a.slack.channel, a.slack.ts);
+      const eyes = reactions.find((r) => r.name === ACK_EMOJI);
+      if (!eyes?.users?.length) continue;
+      const name = (await slack.userName(eyes.users[0])) ?? 'Someone in Slack';
+      const claimed = acknowledge(a.id, name);
+      if (claimed?.state === 'acknowledged') {
+        auth.audit({
+          action: 'alerts.acknowledge',
+          resourceType: 'alert',
+          resourceId: String(a.id),
+          result: 'allowed',
+          details: { title: a.title, via: 'slack', slackUser: eyes.users[0], name },
+        });
+      }
+    } catch {
+      /* recorded in health by the Slack client; try again next tick */
+    }
+  }
+  if (!unclaimedPosts().length) stopAckPolling();
+}
+
+function startAckPolling() {
+  if (ackTimer || !slack.isConfigured()) return;
+  ackTimer = setInterval(() => { pollAcks().catch((err) => unexpected('alerts', err)); }, ACK_POLL_MS);
+  ackTimer.unref?.();
+}
+
+function stopAckPolling() {
+  if (ackTimer) clearInterval(ackTimer);
+  ackTimer = null;
+}
+
+/** Boot: resume watching any posted, unclaimed issue left open by the last run. */
+export function resumeAckPolling() {
+  if (unclaimedPosts().length) startAckPolling();
 }
 
 // ── The action ────────────────────────────────────────────────────────────────
@@ -333,6 +407,7 @@ export function acknowledge(id, byName) {
 
 /** Tests only. */
 export function resetBudget() {
+  stopAckPolling();
   if (budget.timer) clearTimeout(budget.timer);
   Object.assign(budget, { windowStart: 0, sent: 0, suppressed: 0, timer: null });
 }

@@ -1,6 +1,6 @@
 # Alerts UX: proposal for #47
 
-Status: proposal · 2026-11-14 · for [#47](https://github.com/prodmesh/prodmesh/issues/47)
+Status: decided · 2026-11-14 · for [#47](https://github.com/prodmesh/prodmesh/issues/47)
 · builds on ADRs [0015](../decisions/0015-events-and-alerts.md) and
 [0019](../decisions/0019-signals-rules-and-actions.md)
 
@@ -91,12 +91,22 @@ The room card already has a health dot. An open issue adds a small amber or
 red count on the card, so a TD walking in at 8:00 sees which room needs them
 before opening anything. A cleared issue leaves no trace on Home.
 
-### 3. The app header: one indicator for everything
+### 3. The sidebar: a notifications space
 
-A quiet indicator in the shell, visible only when something is open anywhere
-on this server. It opens a panel listing open issues across rooms, the same
-three answers per row. It is the one place an org-level issue (Planning Center
-down) lives, since that has no room strip.
+Decided 2026-11-14: in the sidebar's lower half, above Help, a **Notifications**
+button with a count, present on every page and in the collapsed rail. Quiet
+(no count, no colour) when nothing is open; amber or red, matching the worst
+open issue, when something is.
+
+It opens a panel listing what needs attention, one row per issue with the
+same three answers, an **I'm on it** button, and a link to the room. It is
+the one place an org-level issue (Planning Center down) lives, since that has
+no room strip.
+
+It is named for notifications, not issues, on purpose: it is where anything
+that needs a person's attention will land, so user-to-user paging or a
+finished update can join it later without a second bell. Issues are its
+first kind.
 
 ### 4. Slack: one message per issue, edited in place
 
@@ -162,7 +172,20 @@ because it carries addresses.
   else.
 - **Any rule editing.** That is Automations, 1.6.
 
-## Decisions for you
+## Decisions (2026-11-14)
+
+All five recommendations accepted:
+
+1. **Pre-service watching.** The server checks each room's devices itself
+   during the hour before each scheduled service and while a show is live.
+2. **The strip** appears on Room Console and Run of Show only, never on
+   display views. Plus the sidebar notifications space (section 3).
+3. **👀 in Slack** claims an issue.
+4. **Issues in the service report.**
+5. **"Issue"** on screen; the code keeps `alerts`.
+
+## The decisions as proposed
+
 
 1. **Pre-service watching (a server change, and the biggest one).** Today an
    integration is only checked when something is talking to it: a live show,

@@ -11,7 +11,11 @@ import express from 'express';
 import * as alerts from '../alerts.js';
 import * as signals from '../signals.js';
 import { requirePermission, auditSuccess } from '../httpAuth.js';
-import { actorOf } from '../signalProducers.js';
+import { actorOf, roomDevices } from '../signalProducers.js';
+import * as rules from '../rules.js';
+import * as roomHealth from '../roomHealth.js';
+import * as slack from '../integrations/slack.js';
+import { rooms } from '../roomsStore.js';
 
 const router = express.Router();
 
@@ -38,6 +42,41 @@ router.get('/api/signals', requirePermission('system.logs'), (req, res) => {
   const kind = typeof req.query.kind === 'string' ? req.query.kind.slice(0, 80) : null;
   const roomId = typeof req.query.roomId === 'string' ? req.query.roomId.slice(0, 80) : null;
   res.json({ signals: signals.list({ limit: req.query.limit, before: req.query.before, kind, roomId }) });
+});
+
+// Admin → Monitoring: is it sending, what is it watching, and on what rule.
+router.get('/api/monitoring', requirePermission('settings.manage'), (_req, res) => {
+  res.json({
+    slack: { configured: slack.isConfigured() },
+    rooms: Object.values(rooms).map((room) => ({
+      id: room.id,
+      name: room.name,
+      site: room.site ?? null,
+      // Why its devices are being checked right now: the server's own reason
+      // first, otherwise a screen has the room open, otherwise nothing is.
+      watching: roomHealth.heldFor(room.id) ?? (roomHealth.isWatched(room.id) ? 'screen' : null),
+      lastChecked: roomHealth.observedAt(room.id),
+      // The live probe's answer while one runs; otherwise each device's last
+      // known result, so a room nobody is watching still shows what it has.
+      integrations: roomHealth.current(room.id)?.integrations ?? roomDevices(room),
+    })),
+    rules: rules.BUILT_IN_RULES,
+  });
+});
+
+// The single most reassuring thing a monitor can do is prove, on a Tuesday,
+// that it will reach you on Sunday.
+router.post('/api/monitoring/test', requirePermission('settings.manage'), async (req, res) => {
+  if (!slack.isConfigured()) return res.status(409).json({ error: 'Slack is not connected' });
+  try {
+    await slack.postMessage(
+      `:wave: Test from ProdMesh, sent by ${slack.escapeText(actorOf(req))}. Issues during a live show will post here.`,
+    );
+    auditSuccess(req, 'settings.manage', { resourceType: 'monitoring-test' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(502).json({ error: String(err.message ?? err).slice(0, 200) });
+  }
 });
 
 export default router;

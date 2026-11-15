@@ -24,6 +24,7 @@ import { useChurch } from '../layout/church';
 import { PasswordInput } from '../components/PasswordInput';
 import { CompanionSurface } from '../components/CompanionSurface';
 import { IntegrationTitle } from '../components/IntegrationBrand';
+import { IssueStrip } from '../components/Issues';
 
 // When a show is live in this room, say so LOUDLY: which service, since when,
 // and one tap to the live Run of Show. (The Home tile already shows LIVE —
@@ -185,6 +186,7 @@ export function RoomStatus() {
       </div>
 
       <LiveBanner roomId={roomId} />
+      <IssueStrip roomId={roomId} />
 
       {showProtection && (
         <div className="protbar">

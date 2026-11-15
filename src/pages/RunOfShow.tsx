@@ -26,6 +26,7 @@ import { useShowActions } from '../lib/showActions';
 import { useQuery, invalidate } from '../lib/useQuery';
 import { planKey, reportKey } from '../lib/keys';
 import { widgetRegistry } from '../widgets/registry';
+import { IssueStrip } from '../components/Issues';
 import type { WidgetType } from '../widgets/types';
 
 // Run of Show's widget row, in order. A hard-coded layout for now — 1.5 reads
@@ -161,6 +162,8 @@ export function RunOfShow() {
           </Link>
         </div>
       </div>
+
+      <IssueStrip roomId={roomId} />
 
       <section className="ros__widgets">
         {/* Through the registry rather than as direct imports: this page is the

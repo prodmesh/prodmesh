@@ -75,6 +75,23 @@ export function bindingFor(key) {
   return roomIds.length ? { scope: 'room', roomIds } : { scope: 'org', roomIds: [] };
 }
 
+/**
+ * A room's devices and the last thing each one did, whether or not anything
+ * is checking them now: 'ok', 'down', or 'unknown' if never contacted since
+ * boot. Ids and labels only, never an address (Admin → Monitoring).
+ */
+export function roomDevices(room) {
+  const snap = health.snapshot();
+  return roomKeys(room).map((key) => {
+    const s = snap[key];
+    return {
+      id: integrationOf(key),
+      label: labelFor(key),
+      state: !s || s.ok == null ? 'unknown' : s.ok ? 'ok' : 'down',
+    };
+  });
+}
+
 const roomName = (id) => rooms[id]?.name ?? id;
 
 /** "Auditorium · ProPresenter", or just "Planning Center" for org scope. */

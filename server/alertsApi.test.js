@@ -103,3 +103,17 @@ test('a mode change made here is one signal, naming who made it', async () => {
   assert.equal(changed.data.mode, 'sunday');
   assert.equal(changed.data.by, 'On Call');
 });
+
+test('Admin → Monitoring needs settings.manage and shows rules as data', async () => {
+  assert.equal((await req('GET', '/api/monitoring', oncall)).status, 403);
+  const admin = auth.createGroup({ name: 'Settings', permissions: ['settings.manage'] });
+  auth.createUser({ username: 'settler', displayName: 'Settler', pin: '5791', groupIds: [admin.id] });
+  const token = (await (await req('POST', '/api/auth/login', null, { username: 'settler', pin: '5791' })).json()).token;
+  const res = await req('GET', '/api/monitoring', token);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.rules[0].id, 'integration-unreachable');
+  assert.ok(body.rooms.some((r) => r.id === 'north-main'));
+  assert.equal(body.slack.configured, false);
+  assert.equal((await req('POST', '/api/monitoring/test', token)).status, 409, 'nothing to test without Slack');
+});

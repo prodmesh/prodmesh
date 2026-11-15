@@ -5,6 +5,7 @@ import { noteMode, actorOf } from '../signalProducers.js';
 
 import { rooms } from '../roomsStore.js';
 import * as pco from '../integrations/planningCenter.js';
+import * as alerts from '../alerts.js';
 import * as timeline from '../timeline.js';
 import * as show from '../showManager.js';
 import * as splStore from '../splStore.js';
@@ -324,6 +325,13 @@ router.get('/api/rooms/:id/plan/:planId/report', (req, res) => {
   // doesn't, which is the right way round.
   const stream = streamStore.aggregate(instance) ?? summaries.get(instance)?.stream ?? null;
   report.stream = stream ? { ...stream, series: streamStore.series(instance) } : null;
+
+  // Issues during this service (#47): what broke, for how long, and how fast
+  // somebody claimed it. Only once the show has a start; a report for a plan
+  // that never ran has no window to look in.
+  report.issues = report.startedAt != null
+    ? alerts.during(req.params.id, report.startedAt, report.completedAt ?? Date.now())
+    : [];
 
   res.json(report);
 });

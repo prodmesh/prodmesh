@@ -147,6 +147,9 @@ export const roomTopic = {
  * refcounting; the id is not a room id, which is why it is a separate accessor
  * rather than a `roomTopic` entry taking a misleading argument.
  */
+/** Every open issue on this server (#47): the server's `alerts` topic. */
+export const issuesTopic = 'alerts';
+
 export const integrationTopic = (id: 'resi' | 'restream') => `integration:${id}`;
 /** A linked server's room summaries (ADR 0018), polled only while subscribed. */
 export const remoteSummaryTopic = (systemId: string) => `site:${systemId}:summary`;
