@@ -98,6 +98,55 @@ evaluated after that and each runs isolated, so one rule's error cannot stop
 the others. A rule that throws is reported through `unexpected()` as our bug,
 not raised as the church's outage.
 
+### The live show comes first
+
+Monitoring exists to protect a service. If it makes a live dashboard stutter, it
+has done the opposite. Everything here runs in the process that serves the
+show's SSE stream, so the rule is: **signals never compete with the show for
+the event loop.** Lag on that loop is what a stutter is, because every pushed
+slide, timer and mode change waits behind it.
+
+The load is small to begin with. Signals are change-driven, not sampled: there
+is no metric polling at 10 seconds or any other rate. A service produces about
+thirty item starts, a handful of mode changes, and a health transition only when
+something actually breaks. The danger is the burst: a trap storm, or a flapping
+device. So:
+
+- **Emit is a queue push.** `emit()` appends to an in-memory queue and returns.
+  The queue is drained on `setImmediate`, writing all pending signals in **one
+  transaction**, so a burst costs one write, not N. `better-sqlite3` is
+  synchronous, which is why one batched write per tick matters.
+- **The queue is bounded.** Past its limit, new signals are counted and dropped,
+  and the count is recorded as one `signals.dropped` signal when the queue
+  recovers. Losing detail in a storm is acceptable; stalling the show is not.
+- **Rules run after the write, in slices.** Evaluation yields between batches,
+  so a long backlog cannot hold the loop.
+- **Notifications are fire-and-forget.** A slow or dead Slack never holds
+  anything up, which 0015's notification budget already assumes.
+- **Retention deletes in small chunks, outside service times.** One unbounded
+  `DELETE` can stall the loop for as long as it takes. Prune in batches with a
+  yield between them, and skip any run while a show is live. (`splStore.prune()`
+  is one unbounded `DELETE` on a 24-hour timer that starts at boot. #47 fixes it
+  in the same change rather than copying it.)
+- **Browsers see alert state, not signals.** Open alerts reach the dashboard as
+  one topic (ADR 0010) that changes only when an alert does. A storm of signals
+  is one banner update, not a storm of pushes and renders.
+- **Ingest is rate-limited before it is parsed.** For the 1.6 UDP sources, a
+  packet over the per-source or total budget is dropped before BER decoding.
+
+The bar is measurable, so it is tested: a storm of signals emitted during a
+simulated live show must not push event-loop delay
+(`perf_hooks.monitorEventLoopDelay`) past a budget that #47 sets from a
+baseline, and must not delay the show manager's poll.
+
+**Not OpenTelemetry, for now.** OTel is built for services exporting telemetry
+to a collector, and a booth box has no collector and may have no internet. Its
+log data model is close to a signal anyway: timestamp, optional severity,
+body and attributes. So if a church ever wants signals in Grafana or
+Datadog, that is an exporter that maps one to the other, which this shape does
+not prevent. It is not a reason to adopt its SDK, or its metrics model for
+things we do not sample.
+
 ### Rules are data, even while only code writes them
 
 0015 deferred the rules UI, and that still stands. But the built-in alert
@@ -256,8 +305,9 @@ and ProdMesh binds devices to rooms.
   ticking a box, not by installing a second app, which keeps #18's "download,
   install, open" true.
 - **More traffic into the server's process.** A trap storm, hostile or not,
-  costs the dashboard's CPU instead of a sidecar's. The rate limits are the
-  defence, and the reason they are required rather than optional.
+  costs the dashboard's CPU instead of a sidecar's. The rate limits, bounded
+  queue and batched writes under *The live show comes first* are the defence,
+  and the reason they are required rather than optional.
 - **0015 is amended, not replaced.** Its alert lifecycle, noise controls,
   outage-versus-bug split, retention and permissions all stand. What changes:
   - the table name;
