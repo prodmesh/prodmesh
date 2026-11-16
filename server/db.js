@@ -555,6 +555,63 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    // Signals and alerts (#47, ADRs 0015 and 0019). A signal is a fact that
+    // something changed; append-only, pruned by age. An alert is the state one
+    // rule's action keeps about a condition believed wrong, one row per
+    // condition however many signals feed it. See signals.js and alerts.js.
+    name: 'signals-and-alerts',
+    up(d) {
+      d.exec(`
+        CREATE TABLE IF NOT EXISTS signals (
+          id        INTEGER PRIMARY KEY AUTOINCREMENT,
+          ts        INTEGER NOT NULL,
+          kind      TEXT    NOT NULL,
+          source    TEXT    NOT NULL,
+          room_id   TEXT,
+          site_id   TEXT,
+          subject   TEXT,
+          severity  TEXT,
+          trust     TEXT    NOT NULL,
+          summary   TEXT,
+          data      TEXT,
+          cause     TEXT
+        );
+        CREATE INDEX IF NOT EXISTS signals_by_kind ON signals (kind, id);
+        CREATE INDEX IF NOT EXISTS signals_by_room ON signals (room_id, id);
+
+        CREATE TABLE IF NOT EXISTS alerts (
+          id             INTEGER PRIMARY KEY AUTOINCREMENT,
+          rule_id        TEXT    NOT NULL,
+          dedupe_key     TEXT    NOT NULL,
+          subject        TEXT,
+          room_ids       TEXT,
+          severity       TEXT    NOT NULL,
+          state          TEXT    NOT NULL,   -- open | acknowledged | resolved
+          title          TEXT    NOT NULL,
+          first_seen     INTEGER NOT NULL,
+          last_seen      INTEGER NOT NULL,
+          count          INTEGER NOT NULL DEFAULT 1,
+          flaps          INTEGER NOT NULL DEFAULT 0,
+          acked_by       TEXT,
+          acked_at       INTEGER,
+          resolved_at    INTEGER,
+          resolve_reason TEXT,
+          notified_at    INTEGER,
+          slack_channel  TEXT,
+          slack_ts       TEXT
+        );
+        CREATE INDEX IF NOT EXISTS alerts_by_key ON alerts (dedupe_key, id DESC);
+        CREATE INDEX IF NOT EXISTS alerts_by_state ON alerts (state, last_seen DESC);
+        CREATE INDEX IF NOT EXISTS signals_by_ts ON signals (ts);
+
+        -- Retention prunes by age in small chunks (retention.js). Without an
+        -- index on ts each chunk would scan the whole table.
+        CREATE INDEX IF NOT EXISTS spl_samples_by_ts ON spl_samples (ts);
+        CREATE INDEX IF NOT EXISTS stream_samples_by_ts ON stream_samples (ts);
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

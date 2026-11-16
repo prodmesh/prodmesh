@@ -129,8 +129,8 @@ test('pruned SPL samples: report falls back to the summary aggregate', async () 
   timeline.finalize('plan-old__default', OLD + 60_000);
   summaries.refresh('plan-old__default');
 
-  assert.equal(splStore.prune(0), 0); // disabled → no-op
-  assert.equal(splStore.prune(90), 2); // only the aged samples go
+  assert.equal(await splStore.prune(0), 0); // disabled → no-op
+  assert.equal(await splStore.prune(90), 2); // only the aged samples go
   assert.equal(splStore.aggregate('plan-old__default'), null);
 
   // The report still carries the SPL block, served from the summary row.

@@ -46,6 +46,8 @@ import { apiV1 } from './apiV1.js';
 import * as identity from './identity.js';
 import adminConfigRouter from './routes/adminConfig.js';
 import systemRouter from './routes/system.js';
+import alertsRouter from './routes/alerts.js';
+import { startMonitoring } from './monitoring.js';
 import proPresenterRouter from './routes/proPresenter.js';
 import * as branding from './branding.js';
 import * as settings from './settings.js';
@@ -136,6 +138,7 @@ app.use(tokensRouter);
 app.use(federationRouter);
 app.use(adminConfigRouter);
 app.use(systemRouter);
+app.use(alertsRouter);
 app.use(proPresenterRouter);
 
 // ── Static frontend (production) ───────────────────────────────────────────────
@@ -173,10 +176,12 @@ if (existsSync(distDir)) {
  * that needs the port (the launcher, when asked for :0) can read it.
  */
 export function start(port = PORT) {
+  // Before anything can emit: restored shows, first health reports.
+  startMonitoring();
   show.restoreShows().catch(() => {}); // resume any show that was active before restart
   show.initAutomation(); // per-room autostart watchers (PP-driven, browserless)
   summaries.syncFromTimelines(); // legacy timelines → summary rows (one-time per boot)
-  splStore.startRetention(); // prune old SPL samples now + daily
+  splStore.startRetention(); // prune old SPL samples daily, never mid-show
   streamStore.startRetention(); // and old viewer samples
   initHealthDeclarations(); // every configured integration appears on /api/system/health
   // Created on first boot, and logged every boot: the fingerprint is what a

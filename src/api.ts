@@ -1171,6 +1171,92 @@ export interface AuditEntry {
 export const getAuditLog = (limit = 200) =>
   getJson<{ entries: AuditEntry[] }>(`/api/system/audit?limit=${limit}`);
 
+// ── Issues (alerts), signals and monitoring (#47) ─────────────────────────────
+// The server and its code say "alert"; the screen says "issue" (alerts-ux.md).
+
+/** One open or recent issue, as anyone may see it: never an address. */
+export interface Issue {
+  id: number;
+  title: string;
+  /** What kind of thing: 'proPresenter', 'companion', 'planningCenter'… */
+  integration: string | null;
+  /** warning = amber, nothing live is at stake; critical = red, a show is. */
+  severity: 'warning' | 'critical';
+  state: 'open' | 'acknowledged' | 'resolved';
+  roomIds: string[];
+  firstSeen: number;
+  lastSeen: number;
+  count: number;
+  flapping: boolean;
+  ackedBy: string | null;
+  ackedAt: number | null;
+  resolvedAt: number | null;
+}
+
+export interface ServiceIssue extends Issue {
+  claimedAfterMs: number | null;
+}
+
+export const getOpenIssues = () => getJson<{ open: Issue[] }>('/api/alerts');
+
+export async function claimIssue(id: number): Promise<Issue> {
+  const res = await fetch(`/api/alerts/${id}/acknowledge`, { method: 'POST', headers: requestHeaders() });
+  await requireOk(res);
+  return ((await res.json()) as { alert: Issue }).alert;
+}
+
+export interface Signal {
+  id: number;
+  ts: number;
+  kind: string;
+  source: string;
+  roomId: string | null;
+  subject: string | null;
+  severity: string | null;
+  trust: 'local' | 'authenticated' | 'unauthenticated';
+  summary: string | null;
+  data: Record<string, unknown> | null;
+  cause: { rule: string | null; depth: number } | null;
+}
+
+export const getSignals = (opts: { kind?: string; roomId?: string; before?: number; limit?: number } = {}) => {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(opts)) if (v != null && v !== '') q.set(k, String(v));
+  return getJson<{ signals: Signal[] }>(`/api/signals?${q}`);
+};
+
+export interface MonitoringRule {
+  id: string;
+  name: string;
+  match: { kind: string };
+  condition?: { for?: number };
+  resolveOn?: { kind: string };
+  actions: Array<{ type: string; severity?: string; notify?: string; escalate?: { during: string; severity: string; notify?: string } }>;
+}
+
+export interface MonitoringRoom {
+  id: string;
+  name: string;
+  site: string | null;
+  /** Why its devices are being checked now, or null if nothing is checking. */
+  watching: 'show' | 'service' | 'screen' | null;
+  lastChecked: number | null;
+  integrations: Array<{ id: string; label: string; state: 'ok' | 'down' | 'unknown' | 'mock' }> | null;
+}
+
+export interface MonitoringOverview {
+  slack: { configured: boolean };
+  rooms: MonitoringRoom[];
+  rules: MonitoringRule[];
+}
+
+export const getMonitoring = () => getJson<MonitoringOverview>('/api/monitoring');
+
+export async function sendMonitoringTest(): Promise<void> {
+  const res = await fetch('/api/monitoring/test', { method: 'POST', headers: requestHeaders() });
+  await requireOk(res);
+}
+
 // ── Planning Center Services ──────────────────────────────────────────────────
 
 export interface PlanTime {
@@ -1394,6 +1480,8 @@ export interface TimingReport {
   completedAt?: number | null;
   spl?: SplReport | null;
   stream?: StreamReport | null;
+  /** Issues that overlapped this service in this room (#47). */
+  issues?: ServiceIssue[];
   /** Server withheld the analysis: reports.view required. Timestamps still
    *  come through so Run of Show can show a finished service. */
   restricted?: boolean;

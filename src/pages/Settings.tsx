@@ -79,8 +79,9 @@ import {
 } from '../api';
 import type { Church, Site } from '../types';
 import logoUrl from '../assets/prodmesh-logo.svg';
+import { MonitoringPanel, SignalsLog } from './MonitoringPanel';
 type Phase = 'loading' | 'setup' | 'login' | 'admin';
-type AdminSection = 'general' | 'integrations' | 'campuses' | 'servers' | 'room' | 'users' | 'stations' | 'tokens' | 'checklists' | 'logs';
+type AdminSection = 'general' | 'integrations' | 'campuses' | 'servers' | 'room' | 'users' | 'stations' | 'tokens' | 'checklists' | 'monitoring' | 'logs';
 
 export function Settings({ section = 'general' }: { section?: AdminSection }) {
   const [phase, setPhase] = useState<Phase>('loading');
@@ -106,6 +107,7 @@ export function Settings({ section = 'general' }: { section?: AdminSection }) {
     servers: 'Linked servers',
     room: 'Room configuration',
     checklists: 'Checklists',
+    monitoring: 'Monitoring',
     logs: 'Logs',
   } as const;
 
@@ -193,6 +195,7 @@ function AdminPanels({ section }: { section: AdminSection }) {
       {section === 'stations' && <StationsPanel />}
       {section === 'tokens' && <TokensPanel />}
       {section === 'checklists' && <ChecklistsPanel />}
+      {section === 'monitoring' && <MonitoringPanel />}
       {section === 'logs' && <LogsPanel />}
     </>
   );
@@ -1732,7 +1735,7 @@ function BackupRow() {
 
 // ── Logs: server process log + audit trail ─────────────────────────────────────
 export function LogsPanel() {
-  const [tab, setTab] = useState<'server' | 'audit'>('server');
+  const [tab, setTab] = useState<'server' | 'audit' | 'signals'>('server');
   return (
     <>
       <div className="logtabs">
@@ -1742,8 +1745,11 @@ export function LogsPanel() {
         <button className={`typebtn${tab === 'audit' ? ' typebtn--on' : ''}`} onClick={() => setTab('audit')}>
           Audit trail
         </button>
+        <button className={`typebtn${tab === 'signals' ? ' typebtn--on' : ''}`} onClick={() => setTab('signals')}>
+          Signals
+        </button>
       </div>
-      {tab === 'server' ? <ServerLogViewer /> : <AuditTrail />}
+      {tab === 'server' ? <ServerLogViewer /> : tab === 'audit' ? <AuditTrail /> : <SignalsLog />}
     </>
   );
 }

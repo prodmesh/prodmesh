@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
+  Activity,
   BarChart3,
   BellRing,
   BookOpen,
@@ -28,6 +29,7 @@ import {
 import { clearToken, getAuthStatus, getConfig, isVisiting, logoSrc, logoutAdmin, type AuthStatus, type Station } from '../api';
 import { HelpDrawer } from '../components/HelpDrawer';
 import { AssistanceBar } from '../components/AssistanceBar';
+import { Notifications } from '../components/Notifications';
 import { AssistanceDialog } from '../components/AssistanceDialog';
 import { ChangePinDialog } from '../components/ChangePinDialog';
 import { ALL_CAMPUSES, CampusContext, remoteCampusId } from './campus';
@@ -73,6 +75,7 @@ const ADMIN_NAV = [
     heading: 'Operations',
     items: [
       { to: '/admin/checklists', label: 'Checklists', icon: ClipboardList },
+      { to: '/admin/monitoring', label: 'Monitoring', icon: Activity },
       { to: '/admin/logs', label: 'Logs', icon: ScrollText },
     ],
   },
@@ -380,6 +383,8 @@ export function AppShell() {
           </nav>
 
           <div className="sidebar__foot">
+            {/* What needs somebody's attention, on every page and in the rail. */}
+            <Notifications />
             {/* Help lives at the bottom, above the clock. */}
             <div className="sidebar__help" ref={helpRef}>
               <button

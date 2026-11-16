@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, RefreshCw } from 'lucide-react';
-import { deleteHistoryShow, getReport, getRoomPlan, type ServicePlan, type TimingReport } from '../api';
+import { deleteHistoryShow, getReport, getRoomPlan, type ServiceIssue, type ServicePlan, type TimingReport } from '../api';
 import { useQuery } from '../lib/useQuery';
 import { reportKey } from '../lib/keys';
 import { Sparkline } from '../components/Sparkline';
@@ -211,6 +211,11 @@ export function ServiceReport() {
           </table>
           )}
 
+          {/* Issues during this service (#47): the payoff of monitoring for a
+              team that never reads a log. Shown as "None" too, so a clean
+              service reads as checked rather than as not looked at. */}
+          {report.issues && report.startedAt != null && <ReportIssues issues={report.issues} />}
+
           <div className="report__reset">
             <button type="button" className="btn btn--ghost" onClick={() => { setResetErr(null); setResetStep(1); }}>
               Reset data
@@ -249,5 +254,45 @@ export function ServiceReport() {
         </div>
       )}
     </div>
+  );
+}
+
+function ReportIssues({ issues }: { issues: ServiceIssue[] }) {
+  const t = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const span = (ms: number) => {
+    const m = Math.round(ms / 60_000);
+    if (m < 1) return '< 1 min';
+    return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+  };
+  // How fast somebody said "mine": seconds matter here, so they are shown.
+  const after = (ms: number) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))} s` : span(ms));
+  const claimed = (i: ServiceIssue) =>
+    i.ackedBy ? `${i.ackedBy}, ${after(i.claimedAfterMs ?? 0)} after` : '—';
+  return (
+    <section className="report__issues">
+      <h2 className="report__sectionhead">Issues</h2>
+      {issues.length === 0 ? (
+        <p className="settings__muted">None.</p>
+      ) : (
+        <table className="report-issues">
+          <thead>
+            <tr><th>Issue</th><th>When</th><th>Down</th><th>Claimed</th></tr>
+          </thead>
+          <tbody>
+            {issues.map((i) => (
+              <tr key={i.id}>
+                <td>
+                  {i.title.replace(/ is unreachable$/, ' unreachable').replace(/^[^·]+ · /, '')}
+                  {i.flapping && <span className="settings__muted"> · dropped in and out</span>}
+                </td>
+                <td className="report__num">{t(i.firstSeen)}{i.resolvedAt ? ` – ${t(i.resolvedAt)}` : ' – still open'}</td>
+                <td className="report__num">{span((i.resolvedAt ?? Date.now()) - i.firstSeen)}</td>
+                <td>{claimed(i)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   );
 }

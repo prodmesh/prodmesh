@@ -184,7 +184,41 @@ function start(roomId) {
   watch(roomId, ctl.signal).catch(() => {});
 }
 
+// Rooms the server itself is watching (monitoring.js): the hour before a
+// scheduled service, and while a show is live. Without this an integration is
+// only checked while somebody has a screen on the room, and a dead
+// ProPresenter at 8:00 goes unnoticed until the show starts (#47).
+const held = new Map(); // roomId → why ('show' | 'service')
+
+/** Keep this room probed whether or not any screen is watching. */
+export function hold(roomId, why) {
+  if (!rooms[roomId]) return;
+  held.set(roomId, why);
+  start(roomId);
+}
+
+/** Stop holding it; the probe stops too unless a screen still watches. */
+export function release(roomId) {
+  if (!held.delete(roomId)) return;
+  if (hub.subscriberCount(healthTopic(roomId)) === 0) halt(roomId);
+}
+
+/** Rooms the server is holding. */
+export const heldRooms = () => [...held.keys()];
+
+/** Why the server is watching this room itself, or null. */
+export const heldFor = (roomId) => held.get(roomId) ?? null;
+
+/** Is this room being probed right now, by anyone? */
+export const isWatched = (roomId) => watchers.has(roomId);
+
+// The hub's stop: the last screen left. A room the server holds keeps going.
 function stop(roomId) {
+  if (held.has(roomId)) return;
+  halt(roomId);
+}
+
+function halt(roomId) {
   watchers.get(roomId)?.abort();
   watchers.delete(roomId);
   states.delete(roomId);
@@ -204,5 +238,6 @@ hub.registerTopic('room:*:health', {
 
 /** Test hook: stop every prober. */
 export function stopAll() {
-  for (const roomId of [...watchers.keys()]) stop(roomId);
+  held.clear();
+  for (const roomId of [...watchers.keys()]) halt(roomId);
 }

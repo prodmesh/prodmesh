@@ -19,6 +19,7 @@
 import { rooms } from './roomsStore.js';
 import * as hub from './streamHub.js';
 import { readRoomState } from './roomModes.js';
+import { noteMode } from './signalProducers.js';
 
 const watchers = new Map(); // roomId -> AbortController
 const states = new Map();
@@ -65,6 +66,8 @@ async function watch(roomId, signal) {
     if (signal.aborted) return;
     if (next) {
       observed.set(roomId, Date.now());
+      // Only a mode Companion actually reported: an offline read carries no news.
+      if (next.online) noteMode(roomId, next.mode);
       const key = changeKey(next);
       if (key !== last) {
         last = key;

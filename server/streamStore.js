@@ -13,6 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { getDb } from './db.js';
+import { pruneTable, register } from './retention.js';
 
 export function record(roomId, instanceId, ts, viewers) {
   getDb()
@@ -83,18 +84,11 @@ export function removeInstance(instanceId) {
 // are ~1/30th the volume of SPL, and unlike SPL this data cannot be
 // regenerated from anywhere if it is thrown away.
 
-export function prune(days = Number(process.env.PRODMESH_STREAM_RETENTION_DAYS ?? 365)) {
-  if (!Number.isFinite(days) || days <= 0) return 0;
-  const cutoff = Date.now() - days * 86_400_000;
-  const { changes } = getDb().prepare('DELETE FROM stream_samples WHERE ts < ?').run(cutoff);
-  if (changes) console.log(`[stream] pruned ${changes} viewer samples older than ${days} days`);
-  return changes;
+export function prune(days = Number(process.env.PRODMESH_STREAM_RETENTION_DAYS ?? 365), isBusy) {
+  return pruneTable({ table: 'stream_samples', days, isBusy, label: 'viewer samples' });
 }
 
-/** Prune now and then daily — the Producer runs for weeks between restarts. */
+/** Prune daily, in chunks and never while a show is live (retention.js). */
 export function startRetention() {
-  prune();
-  const t = setInterval(prune, 86_400_000);
-  t.unref?.();
-  return t;
+  register('viewer samples', (isBusy) => prune(undefined, isBusy));
 }

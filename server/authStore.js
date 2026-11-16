@@ -18,6 +18,7 @@ export const PERMISSIONS = [
   ['system.logs', 'View logs', 'Read the server process log and the audit trail.'],
   ['config.manage', 'Manage campuses & tiles', 'Edit the institution name, sites, and Quick Access tiles.'],
   ['system.backup', 'Download backups', 'Download a full backup — it carries the Planning Center token, every PIN and every credential, so it is as sensitive as the server itself.'],
+  ['alerts.acknowledge', 'Acknowledge alerts', 'Mark an alert as being handled. Seeing alerts needs no permission.'],
   ['views.edit', 'Edit dashboards & displays', 'Create, lay out, and delete a room’s dashboards and display screens.'],
 ];
 
