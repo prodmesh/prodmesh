@@ -44,6 +44,7 @@ import federationRouter from './routes/federation.js';
 import * as federation from './federation/link.js';
 import { apiV1 } from './apiV1.js';
 import * as identity from './identity.js';
+import * as discovery from './discovery.js';
 import adminConfigRouter from './routes/adminConfig.js';
 import systemRouter from './routes/system.js';
 import alertsRouter from './routes/alerts.js';
@@ -198,6 +199,13 @@ export function start(port = PORT) {
     const server = app.listen(port);
     server.once('listening', () => {
       console.log(`Production dashboard server on http://localhost:${server.address().port}`);
+      // Announced only once actually listening, on the port that answered.
+      // server.close() is how the desktop app stops, so it withdraws too.
+      if (discovery.enabled()) {
+        const d = discovery.startAdvertising({ port: server.address().port });
+        if (d.advertising) console.log(`[discovery] advertising as "${d.instance}"`);
+        server.once('close', () => { discovery.stopAdvertising(); });
+      }
       resolve(server);
     });
     server.once('error', reject);
@@ -211,6 +219,15 @@ if (process.argv[1] === __filename) {
     console.error(`Failed to start: ${err.message}`);
     process.exit(1);
   });
+  // launchd, systemd, Docker and `node --watch` all stop us with a signal.
+  // Say goodbye on the way out so a client's list drops this server now
+  // rather than when its cache expires; stopAdvertising is time-boxed, so
+  // this never holds up a restart by more than a second.
+  for (const sig of ['SIGINT', 'SIGTERM']) {
+    process.once(sig, () => {
+      discovery.stopAdvertising().finally(() => process.exit(0));
+    });
+  }
 }
 
 export { app };

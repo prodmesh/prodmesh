@@ -4,7 +4,7 @@
 //
 // WHY A STAGING STEP RATHER THAN POINTING ELECTRON-BUILDER AT THE REPO
 //
-// The packaged app needs the server, the built frontend, and exactly three
+// The packaged app needs the server, the built frontend, and exactly four
 // runtime dependencies. The repo root additionally carries React, Vite,
 // Vitest, oxlint and the rest — none of which belong in a church's
 // Applications folder, and better-sqlite3 has to be rebuilt against Electron's
@@ -33,7 +33,7 @@ const OUT = join(HERE, '.build');
 
 // Only what the server actually requires at runtime. React and friends are
 // compiled into dist/ by Vite and are not needed as packages.
-const RUNTIME_DEPS = ['express', 'better-sqlite3', 'ws'];
+const RUNTIME_DEPS = ['express', 'better-sqlite3', 'ws', 'bonjour-service'];
 
 // Running npm and electron-rebuild takes two Windows-specific steps, and
 // missing either produces an error that reads like the tool is absent:

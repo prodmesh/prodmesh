@@ -18,6 +18,7 @@ import * as health from '../health.js';
 import * as settings from '../settings.js';
 import * as backup from '../backup.js';
 import * as identity from '../identity.js';
+import * as discovery from '../discovery.js';
 import { requirePermission, auditSuccess } from '../httpAuth.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -46,6 +47,7 @@ router.get('/api/system/identity', (_req, res) => res.json(identity.getIdentity(
 router.put('/api/system/identity', requirePermission('config.manage'), (req, res) => {
   try {
     identity.setSystemName(req.body?.name);
+    discovery.nameChanged(); // the advertised name, now rather than in a minute
     auditSuccess(req, 'config.manage', { resourceType: 'system-identity', details: { name: req.body?.name ?? '' } });
     res.json(identity.getIdentity());
   } catch (err) {

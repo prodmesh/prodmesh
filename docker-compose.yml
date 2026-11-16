@@ -14,6 +14,11 @@ services:
     # build: .
     container_name: prodmesh
     restart: unless-stopped
+    # Discovery (the desktop app finding this server by name) needs multicast
+    # on the LAN, which the default bridge network blocks. On Linux, uncomment
+    # this to allow it; it replaces the `ports` list below, which is then
+    # ignored. Without it everything else works, just not discovery.
+    # network_mode: host
     ports:
       - "8080:8080"
       # The federation link to another campus's ProdMesh (Admin → Linked servers).
