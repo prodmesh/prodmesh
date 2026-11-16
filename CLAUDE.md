@@ -186,6 +186,7 @@ change as verified because CI is green — say which half was checked.
 | `PRODMESH_FEDERATION_HOST` | Pin the federation listener to one address (tests use `127.0.0.1`). **Dev only**: Admin → Linked servers chooses the interface. |
 | `PRODMESH_FEDERATION_PROBE_MS` | Peer liveness interval (default 60000). Tests shorten it. |
 | `PRODMESH_FEDERATION_DIGEST_MS` | Digest poll interval while someone watches a linked campus (default 10000). Tests shorten it. |
+| `PRODMESH_DISCOVERY` | `on`/`off`: advertise this server over mDNS (#56). Default on for production and the desktop app, off for `npm run dev`, so a laptop doesn't announce the church's name on whatever network it is on. |
 | `PORT` | Serve port (default 8080). |
 
 ## Conventions

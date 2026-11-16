@@ -38,6 +38,14 @@ Two settings worth checking in `docker-compose.yml`:
 - **`PRODMESH_SEED`** is `empty`, so a new container is a clean install. Set it
   to `demo` if you want sample campuses to click around in first.
 
+**Discovery.** The desktop app (and later a phone) can find this server by
+name on the LAN over mDNS, instead of someone typing its address. A container
+on Docker's default bridge network cannot multicast onto the LAN, so it is not
+discoverable; everything else works. To make it discoverable, use host
+networking: uncomment `network_mode: host` in `docker-compose.yml`, which
+replaces the `ports` list. This works on Linux only; Docker Desktop on macOS
+and Windows does not pass multicast through either way.
+
 The container will not update itself — Admin → System says so instead of
 offering a button. Pulling a new image is the update.
 
