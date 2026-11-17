@@ -161,3 +161,28 @@ a.cal-ev__room:hover {
     min-height: 0;
   }
 }
+
+/* Loading placeholder: an event chip's shape with bars for its lines. */
+.cal-ev--skeleton {
+  border-left-color: var(--border-subtle);
+}
+
+.cal-skel {
+  display: block;
+  height: 0.7rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tile-hover);
+  animation: cal-skel-pulse 1.2s ease-in-out infinite;
+}
+
+.cal-skel--time { width: 55%; }
+.cal-skel--name { width: 85%; height: 0.85rem; }
+.cal-skel--room { width: 45%; }
+
+@keyframes cal-skel-pulse {
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cal-skel { animation: none; }
+}

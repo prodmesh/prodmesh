@@ -111,6 +111,20 @@ describe('Calendar', () => {
     expect(within(encore).queryByText(/Example Way/)).not.toBeInTheDocument();
   });
 
+  it('shows placeholders, not an empty week, until the bookings arrive', async () => {
+    let answer!: (v: Awaited<ReturnType<typeof api.getCalendar>>) => void;
+    api.getCalendar.mockReturnValue(new Promise((r) => { answer = r; }));
+    const { container } = renderPage();
+
+    await waitFor(() => expect(container.querySelectorAll('.cal-ev--skeleton')).toHaveLength(7));
+    expect(screen.queryByText('No bookings')).not.toBeInTheDocument();
+    expect(container.querySelector('.cal__grid')).toHaveAttribute('aria-busy', 'true');
+
+    answer({ live: true, start: new Date().toISOString(), end: new Date().toISOString(), events: [] });
+    expect(await screen.findAllByText('No bookings')).toHaveLength(7);
+    expect(container.querySelector('.cal-ev--skeleton')).not.toBeInTheDocument();
+  });
+
   it('campus filter hides other campuses but never hides unmapped bookings', async () => {
     renderPage('north');
 
