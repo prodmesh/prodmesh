@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+    <title>ProdMesh</title>
+    <!--
+      Shown in the dashboard window while a client can't reach its server. That
+      window has no preload, so this page talks to nothing: main.js reloads it
+      with a new query string each attempt and swaps in the dashboard the
+      moment the server answers.
+    -->
+    <style>
+      :root { --bg: #0b1017; --text: #edf2f7; --dim: #8fa3b5; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        display: grid;
+        place-items: center;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      main { text-align: center; max-width: 30rem; padding: 24px; }
+      h1 { font-size: 17px; font-weight: 650; margin: 0 0 6px; }
+      p { color: var(--dim); margin: 0; }
+      .spin {
+        width: 18px; height: 18px; margin: 0 auto 16px; border-radius: 50%;
+        border: 2px solid var(--dim); border-top-color: transparent;
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="spin" aria-hidden="true"></div>
+      <h1 id="title">Connecting…</h1>
+      <p id="detail"></p>
+    </main>
+    <script>
+      const q = new URLSearchParams(location.search);
+      const name = q.get('name') || 'the server';
+      const tries = Number(q.get('tries') || 0);
+      document.getElementById('title').textContent = tries ? `Can’t reach ${name}` : `Connecting to ${name}…`;
+      document.getElementById('detail').textContent = tries
+        ? 'Still trying, and looking for it on the network in case its address changed. To pick another server: ProdMesh → Change server.'
+        : '';
+    </script>
+  </body>
+</html>

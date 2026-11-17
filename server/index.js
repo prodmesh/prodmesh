@@ -154,7 +154,9 @@ if (existsSync(distDir)) {
   app.use((req, res, next) => {
     if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
     const logo = branding.getLogoMeta();
-    if (!logo) return res.sendFile(indexPath);
+    // `root`, not the absolute path: send refuses any path with a dot-folder
+    // in it, and an unpacked desktop run serves from desktop/.build/.
+    if (!logo) return res.sendFile('index.html', { root: distDir });
     const favicon = [
       `<link id="app-favicon" rel="icon" type="image/x-icon" href="/favicon.ico?v=${logo.updatedAt}" />`,
       `<link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=${logo.updatedAt}" />`,
