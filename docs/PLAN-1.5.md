@@ -261,6 +261,11 @@ somebody else's timeline.
 > `prodmesh-watch` is not built, and #51 becomes the contract for *external*
 > sources (`prodmesh-rta`, timecode, a church's existing monitoring). Kept below
 > as the reasoning it replaced.
+>
+> **That contract is [ADR 0020](./decisions/0020-external-signal-sources.md)
+> (proposed 2026-11-16):** an adapter per source inside ProdMesh, plus one
+> generic SSE format for sources with no adapter. Dante goes through an adapter
+> for NetAudio's daemon rather than a probe of our own.
 
 SNMP traps from production devices (Evertz and friends) and Dante device
 errors belong in a **separate sidecar app**, following the `prodmesh-rta`
