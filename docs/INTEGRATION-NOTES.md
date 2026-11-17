@@ -485,6 +485,56 @@ accidental ProPresenter click must not rewind it mid-service), and `endShow`
 releases it — after any in-flight sync settles, because a sync that reads
 "nobody controls this" just after the release would take control right back.
 
+### Calendar — probed against a test organization 2026-11-17
+
+The church's production instance is off limits for testing, so this is a
+separate Planning Center organization created for integration tests. The
+production token still answers **401 on every Calendar path** while Services
+works on it, so a production box runs the labelled demo calendar
+(`reason: 'not-granted'`) until somebody grants Calendar to that token.
+
+What `pcCalendar.js` guessed, checked against real responses:
+
+- `event_instances?include=event&order=starts_at&where[starts_at][gte]=…&where[starts_at][lt]=…`
+  filters correctly. A weekly event produced one instance per week inside the
+  range and none outside it.
+- Pagination is `links.next`, an absolute URL with `offset=` added. Our
+  "strip the base and follow it" loop is right.
+- `include=event` puts `Event` resources in `included`. `Event.name` and
+  `Event.approval_status` exist; approved is the letter `A`.
+- On the instance: `starts_at`, `ends_at`, `all_day_event` and `location` exist.
+
+What the guesses got wrong:
+
+- **`location` is a free-text address**, such as a campus's street address,
+  not a room. Matching it against room names will essentially never hit.
+  Rooms come from resources: a `Resource` with `kind: "Room"` and a `path_name`
+  that is its folder (the campus).
+- **Resource names are the church's names, not ours.** The test org's room is
+  "Auditorium", while the ProdMesh room is "Main Auditorium". An exact name
+  match misses it, so a room has to be *bound* to a resource in Admin, by id.
+- **Canceled instances are still returned**, with `canceled: true` and
+  `canceled_at`. The `not_canceled` filter exists; without it a canceled
+  service still books the room.
+- The instance carries its own `name`, so `include=event` is needed only for
+  `approval_status`.
+- `include=event_times` returns `EventTime` rows with `starts_at`, `ends_at`
+  and `name`. These are the setup and teardown blocks, which are what a lockout
+  window really wants.
+
+A booking made in the web app for a weekly event becomes **one
+`ResourceBooking` per occurrence** (104 for a weekly event a couple of years
+out), each with its own `starts_at`/`ends_at`, pointing at its
+`event_instance` and its `resource` by id. `event_instances?include=resource_bookings`
+returns them alongside, so one request per page carries rooms too. A booking
+carries only the resource id, so names and kinds come from `/resources`.
+An instance books equipment as well as rooms; only `kind: "Room"` is a room.
+
+Bookings themselves (`resource_bookings`, `event_resource_requests`) cannot be
+created through the API, even by a site administrator (`403 … cannot create a
+EventResourceRequest`). Events can be created (POST needs an `owner`). Test
+bookings therefore have to be made in the Calendar web app.
+
 ---
 
 ## Bitfocus Companion

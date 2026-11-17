@@ -9,6 +9,7 @@ import { listenOnLoopback } from './testServer.js';
 process.env.PRODMESH_DATA_DIR = mkdtempSync(join(tmpdir(), 'prodmesh-cal-'));
 const { app } = await import('./index.js');
 const cal = await import('./integrations/pcCalendar.js');
+const connectivity = await import('./connectivity.js');
 
 let base;
 let server;
@@ -106,6 +107,94 @@ test('normalizeInstance reads name/approval from the included Event', () => {
   assert.equal(inst.approval, 'A');
   assert.equal(inst.eventId, 'ev1');
   assert.deepEqual(inst.roomIds, ['north-main']);
+});
+
+// The shapes the real API answered with (docs/INTEGRATION-NOTES.md, probed
+// 2026-11-17), with fictional ids. What matters: location is a street
+// address, rooms arrive as resource bookings, and a canceled instance is
+// still a row unless filtered.
+function calendarApi(seen) {
+  const instance = (id, name, bookings, extra = {}) => ({
+    type: 'EventInstance',
+    id,
+    attributes: {
+      name, all_day_event: false, canceled: false, location: '1 Example Way, Anytown',
+      starts_at: '2026-08-04T17:00:00Z', ends_at: '2026-08-04T19:00:00Z', ...extra,
+    },
+    relationships: {
+      event: { data: { type: 'Event', id: 'e1' } },
+      resource_bookings: { data: bookings.map((b) => ({ type: 'ResourceBooking', id: b })) },
+    },
+  });
+  const booking = (id, resource) => ({
+    type: 'ResourceBooking', id, relationships: { resource: { data: { type: 'Resource', id: resource } } },
+  });
+  const resource = (id, name, kind) => ({ type: 'Resource', id, attributes: { name, kind, path_name: 'North' } });
+  const pages = {
+    '/resources': {
+      data: [resource('701', 'Auditorium', 'Room'), resource('702', 'Youth Room', 'Room'), resource('703', 'Projector', 'Resource'),
+        resource('704', 'Main Auditorium', 'Room')],
+    },
+    '/event_instances': {
+      data: [
+        instance('i1', 'Encore', ['b1', 'b3']),
+        instance('i2', 'Youth Night', ['b2']),
+        instance('i3', 'Canceled Rehearsal', ['b4'], { canceled: true }),
+        instance('i4', 'Picnic', []),
+        instance('i5', 'Concert', ['b5']),
+      ],
+      included: [
+        { type: 'Event', id: 'e1', attributes: { name: 'Encore', approval_status: 'A' } },
+        booking('b1', '701'), booking('b2', '702'), booking('b3', '703'), booking('b4', '701'),
+        booking('b5', '704'),
+      ],
+    },
+  };
+  return async (url) => {
+    seen.push(url);
+    const path = new URL(url).pathname.replace('/calendar/v2', '');
+    return { ok: true, status: 200, json: async () => pages[path] ?? { data: [] } };
+  };
+}
+
+test('live bookings land in the rooms they are bound to, and canceled ones are dropped', async (t) => {
+  process.env.PRODMESH_SECRET_PLANNINGCENTER_APPID = 'app';
+  process.env.PRODMESH_SECRET_PLANNINGCENTER_SECRET = 'shh';
+  const realFetch = globalThis.fetch;
+  t.after(() => {
+    delete process.env.PRODMESH_SECRET_PLANNINGCENTER_APPID;
+    delete process.env.PRODMESH_SECRET_PLANNINGCENTER_SECRET;
+    globalThis.fetch = realFetch;
+    connectivity.setCalendar('north-main', null);
+    cal.clearCache();
+  });
+  // "Auditorium" is the church's name for our "Main Auditorium": no name
+  // match exists, so only the binding puts it there.
+  connectivity.setCalendar('north-main', { resources: [{ id: '701', name: 'Auditorium' }] });
+  const seen = [];
+  globalThis.fetch = calendarApi(seen);
+  cal.clearCache();
+
+  const { start, end } = weekOf('2026-08-05');
+  const { live, events } = await cal.getCalendarData(start, end);
+  assert.equal(live, true);
+  assert.ok(seen.some((u) => u.includes('filter=not_canceled')));
+
+  const byName = Object.fromEntries(events.map((e) => [e.name, e]));
+  assert.equal(byName['Canceled Rehearsal'], undefined);
+  assert.deepEqual(byName.Encore.roomIds, ['north-main']); // bound; the projector is not a room
+  assert.deepEqual(byName.Encore.booked, ['Auditorium']);
+  assert.equal(byName.Encore.approval, 'A');
+  // Unbound: an exact name counts only when one room has it. Both campuses
+  // have a Youth Room, so that booking is shown by name and placed nowhere.
+  assert.deepEqual(byName.Concert.roomIds, ['north-main']);
+  assert.deepEqual(byName['Youth Night'].roomIds, []);
+  assert.deepEqual(byName['Youth Night'].booked, ['Youth Room']);
+  assert.deepEqual(byName.Picnic.roomIds, []); // a street address matches nothing
+  assert.deepEqual(byName.Picnic.booked, []);
+
+  const rooms = await cal.listRoomResources();
+  assert.deepEqual(rooms.map((r) => r.name), ['Auditorium', 'Main Auditorium', 'Youth Room']);
 });
 
 test('roomIdsFor matches case-insensitively and ignores unknown names', () => {

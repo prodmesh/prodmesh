@@ -33,6 +33,8 @@ const api = vi.hoisted(() => ({
   getRoomConnectivity: vi.fn(),
   savePcServiceTypes: vi.fn(),
   getPlanningCenterServiceTypes: vi.fn(),
+  getCalendarResources: vi.fn(),
+  saveCalendarBinding: vi.fn(),
   saveAnalysis: vi.fn(),
   saveProPresenter: vi.fn(),
   saveCompanion: vi.fn(),
@@ -685,6 +687,48 @@ describe('Campuses', () => {
     expect(api.saveConfig).not.toHaveBeenCalled();
     // The card shows what the server stored, not what was typed.
     await waitFor(() => expect(screen.getByRole('button', { name: /Planning Center service types/ })).toHaveTextContent('Sunday · Second Service'));
+  });
+
+  it('binds the room to a Calendar room whose name is not ours', async () => {
+    // Probed against a real Calendar: the church calls it "Auditorium", we call
+    // it "Main Auditorium", and two campuses each have one. Only the folder
+    // tells them apart, and only an id binding survives the name mismatch.
+    api.getCalendarResources.mockResolvedValue({
+      configured: true, granted: true,
+      resources: [
+        { id: '701', name: 'Auditorium', folder: 'North' },
+        { id: '702', name: 'Auditorium', folder: 'South' },
+      ],
+    });
+    api.saveCalendarBinding.mockReset().mockImplementation(async (_room: string, calendar: unknown) => calendar);
+    const user = userEvent.setup();
+    roomPage();
+
+    await openCard(user, /Planning Center Calendar rooms/);
+    await user.click(dialog().getByRole('button', { name: '+ Add Calendar room' }));
+    const select = await waitFor(() => {
+      const s = dialog().getByLabelText('Calendar room');
+      expect(s.querySelectorAll('optgroup')).toHaveLength(2);
+      return s;
+    });
+    expect([...select.querySelectorAll('optgroup')].map((g) => g.label)).toEqual(['North', 'South']);
+    await user.selectOptions(select, '701');
+    await user.click(dialog().getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(api.saveCalendarBinding).toHaveBeenCalledWith('north-main', {
+      resources: [{ id: '701', name: 'Auditorium' }],
+    }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Planning Center Calendar rooms/ })).toHaveTextContent('Auditorium'));
+  });
+
+  it('says why no Calendar room can be added when the token cannot read Calendar', async () => {
+    api.getCalendarResources.mockResolvedValue({ configured: true, granted: false, resources: [] });
+    const user = userEvent.setup();
+    roomPage();
+
+    await openCard(user, /Planning Center Calendar rooms/);
+    expect(await dialog().findByText(/can’t read Calendar yet/)).toBeInTheDocument();
+    expect(dialog().getByRole('button', { name: '+ Add Calendar room' })).toBeDisabled();
   });
 
   it('switches the analysis source to ProdMesh RTA and saves it', async () => {

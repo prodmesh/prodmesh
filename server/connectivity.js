@@ -4,6 +4,7 @@
 //
 //  Migrated so far:
 //    planningCenter — which PC service types feed the room
+//    calendar       — which PC Calendar room resources ARE this room
 //    analysis       — SPL source (Smaart, ProdMesh Remote RTA, or OSM) + dB goals
 //    proPresenter   — the room's ProPresenter API (host/port, optional timer)
 //    companion      — Companion host/port + state variable + the room's MODES
@@ -36,7 +37,8 @@ const COMPANION = 'companion';
 const YOUTUBE = 'youtube';
 const CAPTIONS = 'captions';
 const OBS = 'obs';
-const INTEGRATIONS = [PC, ANALYSIS, PP, COMPANION, YOUTUBE, CAPTIONS, OBS];
+const CALENDAR = 'calendar';
+const INTEGRATIONS = [PC, ANALYSIS, PP, COMPANION, YOUTUBE, CAPTIONS, OBS, CALENDAR];
 
 // Long-lived per-room work (the show manager's watchers) registers here to be
 // restarted when a room's config changes — applyConnectivity() alone can't
@@ -159,6 +161,40 @@ export function setPlanningCenter(roomId, serviceTypes) {
   writeRow(roomId, PC, clean);
   applyConnectivity();
   notifyChange(roomId, PC);
+  return clean;
+}
+
+// Planning Center Calendar knows rooms as resources with the church's own
+// names ("Auditorium" for our "Main Auditorium"), so a room is bound to them
+// by id rather than matched by name. More than one, because a church may book
+// a room and its overflow, or keep an old resource alongside a renamed one.
+export function validateCalendar(input) {
+  if (input === null) return null;
+  if (typeof input !== 'object' || Array.isArray(input)) throw new Error('calendar must be an object');
+  const list = input.resources ?? [];
+  if (!Array.isArray(list)) throw new Error('resources must be an array');
+  if (list.length > 10) throw new Error('Too many Calendar rooms (max 10)');
+  const seen = new Set();
+  const resources = list.map((r) => {
+    const id = String(r?.id ?? '').trim();
+    const name = String(r?.name ?? '').trim();
+    if (!/^\d{1,12}$/.test(id)) throw new Error(`Calendar resource id "${id}" must be numeric (from Planning Center)`);
+    if (seen.has(id)) throw new Error(`Duplicate Calendar resource id "${id}"`);
+    seen.add(id);
+    if (!name || name.length > 100) throw new Error('Each Calendar room needs a name (max 100 characters)');
+    return { id, name };
+  });
+  return resources.length ? { resources } : null;
+}
+
+export function getCalendar(roomId) { return readRow(roomId, CALENDAR); }
+export function setCalendar(roomId, config) {
+  if (!rooms[roomId]) throw new Error(`Unknown room "${roomId}"`);
+  const clean = validateCalendar(config);
+  if (clean === null) deleteRow(roomId, CALENDAR);
+  else writeRow(roomId, CALENDAR, clean);
+  applyConnectivity();
+  notifyChange(roomId, CALENDAR);
   return clean;
 }
 
@@ -543,6 +579,7 @@ function seedIfEmpty() {
     // is set and the database owns it from boot one.
     [CAPTIONS]: (room) => room.captions ?? null,
     [OBS]: (room) => room.obs ?? null,
+    [CALENDAR]: (room) => room.calendar ?? null,
   };
   for (const integration of INTEGRATIONS) {
     const key = `connectivity_seeded:${integration}`;

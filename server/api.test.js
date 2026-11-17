@@ -324,6 +324,39 @@ test('room connectivity: config.manage to read AND write, live effect', async ()
   assert.equal(bad.status, 400);
 });
 
+test('a room binds to Calendar resources by id, behind config.manage', async () => {
+  const { token } = await (await post('/api/auth/admin', { pin: 'admin1234' })).json();
+  // No token is a normal answer, not an error: the dialog says so instead.
+  const list = await apiRequest('/api/planning-center/calendar-resources', { token });
+  assert.equal(list.status, 200);
+  assert.deepEqual(await list.json(), { configured: false, granted: false, resources: [] });
+
+  const denied = await apiRequest(`/api/config/rooms/${ROOM}/connectivity/calendar`, {
+    method: 'PUT', body: { calendar: null }, token: operatorToken, stationToken: station.token,
+  });
+  assert.equal(denied.status, 403);
+
+  const resources = [{ id: '900001', name: 'Auditorium' }];
+  const saved = await apiRequest(`/api/config/rooms/${ROOM}/connectivity/calendar`, {
+    method: 'PUT', body: { calendar: { resources } }, token,
+  });
+  assert.equal(saved.status, 200);
+  assert.deepEqual((await saved.json()).calendar, { resources });
+  const conn = await (await apiRequest(`/api/config/rooms/${ROOM}/connectivity`, { token })).json();
+  assert.deepEqual(conn.calendar, { resources });
+
+  const bad = await apiRequest(`/api/config/rooms/${ROOM}/connectivity/calendar`, {
+    method: 'PUT', body: { calendar: { resources: [{ id: 'Auditorium', name: 'Auditorium' }] } }, token,
+  });
+  assert.equal(bad.status, 400);
+
+  // An empty list clears the binding rather than storing an empty row.
+  const cleared = await apiRequest(`/api/config/rooms/${ROOM}/connectivity/calendar`, {
+    method: 'PUT', body: { calendar: { resources: [] } }, token,
+  });
+  assert.equal((await cleared.json()).calendar, null);
+});
+
 test('analysis source: config.manage write, password never read back', async () => {
   const denied = await apiRequest(`/api/config/rooms/${ROOM}/connectivity/analysis`, {
     method: 'PUT', body: { analysis: null }, token: operatorToken, stationToken: station.token,

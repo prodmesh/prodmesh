@@ -10,11 +10,13 @@
 //  Calendar just needs to be enabled for it).
 //  Base:  https://api.planningcenteronline.com/calendar/v2
 //
-//  NOTE: real-API field names (marked ⓘ) must be confirmed against live data
-//  the first time Calendar access is granted — the mock path exercises the
-//  same normalized shapes. Room matching currently uses the instance's
-//  `location` string (and any included resource names) matched against room
-//  names; refine against real resource_bookings once we can see them.
+//  Field names were verified against a real (test) organization 2026-11-17 —
+//  docs/INTEGRATION-NOTES.md, "Calendar — probed against a test organization".
+//  The two things the first draft guessed wrong shape everything below:
+//  an instance's `location` is free text (in practice a street address), so
+//  rooms come from its resource bookings; and a church's resource names are
+//  its own ("Auditorium"), not ours ("Main Auditorium"), so a room is BOUND to
+//  resources by id in Admin (room.calendar.resources) rather than matched.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { getSecret } from '../secrets.js';
@@ -67,10 +69,15 @@ async function calGet(path) {
 }
 
 // ── Room matching ─────────────────────────────────────────────────────────────
-// A booking references rooms by name (location string / resource names); our
-// rooms are keyed by id. Exact case-insensitive name match — conservative on
-// purpose: a wrong match books an event into the wrong room's view, an
-// unmatched one still shows with its location text.
+// A booking names a Calendar resource by id; our rooms are keyed by their own
+// ids. A room bound to that resource in Admin (room.calendar.resources) wins.
+// An unbound resource falls back to an exact case-insensitive name match, but
+// only to a name exactly one room has: two campuses each with a "Youth Room"
+// is the ordinary case, and guessing between them is worse than not. And
+// an instance with no room booked at all falls back to its location text —
+// both conservative on purpose: a wrong match books an event into the wrong
+// room's view, while an unmatched one still shows with the name it was booked
+// under.
 export function roomIdsFor(names) {
   const wanted = new Set(
     names.filter(Boolean).map((n) => String(n).trim().toLowerCase()),
@@ -81,25 +88,52 @@ export function roomIdsFor(names) {
     .map((r) => r.id);
 }
 
+/** Rooms booked through these resources ({ id, name }), binding first. */
+export function roomIdsForResources(resources) {
+  const out = new Set();
+  for (const res of resources) {
+    const bound = Object.values(rooms)
+      .filter((r) => r.calendar?.resources?.some((b) => String(b.id) === String(res.id)))
+      .map((r) => r.id);
+    const named = bound.length ? [] : roomIdsFor([res.name]);
+    for (const id of bound.length ? bound : named.length === 1 ? named : []) out.add(id);
+  }
+  return [...out];
+}
+
 // ── Normalizer (JSON:API → our clean shape) ───────────────────────────────────
-// eventsById: included Event resources keyed by id (instance name/approval
-// live on the Event, not the instance). ⓘ confirm attribute names live.
-export function normalizeInstance(data, eventsById = new Map()) {
+// eventsById: included Event resources keyed by id (approval lives on the
+// Event). bookingsById: included ResourceBookings. resourcesById: the
+// organization's resources, for names and kinds — a booking carries only an
+// id, and an instance books projectors and tables as well as rooms.
+export function normalizeInstance(data, eventsById = new Map(), bookingsById = new Map(), resourcesById = new Map()) {
   const a = data.attributes ?? {};
   const eventRef = data.relationships?.event?.data ?? null;
   const event = eventRef ? eventsById.get(eventRef.id) : null;
   const ea = event?.attributes ?? {};
   const location = a.location ?? null;
+  const booked = [];
+  for (const ref of data.relationships?.resource_bookings?.data ?? []) {
+    const resId = bookingsById.get(ref.id)?.relationships?.resource?.data?.id;
+    if (resId == null) continue;
+    const res = resourcesById.get(String(resId));
+    // An unknown kind is kept: a resource created since the list was cached
+    // is more likely a room someone just added than a projector.
+    if (res && res.kind !== 'Room') continue;
+    if (!booked.some((b) => b.id === String(resId))) booked.push({ id: String(resId), name: res?.name ?? null });
+  }
   return {
     id: data.id,
     eventId: eventRef?.id ?? null,
-    name: ea.name ?? a.name ?? 'Event', // ⓘ name lives on Event
+    name: a.name ?? ea.name ?? 'Event',
     startsAt: a.starts_at ?? null,
     endsAt: a.ends_at ?? null,
-    allDay: Boolean(a.all_day_event), // ⓘ
+    allDay: Boolean(a.all_day_event),
     location,
-    approval: ea.approval_status ?? null, // ⓘ e.g. 'A' | 'P' | 'R' or words
-    roomIds: roomIdsFor([location]),
+    approval: ea.approval_status ?? null, // 'A' | 'P' | 'R'
+    // Room names as Calendar knows them, for an event no dashboard room matches.
+    booked: booked.map((b) => b.name).filter(Boolean),
+    roomIds: booked.length ? roomIdsForResources(booked) : roomIdsFor([location]),
   };
 }
 
@@ -140,6 +174,7 @@ function mockInstances(startMs, endMs) {
         allDay: false,
         location: w.location,
         approval: w.approval,
+        booked: [],
         roomIds: roomIdsFor([w.location]),
         _mock: true,
       });
@@ -171,29 +206,65 @@ export async function getCalendarData(startMs, endMs) {
   }
 }
 
+/** Every page of a collection path (relative to BASE). */
+async function calGetAll(path) {
+  const out = { data: [], included: [] };
+  for (let next = path, pages = 0; next && pages < 50; pages += 1) {
+    const body = await calGet(next);
+    out.data.push(...(body.data ?? []));
+    out.included.push(...(body.included ?? []));
+    // links.next is absolute, with offset= added; strip the base and follow.
+    next = body.links?.next ? body.links.next.replace(BASE, '') : null;
+  }
+  return out;
+}
+
+/** The organization's resources: { id, name, kind, folder }. */
+export function listResources() {
+  return cached('resources', async () => {
+    const { data } = await calGetAll('/resources?per_page=100&order=name');
+    return data.map((d) => ({
+      id: String(d.id),
+      name: d.attributes?.name ?? `Resource ${d.id}`,
+      kind: d.attributes?.kind ?? null,
+      // path_name is the folder the resource sits in — usually the campus.
+      folder: d.attributes?.path_name ?? '',
+    }));
+  });
+}
+
+/** Room resources only, sorted by folder then name, for Admin's picker. */
+export async function listRoomResources() {
+  return (await listResources())
+    .filter((r) => r.kind === 'Room')
+    .sort((a, b) => a.folder.localeCompare(b.folder) || a.name.localeCompare(b.name));
+}
+
 /** Real-API event instances overlapping [startMs, endMs), sorted by start. */
 export function getEventInstances(startMs, endMs) {
   const key = `instances:${startMs}:${endMs}`;
   return cached(key, async () => {
-    const instances = [];
+    // Canceled instances are returned unless filtered out, flagged
+    // canceled: true — and a canceled service must not hold its room.
+    const [{ data, included }, resources] = await Promise.all([
+      calGetAll(
+        `/event_instances?include=event,resource_bookings&filter=not_canceled&order=starts_at&per_page=100` +
+        `&where[starts_at][gte]=${new Date(startMs).toISOString()}` +
+        `&where[starts_at][lt]=${new Date(endMs).toISOString()}`,
+      ),
+      // Names are a nicety for an unbound room; the bookings still list.
+      listResources().catch(() => []),
+    ]);
     const eventsById = new Map();
-    // ⓘ where[…] comparison params + pagination links verified against live
-    // data when Calendar access lands.
-    let path =
-      `/event_instances?include=event&order=starts_at&per_page=100` +
-      `&where[starts_at][gte]=${new Date(startMs).toISOString()}` +
-      `&where[starts_at][lt]=${new Date(endMs).toISOString()}`;
-    while (path) {
-      const body = await calGet(path);
-      for (const inc of body.included ?? []) {
-        if (inc.type === 'Event') eventsById.set(inc.id, inc);
-      }
-      instances.push(...(body.data ?? []));
-      const next = body.links?.next ?? null;
-      path = next ? next.replace(BASE, '') : null;
+    const bookingsById = new Map();
+    for (const inc of included) {
+      if (inc.type === 'Event') eventsById.set(inc.id, inc);
+      else if (inc.type === 'ResourceBooking') bookingsById.set(inc.id, inc);
     }
-    return instances
-      .map((d) => normalizeInstance(d, eventsById))
+    const resourcesById = new Map(resources.map((r) => [r.id, r]));
+    return data
+      .filter((d) => !d.attributes?.canceled)
+      .map((d) => normalizeInstance(d, eventsById, bookingsById, resourcesById))
       .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
   });
 }
