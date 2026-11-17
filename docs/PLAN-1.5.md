@@ -263,7 +263,7 @@ somebody else's timeline.
 > as the reasoning it replaced.
 >
 > **That contract is [ADR 0020](./decisions/0020-external-signal-sources.md)
-> (proposed 2026-11-16):** an adapter per source inside ProdMesh, plus one
+> (accepted 2026-11-17):** an adapter per source inside ProdMesh, plus one
 > generic SSE format for sources with no adapter. Dante goes through an adapter
 > for NetAudio's daemon rather than a probe of our own.
 

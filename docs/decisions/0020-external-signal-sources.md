@@ -1,6 +1,6 @@
 # 0020 — External signal sources: adapters first, one generic wire format
 
-Status: proposed · 2026-11-16 · details [0019](0019-signals-rules-and-actions.md)
+Status: accepted · 2026-11-17 (proposed 2026-11-16) · details [0019](0019-signals-rules-and-actions.md)
 · settles [#51](https://github.com/prodmesh/prodmesh/issues/51) · builds on the
 `signals` table from [#47](https://github.com/prodmesh/prodmesh/issues/47)
 
