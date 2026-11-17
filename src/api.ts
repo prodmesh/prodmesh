@@ -1009,6 +1009,37 @@ export interface RoomConnectivity {
   companion: CompanionConfig | null;
   youtube: YouTubeConfig | null;
   obs: ObsConfig | null;
+  calendar: CalendarBinding | null;
+}
+
+/** The Planning Center Calendar room resources that ARE this room. Bound by
+ *  id because a church's names are its own ("Auditorium", not ours). */
+export interface CalendarBinding {
+  resources: { id: string; name: string }[];
+}
+
+/** A Calendar room resource; `folder` is its path, usually the campus. */
+export interface CalendarResourceOption {
+  id: string;
+  name: string;
+  folder: string;
+}
+
+/** `granted: false` means the token works but Calendar is not enabled for it. */
+export const getCalendarResources = () =>
+  getJson<{ configured: boolean; granted: boolean; resources: CalendarResourceOption[] }>(
+    '/api/planning-center/calendar-resources',
+  );
+
+export async function saveCalendarBinding(
+  roomId: string,
+  calendar: CalendarBinding | null,
+): Promise<CalendarBinding | null> {
+  const res = await fetch(`/api/config/rooms/${roomId}/connectivity/calendar`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', ...requestHeaders() }, body: JSON.stringify({ calendar }),
+  });
+  await requireOk(res);
+  return (await res.json()).calendar;
 }
 
 export const getRoomConnectivity = (roomId: string) =>
@@ -1898,6 +1929,8 @@ export interface CalendarEvent {
   allDay: boolean;
   location: string | null;
   approval: string | null; // 'A' approved · 'P' pending · 'R' rejected
+  /** Rooms as Calendar names them, for a booking no dashboard room matches. */
+  booked?: string[];
   roomIds: string[]; // matched against the live rooms map; [] = unmapped
 }
 

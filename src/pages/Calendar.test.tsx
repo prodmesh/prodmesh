@@ -45,6 +45,12 @@ const events: CalendarEvent[] = [
     id: 'e3', eventId: null, name: 'Memorial Service', startsAt: todayAt(10), endsAt: todayAt(12),
     allDay: false, location: 'Chapel', approval: 'P', roomIds: [],
   },
+  {
+    // Real Calendar data: location is a street address, the room is a
+    // booking, and nobody has bound it to a dashboard room yet.
+    id: 'e4', eventId: null, name: 'Encore', startsAt: todayAt(9), endsAt: todayAt(11),
+    allDay: false, location: '1 Example Way, Anytown', approval: 'A', booked: ['Auditorium'], roomIds: [],
+  },
 ];
 
 const church: Church = {
@@ -98,6 +104,11 @@ describe('Calendar', () => {
     expect(within(memorial as HTMLElement).getByText('Chapel')).toBeInTheDocument();
     expect(within(memorial as HTMLElement).queryByRole('link')).not.toBeInTheDocument();
     expect(within(memorial as HTMLElement).getByText('pending')).toBeInTheDocument();
+
+    // An unbound booking names the Calendar room, not the street address.
+    const encore = screen.getByText('Encore').closest('.cal-ev')! as HTMLElement;
+    expect(within(encore).getByText('Auditorium')).toBeInTheDocument();
+    expect(within(encore).queryByText(/Example Way/)).not.toBeInTheDocument();
   });
 
   it('campus filter hides other campuses but never hides unmapped bookings', async () => {

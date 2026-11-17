@@ -522,6 +522,14 @@ What the guesses got wrong:
   and `name`. These are the setup and teardown blocks, which are what a lockout
   window really wants.
 
+A booking made in the web app for a weekly event becomes **one
+`ResourceBooking` per occurrence** (104 for a weekly event a couple of years
+out), each with its own `starts_at`/`ends_at`, pointing at its
+`event_instance` and its `resource` by id. `event_instances?include=resource_bookings`
+returns them alongside, so one request per page carries rooms too. A booking
+carries only the resource id, so names and kinds come from `/resources`.
+An instance books equipment as well as rooms; only `kind: "Room"` is a room.
+
 Bookings themselves (`resource_bookings`, `event_resource_requests`) cannot be
 created through the API, even by a site administrator (`403 … cannot create a
 EventResourceRequest`). Events can be created (POST needs an `owner`). Test

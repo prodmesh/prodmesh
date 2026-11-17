@@ -13,6 +13,7 @@ import * as branding from '../branding.js';
 import * as secrets from '../secrets.js';
 import * as setup from '../setup.js';
 import * as pco from '../integrations/planningCenter.js';
+import * as pcCalendar from '../integrations/pcCalendar.js';
 import * as restream from '../integrations/restream.js';
 import * as resi from '../integrations/resi.js';
 import * as analysis from '../integrations/analysis.js';
@@ -138,6 +139,23 @@ router.get('/api/planning-center/service-types', requirePermission('config.manag
   } catch {
     // Distinct from an empty list: "this token sees no service types" and
     // "Planning Center didn't answer" need different words on screen.
+    res.status(502).json({ error: 'planning_center_unavailable' });
+  }
+});
+
+/**
+ * The Calendar room resources this token can see, for binding rooms in Admin.
+ * Same answer shape as the service-type list: `configured: false` is normal,
+ * and so is `granted: false` — the token works but Calendar is not enabled
+ * for it, which is a setup step and not an outage.
+ */
+router.get('/api/planning-center/calendar-resources', requirePermission('config.manage'), async (_req, res) => {
+  const configured = pcCalendar.isConfigured();
+  if (!configured) return res.json({ configured, granted: false, resources: [] });
+  try {
+    res.json({ configured, granted: true, resources: await pcCalendar.listRoomResources() });
+  } catch (err) {
+    if (err.status === 401 || err.status === 403) return res.json({ configured, granted: false, resources: [] });
     res.status(502).json({ error: 'planning_center_unavailable' });
   }
 });
@@ -360,7 +378,7 @@ router.get('/api/config/rooms/:roomId/connectivity', requirePermission('config.m
   if (!rooms[req.params.roomId]) {
     return res.json({
       hasServerRoom: false, planningCenter: null, analysis: null, proPresenter: null,
-      companion: null, youtube: null, obs: null,
+      companion: null, youtube: null, obs: null, calendar: null,
     });
   }
   res.json({
@@ -371,6 +389,7 @@ router.get('/api/config/rooms/:roomId/connectivity', requirePermission('config.m
     proPresenter: connectivity.getProPresenter(req.params.roomId),
     youtube: connectivity.getYouTube(req.params.roomId),
     obs: redactObs(connectivity.getObs(req.params.roomId)),
+    calendar: connectivity.getCalendar(req.params.roomId),
     // A room with no stored row yet (created in Admin → Campuses) shows its
     // live defaults so the editor opens pre-filled rather than unsavable.
     companion:
@@ -424,6 +443,24 @@ router.put('/api/config/rooms/:roomId/connectivity/planning-center', requirePerm
       details: { integration: 'planningCenter', serviceTypes: stored.serviceTypes.length },
     });
     res.json({ planningCenter: stored });
+  } catch (err) {
+    res.status(rooms[req.params.roomId] ? 400 : 404).json({ error: String(err.message ?? err) });
+  }
+});
+
+router.put('/api/config/rooms/:roomId/connectivity/calendar', requirePermission('config.manage'), (req, res) => {
+  try {
+    const clean = connectivity.setCalendar(req.params.roomId, req.body?.calendar ?? null);
+    // Bookings are cached with their rooms already resolved; a new binding
+    // should show on the Calendar page now, not in five minutes.
+    pcCalendar.clearCache();
+    auditSuccess(req, 'config.manage', {
+      resourceType: 'room-connectivity',
+      resourceId: req.params.roomId,
+      roomId: req.params.roomId,
+      details: { integration: 'calendar', resources: clean?.resources.length ?? 0 },
+    });
+    res.json({ calendar: clean });
   } catch (err) {
     res.status(rooms[req.params.roomId] ? 400 : 404).json({ error: String(err.message ?? err) });
   }

@@ -27,7 +27,9 @@ import {
   saveObs,
   savePcServiceTypes,
   getPlanningCenterServiceTypes,
-  type PcServiceTypeOption,
+  getCalendarResources,
+  saveCalendarBinding,
+  type CalendarBinding,
   saveProPresenter,
   saveSchedules,
   saveYouTube,
@@ -69,7 +71,7 @@ import { DAY_LABELS, TILE_ICONS, TILE_TYPE_LABELS, moveIn, useChurchDraft } from
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Editing =
-  | 'tiles' | 'companion' | 'planning-center' | 'analysis' | 'youtube' | 'captions' | 'propresenter' | 'obs' | 'schedules'
+  | 'tiles' | 'companion' | 'planning-center' | 'calendar' | 'analysis' | 'youtube' | 'captions' | 'propresenter' | 'obs' | 'schedules'
   | null;
 
 export function RoomConfigPanel() {
@@ -262,6 +264,16 @@ function ConnectivityCards({ roomId, tiles, editing, onEdit, onClose, saveTiles,
                 onOpen={() => onEdit('planning-center')}
               />
             )}
+            {enabled('planning-center') && (
+              <ConfigCard
+                title="Planning Center Calendar rooms"
+                integration="planning-center"
+                lines={[conn.calendar?.resources.length
+                  ? conn.calendar.resources.map((r) => r.name).join(' · ')
+                  : 'None — Calendar bookings reach this room only if their room is named exactly like it.']}
+                onOpen={() => onEdit('calendar')}
+              />
+            )}
             {analysisEnabled && (
               <ConfigCard
                 title="Analysis source"
@@ -324,6 +336,9 @@ function ConnectivityCards({ roomId, tiles, editing, onEdit, onClose, saveTiles,
       {editing === 'planning-center' && conn && (
         <PcServiceTypesDialog roomId={roomId} initial={conn.planningCenter?.serviceTypes ?? []}
           onSaved={(serviceTypes) => stored('planningCenter')({ serviceTypes })} onClose={onClose} />
+      )}
+      {editing === 'calendar' && conn && (
+        <CalendarRoomsDialog roomId={roomId} initial={conn.calendar} onSaved={stored('calendar')} onClose={onClose} />
       )}
       {editing === 'analysis' && conn && (
         <AnalysisDialog roomId={roomId} initial={conn.analysis} onSaved={stored('analysis')} onClose={onClose} />
@@ -676,8 +691,8 @@ function SchedulesDialog({ roomId, initial, modes, onSaved, onClose }: {
 
 /** Service types in their folders, order preserved from the server (folder,
  *  then name) so the dropdown reads the way Planning Center is organised. */
-function groupByFolder(types: PcServiceTypeOption[]): [string, PcServiceTypeOption[]][] {
-  const groups = new Map<string, PcServiceTypeOption[]>();
+function groupByFolder<T extends { folder: string }>(types: T[]): [string, T[]][] {
+  const groups = new Map<string, T[]>();
   for (const t of types) groups.set(t.folder, [...(groups.get(t.folder) ?? []), t]);
   return [...groups];
 }
@@ -768,6 +783,77 @@ function PcServiceTypesDialog({ roomId, initial, onSaved, onClose }: {
       )}
       <button className="btn" onClick={() => f.setDraft((all) => [...all, { id: '', name: '' }])}>
         + Add service type
+      </button>
+    </EditDialog>
+  );
+}
+
+/** The Calendar room resources that are this room. Unlike service types there
+ *  is no typing an id by hand: nobody can find a resource id, and without
+ *  Calendar access there are no bookings to place anyway. */
+function CalendarRoomsDialog({ roomId, initial, onSaved, onClose }: {
+  roomId: string; initial: CalendarBinding | null; onSaved: (cfg: CalendarBinding | null) => void; onClose: () => void;
+}) {
+  const f = useDraft<CalendarBinding['resources']>(structuredClone(initial?.resources ?? []), async (resources) => {
+    const stored = await saveCalendarBinding(roomId, { resources: resources.filter((r) => r.id) });
+    onSaved(stored);
+    return stored?.resources ?? [];
+  });
+  const query = useQuery('pc-calendar-resources', getCalendarResources, { staleMs: 60_000 });
+  const available = query.data?.resources ?? [];
+  const unavailable = query.error
+    ? 'Planning Center didn’t answer. Try again in a moment.'
+    : query.data?.configured === false
+      ? 'Connect Planning Center in Admin → Integrations first.'
+      : query.data?.granted === false
+        ? 'This Planning Center token can’t read Calendar yet. Enable Calendar for it in Planning Center.'
+        : null;
+
+  return (
+    <EditDialog
+      title="Planning Center Calendar rooms"
+      help="The rooms in Planning Center Calendar that are this room. Bookings for them show here, whatever Calendar calls the room."
+      form={f}
+      onClose={onClose}
+    >
+      {f.draft.length === 0 && <p className="settings__muted">None.</p>}
+      {f.draft.map((r, i) => (
+        <FormRow key={i}>
+          <Field label="Calendar room" width="grow">
+            <SelectField
+              value={r.id}
+              disabled={query.loading}
+              onChange={(e) => {
+                const picked = available.find((x) => x.id === e.target.value);
+                f.setDraft((all) => all.map((x, j) => j === i ? { id: e.target.value, name: picked?.name ?? '' } : x));
+              }}
+            >
+              <option value="">{query.loading ? 'Loading…' : 'Choose a room'}</option>
+              {/* A saved room this token can no longer see stays selectable,
+                  so opening the dialog never silently drops it. */}
+              {r.id && !available.some((x) => x.id === r.id) && (
+                <option value={r.id}>{r.name || `Resource ${r.id}`} (not in Planning Center)</option>
+              )}
+              {/* Grouped by folder: the folder is usually the campus, and two
+                  campuses with an "Auditorium" each are the normal case. */}
+              {groupByFolder(available.filter((x) => x.id === r.id || !f.draft.some((d) => d.id === x.id)))
+                .map(([folder, list]) => (
+                  <optgroup key={folder} label={folder || 'No folder'}>
+                    {list.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                  </optgroup>
+                ))}
+            </SelectField>
+          </Field>
+          <div className="formrow__actions">
+            <button className="iconbtn iconbtn--danger" title="Remove Calendar room" aria-label="Remove Calendar room"
+              onClick={() => f.setDraft((all) => all.filter((_, j) => j !== i))}><Trash2 size={14} /></button>
+          </div>
+        </FormRow>
+      ))}
+      {unavailable && <p className="settings__muted">{unavailable}</p>}
+      <button className="btn" disabled={Boolean(unavailable) || query.loading}
+        onClick={() => f.setDraft((all) => [...all, { id: '', name: '' }])}>
+        + Add Calendar room
       </button>
     </EditDialog>
   );

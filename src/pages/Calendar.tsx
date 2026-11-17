@@ -57,6 +57,10 @@ function EventChip({
               {label(r)}
             </Link>
           ))
+        ) : ev.booked?.length ? (
+          <span className="cal-ev__room cal-ev__room--unmapped" title="No dashboard room is bound to this Calendar room">
+            <MapPin size={11} /> {ev.booked.join(', ')}
+          </span>
         ) : ev.location ? (
           <span className="cal-ev__room cal-ev__room--unmapped" title="No dashboard room matches this location">
             <MapPin size={11} /> {ev.location}
@@ -68,8 +72,9 @@ function EventChip({
 }
 
 // Week view of Planning Center Calendar bookings across the campus's rooms —
-// the event→room→time authority. Bookings whose location matches a dashboard
-// room link to it; anything else shows its raw location.
+// the event→room→time authority. Bookings in a Calendar room bound to a
+// dashboard room (Room configuration) link to it; anything else shows the
+// Calendar room's name, or failing that the event's raw location.
 export function Calendar() {
   const { campusId } = useCampus();
   const church = useChurch();
