@@ -116,6 +116,18 @@
   line-height: 1.25;
 }
 
+a.cal-ev__name--link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--accent-border);
+  text-underline-offset: 2px;
+}
+
+a.cal-ev__name--link:hover {
+  color: var(--accent-text);
+  text-decoration-color: currentColor;
+}
+
 .cal-ev__rooms {
   display: flex;
   flex-wrap: wrap;

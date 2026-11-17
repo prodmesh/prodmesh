@@ -36,6 +36,7 @@ const events: CalendarEvent[] = [
   {
     id: 'e1', eventId: null, name: 'Worship Rehearsal', startsAt: todayAt(18), endsAt: todayAt(21),
     allDay: false, location: 'Main Auditorium', approval: 'A', roomIds: ['north-main'],
+    serviceTypeIds: ['500004'], show: { roomId: 'north-main', planId: 'plan-77' },
   },
   {
     id: 'e2', eventId: null, name: 'SE Setup', startsAt: todayAt(9), endsAt: todayAt(11),
@@ -104,6 +105,11 @@ describe('Calendar', () => {
     expect(within(memorial as HTMLElement).getByText('Chapel')).toBeInTheDocument();
     expect(within(memorial as HTMLElement).queryByRole('link')).not.toBeInTheDocument();
     expect(within(memorial as HTMLElement).getByText('pending')).toBeInTheDocument();
+
+    // Connected to a Services type: the name opens that day's plan.
+    expect(screen.getByRole('link', { name: 'Worship Rehearsal' }))
+      .toHaveAttribute('href', '/room/north-main/event/plan-77');
+    expect(screen.queryByRole('link', { name: 'Memorial Service' })).not.toBeInTheDocument();
 
     // An unbound booking names the Calendar room, not the street address.
     const encore = screen.getByText('Encore').closest('.cal-ev')! as HTMLElement;

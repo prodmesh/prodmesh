@@ -49,7 +49,15 @@ function EventChip({
         {ev.allDay ? 'All day' : `${clock(ev.startsAt)}${ev.endsAt ? ` – ${clock(ev.endsAt)}` : ''}`}
         {pending && <span className="cal-ev__pending">pending</span>}
       </span>
-      <span className="cal-ev__name">{ev.name}</span>
+      {/* Connected in Calendar to a Services type: the name opens that day's
+          plan, the page the Services list opens. */}
+      {ev.show ? (
+        <Link className="cal-ev__name cal-ev__name--link" to={`/room/${ev.show.roomId}/event/${ev.show.planId}`}>
+          {ev.name}
+        </Link>
+      ) : (
+        <span className="cal-ev__name">{ev.name}</span>
+      )}
       <span className="cal-ev__rooms">
         {matched.length > 0 ? (
           matched.map((r) => (

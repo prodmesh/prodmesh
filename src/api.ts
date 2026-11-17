@@ -1932,6 +1932,10 @@ export interface CalendarEvent {
   /** Rooms as Calendar names them, for a booking no dashboard room matches. */
   booked?: string[];
   roomIds: string[]; // matched against the live rooms map; [] = unmapped
+  /** Services types the Calendar event is connected to. */
+  serviceTypeIds?: string[];
+  /** The show page for this occurrence's Services plan, when one can open it. */
+  show?: { roomId: string; planId: string } | null;
 }
 
 export interface CalendarRange {
