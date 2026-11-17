@@ -47,8 +47,13 @@ mac:
   # would break the entire product silently.
   extendInfo:
     NSLocalNetworkUsageDescription: >-
-      prodmesh serves the dashboard to other screens in your building and talks
-      to ProPresenter, Companion and your audio analyser over the local network.
+      ProdMesh finds your building's ProdMesh server, serves the dashboard to
+      other screens, and talks to ProPresenter, Companion and your audio
+      analyser over the local network.
+    # The service it advertises and browses for (#56). Declared so a refused
+    # prompt is a named permission rather than a mystery.
+    NSBonjourServices:
+      - _prodmesh._tcp
 
 dmg:
   # Version-free on purpose: a stable filename is what makes

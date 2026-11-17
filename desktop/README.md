@@ -1,9 +1,13 @@
-# prodmesh desktop launcher
+# prodmesh desktop app
 
-A menu-bar app for the church with one booth Mac and a volunteer — the case
-Docker does not serve. Same shape as Bitfocus Companion, which these churches
-already run: an icon in the menu bar, a small window saying where the dashboard
-is, and a button to open it.
+One app, two jobs (#48):
+
+- **Server.** For the church with one booth Mac and a volunteer, the case
+  Docker does not serve. Same shape as Bitfocus Companion, which these churches
+  already run: an icon in the menu bar, the server running behind it, and the
+  dashboard in the app's own window.
+- **Client.** Every other computer in the building: the same dashboard in a
+  window, pointed at the building's server, found by name over mDNS (#56).
 
 ```bash
 npm ci --prefix desktop     # once
@@ -23,6 +27,40 @@ name from the running bundle's `Info.plist`, which belongs to Electron.
 The packaged app has its own `Info.plist` and reads **ProdMesh** everywhere.
 Use `npm run app` when you want to see what a church sees; `npm start` is for
 iterating, where a wrong dock label costs nothing.
+
+## Server or client
+
+A computer that has never run ProdMesh opens `start.html`: the servers it can
+find on this network, an address field, and **Run the server on this
+computer**. The choice is saved in `<userData>/desktop.json`, beside the data
+folder, not in it. **ProdMesh → Change server…** reopens the chooser later.
+
+- **An existing install is never asked.** A data folder means this computer
+  is a server, so an upgrade can't put the question in front of a volunteer on
+  the box hosting the building. `launchMode()` in `connect.js` decides this;
+  `connect.test.mjs` runs with the server suite.
+- **A client remembers the server by system id, not address.** If DHCP moves
+  it, the app finds it again over mDNS and saves the new address. A different
+  server answering at the old address is not mistaken for it, and an id seen
+  on two boxes is not picked between.
+- **A client never imports the server**, so it creates no data folder and no
+  database. That is why browsing lives in `server/discoveryBrowse.js`, apart
+  from `discovery.js`, which reads the identity.
+- **Leaving server mode asks first**, since every room pointed at the box goes
+  dark, and then relaunches: the server has timers and sockets all through the
+  process. Becoming a server from the chooser warns if one is already visible,
+  because a second server starts empty.
+- **The dashboard window has no preload** and runs sandboxed. In client mode
+  its pages come from another computer, so it gets no IPC, no Node, no
+  permissions beyond the clipboard and full screen, and cannot navigate off its
+  server; outside links open in the browser. Only `status.html` and
+  `start.html` have preloads.
+
+To try a first launch or client mode without touching your real profile:
+
+```bash
+PRODMESH_DESKTOP_USERDATA=/tmp/pm-profile PORT=3095 npm start --prefix desktop
+```
 
 ## Why this is its own package
 

@@ -101,7 +101,7 @@ cpSync(join(ROOT, 'dist'), join(OUT, 'dist'), { recursive: true });
 
 // ── launcher ─────────────────────────────────────────────────────────────────
 mkdirSync(join(OUT, 'desktop'), { recursive: true });
-for (const f of ['main.js', 'preload.cjs', 'status.html']) {
+for (const f of ['main.js', 'connect.js', 'preload.cjs', 'preload-start.cjs', 'status.html', 'start.html', 'connecting.html']) {
   cpSync(join(HERE, f), join(OUT, 'desktop', f));
 }
 cpSync(join(HERE, 'assets'), join(OUT, 'desktop', 'assets'), { recursive: true });
