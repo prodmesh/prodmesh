@@ -530,6 +530,25 @@ returns them alongside, so one request per page carries rooms too. A booking
 carries only the resource id, so names and kinds come from `/resources`.
 An instance books equipment as well as rooms; only `kind: "Room"` is a room.
 
+**Services ↔ Calendar is linked from the Calendar side only.** A service type
+has no field pointing at Calendar; instead a Calendar *event* (the whole
+series, not one occurrence) carries `event_connections`, set on the event's
+Connections tab in the web app. One read from a test org:
+
+```
+EventConnection { connected_to_type: "service_type", connected_to_id: <int>,
+                  connected_to_name: "Sunday Service", product_name: "services" }
+```
+
+`connected_to_id` is a number where Services ids are strings elsewhere. It
+links to the service type, never to a plan: the plan for a date is found by
+date in Services. The connections are only reachable per event
+(`/events/{id}/event_connections`). `include=event_connections` on `events`,
+and `include=event.event_connections` on `event_instances`, are both silently
+ignored, and there is no collection-wide endpoint (404). So "which room does
+this service type use" costs one request per distinct event in the range, which
+is fine because a week has few distinct events.
+
 Bookings themselves (`resource_bookings`, `event_resource_requests`) cannot be
 created through the API, even by a site administrator (`403 … cannot create a
 EventResourceRequest`). Events can be created (POST needs an `owner`). Test
