@@ -2,7 +2,8 @@
 
 Status: accepted · 2026-11-13 · amends [0015](0015-events-and-alerts.md) ·
 reshapes [#51](https://github.com/prodmesh/prodmesh/issues/51) · constrains
-[#47](https://github.com/prodmesh/prodmesh/issues/47)
+[#47](https://github.com/prodmesh/prodmesh/issues/47) · external sources detailed in
+[0020](0020-external-signal-sources.md)
 
 ## Context
 
