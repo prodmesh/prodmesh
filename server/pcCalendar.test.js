@@ -10,6 +10,7 @@ process.env.PRODMESH_DATA_DIR = mkdtempSync(join(tmpdir(), 'prodmesh-cal-'));
 const { app } = await import('./index.js');
 const cal = await import('./integrations/pcCalendar.js');
 const connectivity = await import('./connectivity.js');
+const pco = await import('./integrations/planningCenter.js');
 
 let base;
 let server;
@@ -51,6 +52,30 @@ test('mock instances cover the weekly pattern and match seeded rooms', async () 
   const times = events.map((e) => new Date(e.startsAt).getTime());
   assert.deepEqual(times, [...times].sort((a, b) => a - b));
   assert.ok(times.every((t) => t >= start && t < end));
+});
+
+test('a connected event links to its own date\'s plan, and only to one it can open', async () => {
+  // Demo data: Sunday Services is connected to the Sunday type, which the
+  // demo Main Auditorium follows; demo Services has a plan every Sunday.
+  const sunday = new Date();
+  sunday.setHours(0, 0, 0, 0);
+  sunday.setDate(sunday.getDate() + ((7 - sunday.getDay()) % 7));
+  const { start, end } = weekOf(sunday.toISOString());
+  const { events } = await cal.getCalendarData(start, end);
+  assert.deepEqual(events.find((e) => e.name === 'Sunday Services').show, { roomId: 'north-main', planId: 'mock-500001-0' });
+  assert.equal(events.find((e) => e.name === 'Youth Sunday').show, null);
+
+  // Two rooms following the type, neither booked: no guess.
+  const plain = { id: 'x', name: 'X', startsAt: new Date(sunday.getTime() + 9 * 3_600_000).toISOString(), roomIds: [], serviceTypeIds: ['500005'] };
+  connectivity.setPlanningCenter('north-chapel', [{ id: '500005', name: 'Youth Service' }]);
+  try {
+    const [linked] = await cal.withShows([plain]);
+    assert.equal(linked.show, null);
+    const [booked] = await cal.withShows([{ ...plain, roomIds: ['north-chapel'] }]);
+    assert.deepEqual(booked.show, { roomId: 'north-chapel', planId: 'mock-500005-0' });
+  } finally {
+    connectivity.setPlanningCenter('north-chapel', []);
+  }
 });
 
 test('mock ids are deterministic (stable across refetches)', async () => {
@@ -114,7 +139,7 @@ test('normalizeInstance reads name/approval from the included Event', () => {
 // address, rooms arrive as resource bookings, and a canceled instance is
 // still a row unless filtered.
 function calendarApi(seen) {
-  const instance = (id, name, bookings, extra = {}) => ({
+  const instance = (id, name, bookings, extra = {}, event = 'e1') => ({
     type: 'EventInstance',
     id,
     attributes: {
@@ -122,7 +147,7 @@ function calendarApi(seen) {
       starts_at: '2026-08-04T17:00:00Z', ends_at: '2026-08-04T19:00:00Z', ...extra,
     },
     relationships: {
-      event: { data: { type: 'Event', id: 'e1' } },
+      event: { data: { type: 'Event', id: event } },
       resource_bookings: { data: bookings.map((b) => ({ type: 'ResourceBooking', id: b })) },
     },
   });
@@ -141,7 +166,7 @@ function calendarApi(seen) {
         instance('i2', 'Youth Night', ['b2']),
         instance('i3', 'Canceled Rehearsal', ['b4'], { canceled: true }),
         instance('i4', 'Picnic', []),
-        instance('i5', 'Concert', ['b5']),
+        instance('i5', 'Concert', ['b5'], {}, 'e2'),
       ],
       included: [
         { type: 'Event', id: 'e1', attributes: { name: 'Encore', approval_status: 'A' } },
@@ -150,9 +175,26 @@ function calendarApi(seen) {
       ],
     },
   };
+  // Encore's event is connected to the Services type the demo Main
+  // Auditorium follows (500001), and Services has a plan that day.
+  pages['/events/e1/event_connections'] = {
+    data: [{
+      type: 'EventConnection', id: 'c1',
+      attributes: { connected_to_id: 500001, connected_to_name: 'Sunday', connected_to_type: 'service_type', product_name: 'services' },
+    }],
+  };
+  pages['/service_types/500001/plans'] = {
+    data: [
+      { id: 'p0', attributes: { sort_date: '2026-07-28T07:00:00Z', title: 'Week before' } },
+      { id: 'p1', attributes: { sort_date: '2026-08-04T07:00:00Z', title: 'Encore night' } },
+    ],
+  };
+  pages['/service_types/500001/plans/p1/plan_times'] = {
+    data: [{ id: 't1', attributes: { time_type: 'service', starts_at: '2026-08-04T18:00:00Z', ends_at: '2026-08-04T19:00:00Z' } }],
+  };
   return async (url) => {
     seen.push(url);
-    const path = new URL(url).pathname.replace('/calendar/v2', '');
+    const path = new URL(url).pathname.replace(/^\/(calendar|services)\/v2/, '');
     return { ok: true, status: 200, json: async () => pages[path] ?? { data: [] } };
   };
 }
@@ -167,7 +209,9 @@ test('live bookings land in the rooms they are bound to, and canceled ones are d
     globalThis.fetch = realFetch;
     connectivity.setCalendar('north-main', null);
     cal.clearCache();
+    pco.clearCache();
   });
+  pco.clearCache();
   // "Auditorium" is the church's name for our "Main Auditorium": no name
   // match exists, so only the binding puts it there.
   connectivity.setCalendar('north-main', { resources: [{ id: '701', name: 'Auditorium' }] });
@@ -192,6 +236,12 @@ test('live bookings land in the rooms they are bound to, and canceled ones are d
   assert.deepEqual(byName['Youth Night'].booked, ['Youth Room']);
   assert.deepEqual(byName.Picnic.roomIds, []); // a street address matches nothing
   assert.deepEqual(byName.Picnic.booked, []);
+
+  // Connected to a service type the booked room follows: links to that
+  // day's plan, in that room. Unconnected events link nowhere.
+  assert.deepEqual(byName.Encore.serviceTypeIds, ['500001']);
+  assert.deepEqual(byName.Encore.show, { roomId: 'north-main', planId: 'p1' });
+  assert.equal(byName.Concert.show, null);
 
   const rooms = await cal.listRoomResources();
   assert.deepEqual(rooms.map((r) => r.name), ['Auditorium', 'Main Auditorium', 'Youth Room']);

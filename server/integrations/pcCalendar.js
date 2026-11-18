@@ -22,6 +22,8 @@
 import { getSecret } from '../secrets.js';
 import { report } from '../health.js';
 import { rooms } from '../roomsStore.js';
+import * as pco from './planningCenter.js';
+import { upcomingForRoom } from '../roomService.js';
 
 const BASE = 'https://api.planningcenteronline.com/calendar/v2';
 const CACHE_TTL_MS = 5 * 60 * 1000; // bookings change more often than plans
@@ -131,6 +133,9 @@ export function normalizeInstance(data, eventsById = new Map(), bookingsById = n
     allDay: Boolean(a.all_day_event),
     location,
     approval: ea.approval_status ?? null, // 'A' | 'P' | 'R'
+    // Services service types this event is connected to (filled in by
+    // getEventInstances — connections live on the event, one request each).
+    serviceTypeIds: [],
     // Room names as Calendar knows them, for an event no dashboard room matches.
     booked: booked.map((b) => b.name).filter(Boolean),
     roomIds: booked.length ? roomIdsForResources(booked) : roomIdsFor([location]),
@@ -142,7 +147,7 @@ export function normalizeInstance(data, eventsById = new Map(), bookingsById = n
 // the server's local timezone, against rooms that exist in the live map plus
 // one deliberately-unmatched location (the "Special Events" mapping problem).
 const WEEKLY = [
-  { dow: 0, name: 'Sunday Services', location: 'Main Auditorium', start: [7, 30], end: [13, 0], approval: 'A' },
+  { dow: 0, name: 'Sunday Services', location: 'Main Auditorium', start: [7, 30], end: [13, 0], approval: 'A', serviceTypeIds: ['500001'] },
   { dow: 0, name: 'Youth Sunday', location: 'Youth Room', start: [8, 30], end: [12, 30], approval: 'A' },
   { dow: 2, name: 'Chapel Night', location: 'Chapel', start: [17, 30], end: [21, 0], approval: 'A' },
   { dow: 3, name: 'Youth Night', location: 'Youth Room', start: [17, 30], end: [21, 30], approval: 'A' },
@@ -175,6 +180,7 @@ function mockInstances(startMs, endMs) {
         location: w.location,
         approval: w.approval,
         booked: [],
+        serviceTypeIds: w.serviceTypeIds ?? [],
         roomIds: roomIdsFor([w.location]),
         _mock: true,
       });
@@ -194,16 +200,72 @@ function mockInstances(startMs, endMs) {
  */
 export async function getCalendarData(startMs, endMs) {
   if (!isConfigured()) {
-    return { live: false, reason: 'no-token', events: mockInstances(startMs, endMs) };
+    return { live: false, reason: 'no-token', events: await withShows(mockInstances(startMs, endMs)) };
   }
+  let events;
   try {
-    return { live: true, events: await getEventInstances(startMs, endMs) };
+    events = await getEventInstances(startMs, endMs);
   } catch (err) {
     if (err.status === 401 || err.status === 403) {
-      return { live: false, reason: 'not-granted', events: mockInstances(startMs, endMs) };
+      return { live: false, reason: 'not-granted', events: await withShows(mockInstances(startMs, endMs)) };
     }
     throw err;
   }
+  return { live: true, events: await withShows(events) };
+}
+
+// ── Calendar event → the show page for its Services plan ─────────────────────
+// Calendar links an EVENT (the series) to a Services service TYPE, never to a
+// plan, so the plan is found by date: the one whose service times — or, with
+// none, its plan date — fall on the occurrence's local day. Matching on the day
+// rather than on overlapping times is deliberate: a 6am "Rehearsal" event
+// connected to Sunday Service should open that Sunday's plan too.
+//
+// The link goes where the show page can actually open it: a room that follows
+// the service type (room.planningCenter.serviceTypes), and a plan among that
+// room's upcoming ones — the same list /room/:id/event/:planId searches. A
+// booked room that follows the type wins; with several candidates and no
+// booking to choose between them there is no link, rather than a guess.
+const localDay = (iso) => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+};
+
+async function planDays(plan) {
+  const st = { id: plan.serviceTypeId, name: plan.serviceTypeName };
+  const times = await pco.getPlanTimes(st, plan.id).catch(() => []);
+  const days = new Set(times.map((t) => t.startsAt).filter(Boolean).map(localDay));
+  if (!days.size && plan.sortDate) days.add(localDay(plan.sortDate));
+  return days;
+}
+
+/** Events with `show: { roomId, planId } | null` attached. Never throws: a
+ *  Services outage costs the links, not the calendar. */
+export async function withShows(events) {
+  const upcoming = new Map(); // roomId → Promise<plans>
+  const plansOf = (room) => {
+    if (!upcoming.has(room.id)) {
+      upcoming.set(room.id, upcomingForRoom(room.planningCenter, 10).catch(() => []));
+    }
+    return upcoming.get(room.id);
+  };
+  const daysOf = new Map(); // planId → Promise<Set<day>>
+  return Promise.all(events.map(async (ev) => {
+    if (!ev.serviceTypeIds?.length || !ev.startsAt) return { ...ev, show: null };
+    const follows = Object.values(rooms).filter((r) =>
+      (r.planningCenter?.serviceTypes ?? []).some((st) => ev.serviceTypeIds.includes(String(st.id))));
+    const booked = follows.filter((r) => ev.roomIds.includes(r.id));
+    const candidates = booked.length ? booked : follows;
+    if (candidates.length !== 1) return { ...ev, show: null };
+    const room = candidates[0];
+    const day = localDay(ev.startsAt);
+    for (const plan of await plansOf(room)) {
+      if (!ev.serviceTypeIds.includes(String(plan.serviceTypeId))) continue;
+      if (!daysOf.has(plan.id)) daysOf.set(plan.id, planDays(plan));
+      if ((await daysOf.get(plan.id)).has(day)) return { ...ev, show: { roomId: room.id, planId: plan.id } };
+    }
+    return { ...ev, show: null };
+  }));
 }
 
 /** Every page of a collection path (relative to BASE). */
@@ -231,6 +293,19 @@ export function listResources() {
       folder: d.attributes?.path_name ?? '',
     }));
   });
+}
+
+/** The Services service types a Calendar event is connected to (ids as
+ *  strings — Calendar sends them as numbers). A failure means no link, not a
+ *  failed calendar. */
+function serviceTypesOf(eventId) {
+  return cached(`connections:${eventId}`, async () => {
+    const { data } = await calGetAll(`/events/${encodeURIComponent(eventId)}/event_connections?per_page=100`);
+    return data
+      .map((c) => c.attributes ?? {})
+      .filter((a) => a.product_name === 'services' && a.connected_to_type === 'service_type')
+      .map((a) => String(a.connected_to_id));
+  }).catch(() => []);
 }
 
 /** Room resources only, sorted by folder then name, for Admin's picker. */
@@ -262,9 +337,15 @@ export function getEventInstances(startMs, endMs) {
       else if (inc.type === 'ResourceBooking') bookingsById.set(inc.id, inc);
     }
     const resourcesById = new Map(resources.map((r) => [r.id, r]));
-    return data
+    const events = data
       .filter((d) => !d.attributes?.canceled)
       .map((d) => normalizeInstance(d, eventsById, bookingsById, resourcesById))
       .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+    // Connections can't be included (both include= forms are silently
+    // ignored), so one request per distinct event — few in a week.
+    const ids = [...new Set(events.map((e) => e.eventId).filter(Boolean))];
+    const types = new Map(await Promise.all(ids.map(async (id) => [id, await serviceTypesOf(id)])));
+    for (const e of events) e.serviceTypeIds = types.get(e.eventId) ?? [];
+    return events;
   });
 }
