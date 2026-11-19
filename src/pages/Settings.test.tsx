@@ -548,7 +548,11 @@ describe('Campuses', () => {
     const tiles = await screen.findByRole('button', { name: /Quick Access tiles/ });
     expect(tiles).toHaveTextContent('2 tiles');
     expect(tiles).toHaveTextContent('Companion · Camera 9');
-    expect(screen.getByRole('button', { name: /Bitfocus Companion & modes/ })).toHaveTextContent('192.0.2.51:8000 · $(roomState)');
+    // The tiles come from the church config and the cards below from the
+    // room's connectivity: two requests, either may answer first. Waiting on
+    // the tiles alone failed in CI when connectivity was the slower one.
+    const companion = await screen.findByRole('button', { name: /Bitfocus Companion & modes/ });
+    expect(companion).toHaveTextContent('192.0.2.51:8000 · $(roomState)');
     expect(screen.getByRole('button', { name: /Analysis source/ })).toHaveTextContent('Smaart · 192.0.2.40:26000');
     expect(screen.getByRole('button', { name: /ProPresenter/ })).toHaveTextContent('192.0.2.15:62202');
     // Nothing is a form until you open one: no field on the page, no Save
