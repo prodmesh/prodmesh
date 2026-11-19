@@ -1,13 +1,14 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { DisplayView } from './DisplayView';
 import { emitTopic } from '../test/fakeEventSource';
 import { clearQueryCache } from '../lib/useQuery';
-import type { View } from '../api';
+import type { AuthStatus, Station, View } from '../api';
 
 const api = vi.hoisted(() => ({
   getView: vi.fn(),
+  getAuthStatus: vi.fn(),
   getRoomService: vi.fn(),
   getRoomPlan: vi.fn(),
   getReport: vi.fn(),
@@ -24,18 +25,34 @@ const view = (name: string): View => ({
   widgets: [{ id: 'w1', type: 'countdown', x: 0, y: 0, w: 2, h: 1, config: {} }],
 });
 
+function Where() {
+  return <output data-testid="where">{useLocation().pathname}</output>;
+}
+
 function renderDisplay(key = 'wall') {
   return render(
     <MemoryRouter initialEntries={[`/display/north-main/${key}`]}>
       <Routes>
-        <Route path="/display/:roomId/:key" element={<DisplayView />} />
+        <Route path="/display/:roomId/:key" element={<><DisplayView /><Where /></>} />
+        <Route path="*" element={<Where />} />
       </Routes>
     </MemoryRouter>,
   );
 }
 
+const status = (station: Partial<Station> | null, authenticated = false): AuthStatus => ({
+  authenticated, admin: false, setupNeeded: false, user: null, permissions: [],
+  station: station && {
+    id: 's1', name: 'Foyer TV', campusId: 'north', roomId: 'north-main', roomOnly: false,
+    viewId: 'v1', viewSlug: 'wall', ...station,
+  },
+});
+
+const where = () => screen.getByTestId('where').textContent;
+
 beforeEach(() => {
   clearQueryCache();
+  api.getAuthStatus.mockReset().mockResolvedValue(status(null));
   api.getView.mockReset().mockResolvedValue({ view: view('Multiview') });
   api.getRoomService.mockReset().mockResolvedValue({ configured: true, live: true, plans: [] });
   api.getRoomPlan.mockReset().mockResolvedValue({ live: true, plan: null });
@@ -108,6 +125,54 @@ describe('DisplayView', () => {
     await waitFor(() => expect(container.querySelector('.display--blank')).toBeInTheDocument());
     // No "Loading…", no stack trace. A message left on a wall for a week stops
     // being read; a black rectangle is a fault someone notices.
-    expect(container.textContent).toBe('');
+    expect(container.querySelector('.display--blank')!.textContent).toBe('');
+  });
+
+  describe('following its station (#63)', () => {
+    it('moves to a new display when Admin → Stations reassigns it', async () => {
+      api.getAuthStatus.mockResolvedValue(status({}));
+      renderDisplay();
+      await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalledTimes(1));
+      expect(where()).toBe('/display/north-main/wall');
+
+      // The admin saves; the server says only "you changed". The screen asks.
+      api.getAuthStatus.mockResolvedValue(status({ viewId: 'v2', viewSlug: 'stage' }));
+      await emitTopic({ 'station:s1': { changedAt: 1 } });
+      await waitFor(() => expect(where()).toBe('/display/north-main/stage'));
+    });
+
+    it('goes back to the shell when its display is taken away', async () => {
+      api.getAuthStatus.mockResolvedValue(status({}));
+      renderDisplay();
+      await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalledTimes(1));
+
+      api.getAuthStatus.mockResolvedValue(status({ viewId: null, viewSlug: null }));
+      await emitTopic({ 'station:s1': { changedAt: 2 } });
+      await waitFor(() => expect(where()).toBe('/'));
+    });
+
+    it('finds its display again after the display is renamed', async () => {
+      // The address it came up on is the old slug, which no longer resolves.
+      api.getView.mockRejectedValue(new Error('HTTP 404'));
+      api.getAuthStatus.mockResolvedValue(status({ viewSlug: 'wall-renamed' }));
+      renderDisplay('wall');
+      await waitFor(() => expect(where()).toBe('/display/north-main/wall-renamed'));
+    });
+
+    it('leaves alone a laptop that opened a display to look at it', async () => {
+      api.getAuthStatus.mockResolvedValue(status({ viewId: null, viewSlug: null }));
+      renderDisplay();
+      await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
+      await new Promise((r) => setTimeout(r, 20));
+      expect(where()).toBe('/display/north-main/wall');
+    });
+
+    it('leaves alone a display station someone has logged in at', async () => {
+      api.getAuthStatus.mockResolvedValue(status({ viewId: 'v2', viewSlug: 'stage' }, true));
+      renderDisplay();
+      await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
+      await new Promise((r) => setTimeout(r, 20));
+      expect(where()).toBe('/display/north-main/wall');
+    });
   });
 });

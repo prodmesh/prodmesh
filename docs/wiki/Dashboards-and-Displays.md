@@ -96,12 +96,17 @@ time since it started. It is the room's show, not this dashboard's — if the
 3. From any other machine, go to **Admin → Stations**, find that station, set
    its **Room**, and pick your display from the **Display** dropdown.
 
-From then on that browser shows the display full-screen. Point it at the site's
-address and it finds its own way there, so a machine that reboots comes back to
-the right screen on its own.
+From then on that browser shows the display full-screen, and Admin → Stations
+marks it **Display**. Point it at the site's address and it finds its own way
+there, so a machine that reboots comes back to the right screen on its own.
 
-Edits reach it by themselves. Rearrange the display in the booth, press Save,
-and the screen changes — no walking over, no reloading, no keyboard.
+Changes reach it by themselves. Rearrange the display in the booth and press
+Save, or pick a different display for the station in Admin → Stations, and the
+screen follows — no walking over, no reloading, no keyboard. Set the station to
+**Not a display** and it goes back to being an ordinary browser.
+
+To use the machine itself, go to `/login` on it and log in; that lifts the
+display until someone locks the station again.
 
 !!! tip "Make it readable from across the room"
     A layout that looks right on your laptop is often unreadable as one tile of

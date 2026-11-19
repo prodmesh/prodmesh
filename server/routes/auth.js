@@ -7,10 +7,25 @@ import * as settings from '../settings.js';
 import * as pco from '../integrations/planningCenter.js';
 import * as auth from '../authStore.js';
 import * as fedStore from '../federation/store.js';
+import * as hub from '../streamHub.js';
 import { bearer, requirePermission, auditSuccess } from '../httpAuth.js';
 import { sourceIp, recordFailure, clearFailures, refuseIfLocked } from '../credentialThrottle.js';
 
 const router = express.Router();
+
+// A station's own assignment, pushed (#63). A display is a screen nobody
+// stands at: when Admin → Stations gives it a different display, or takes its
+// display away, it has to find out without someone walking over to reload it.
+//
+// The message carries nothing but "something changed" — the screen re-reads
+// its own identity over its own cookie. The topic is unauthenticated like
+// every other, so it must not be a way to learn which room a station is in or
+// what it shows; it says only that an admin touched it. `valid` keeps it to
+// stations that exist, the same guard every topic has against arbitrary
+// strings. Nothing to start or stop: it is published only on a save.
+export const stationTopic = (stationId) => `station:${stationId}`;
+hub.registerTopic('station:*', { valid: (stationId) => auth.stationExists(stationId) });
+const announceStation = (stationId) => hub.publish(stationTopic(stationId), { changedAt: Date.now() });
 
 // Station registration is deliberately unauthenticated: it identifies the
 // browser installation, but grants no authority. Naming a machine is not login,
@@ -82,6 +97,7 @@ router.put('/api/stations/:stationId', requirePermission('stations.manage'), (re
     auditSuccess(req, 'stations.manage', {
       resourceType: 'station', resourceId: station.id, details: { operation: 'update' },
     });
+    announceStation(station.id);
     res.json({ station: { ...station, current: station.id === req.station?.id } });
   } catch (err) {
     res.status(String(err.message ?? err).includes('Unknown') ? 404 : 400).json({ error: String(err.message ?? err) });
@@ -95,6 +111,9 @@ router.delete('/api/stations/:stationId', requirePermission('stations.manage'), 
     auditSuccess(req, 'stations.manage', {
       resourceType: 'station', resourceId: station.id, details: { operation: 'revoke', name: station.name },
     });
+    // Already deleted, so a fresh subscribe would be refused — but a screen
+    // still holding the topic hears this, and goes back to registration.
+    announceStation(station.id);
     res.json({ ok: true, current });
   } catch (err) {
     res.status(404).json({ error: String(err.message ?? err) });

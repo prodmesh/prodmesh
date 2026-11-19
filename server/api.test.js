@@ -235,6 +235,39 @@ test('admins can rename, assign, and revoke a station', async () => {
   assert.equal(auth.resolveStation(managed.token), null);
 });
 
+test('saving or revoking a station tells a screen holding its topic (#63)', async () => {
+  // A display has nobody at it, so a reassignment has to reach it unasked.
+  // The message is deliberately empty of the assignment itself: the topic
+  // needs no auth, so it may only say "re-read who you are".
+  const hub = await import('./streamHub.js');
+  const managed = auth.registerStation({ name: 'Foyer Screen' });
+  const { token } = await (await post('/api/auth/admin', { pin: 'admin1234' })).json();
+  const frames = [];
+  const screen = { write: (chunk) => { frames.push(chunk); return true; } };
+  const topic = `station:${managed.id}`;
+
+  assert.equal(hub.isValidTopic('station:no-such-station'), false, 'only stations that exist');
+  hub.subscribe(screen, [topic]);
+  assert.equal(hub.subscriberCount(topic), 1);
+  try {
+    const update = await apiRequest(`/api/stations/${managed.id}`, {
+      method: 'PUT', token, body: { name: 'Foyer Screen', roomId: 'north-main' },
+    });
+    assert.equal(update.status, 200);
+    assert.equal(frames.length, 1);
+    const { topic: sent, data } = JSON.parse(frames[0].split('data: ')[1]);
+    assert.equal(sent, topic);
+    assert.deepEqual(Object.keys(data), ['changedAt'], 'no room, no view, no name');
+
+    const revoke = await apiRequest(`/api/stations/${managed.id}`, { method: 'DELETE', token });
+    assert.equal(revoke.status, 200);
+    assert.equal(frames.length, 2, 'a revoked screen hears it too');
+    assert.equal(hub.isValidTopic(topic), false);
+  } finally {
+    hub.unsubscribe(screen);
+  }
+});
+
 test('server log tail and audit trail require system.logs', async () => {
   const denied = await apiRequest('/api/system/logs', { token: operatorToken, stationToken: station.token });
   assert.equal(denied.status, 403);

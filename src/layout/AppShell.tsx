@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Navigate, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Activity,
   BarChart3,
@@ -37,6 +37,7 @@ import { ALL_CAMPUSES, CampusContext, remoteCampusId } from './campus';
 import { useRemoteServers } from './remote';
 import { ChurchContext, EMPTY_CHURCH } from './church';
 import { IdentityContext } from '../lib/identity';
+import { useTopic } from '../lib/stream';
 import type { Church } from '../types';
 import { Clock } from '../components/Clock';
 import { SelectField } from '../components/SelectField';
@@ -137,6 +138,19 @@ export function AppShell() {
       if (needsStation(s)) setIdentityOpen(true);
     }).catch(() => { if (!isVisiting()) setIdentityOpen(true); });
   }, []);
+
+  // An admin changing this station from another machine (#63) — giving it a
+  // display, taking one away, locking it to a room — reaches it here as well
+  // as on a display. Setting a screen up is exactly this: register it, walk
+  // back to the booth, pick its display; the screen should go there unasked.
+  const stationPush = useTopic<unknown>(identity?.station ? `station:${identity.station.id}` : null);
+  useEffect(() => {
+    if (!stationPush) return;
+    getAuthStatus().then((s) => {
+      setIdentity(s);
+      if (needsStation(s)) setIdentityOpen(true);
+    }).catch(() => {});
+  }, [stationPush]);
 
   // Server-owned topology (ADR 0009): fetch at boot, refetch when the
   // Campuses editor announces a save. The same event re-stamps the logo so a
@@ -267,10 +281,18 @@ export function AppShell() {
   // A station pinned to its room ("Room only when locked") browses just that
   // room while nobody is logged in — kiosk focus for lobby/booth displays,
   // not a security boundary. Logging in lifts the restriction.
+  //
+  // A station assigned a display is held the same way, room lock or not (#63):
+  // picking a display in Admin → Stations is the whole act of making a screen
+  // a display, and needing a second checkbox before it took effect was a trap.
+  const displaySlug = identity?.station?.roomId ? identity.station.viewSlug ?? null : null;
   const lockedRoomId =
-    identity && !identity.authenticated && identity.station?.roomOnly
-      ? identity.station.roomId
+    identity && !identity.authenticated && (identity.station?.roomOnly || displaySlug)
+      ? identity.station?.roomId ?? null
       : null;
+  // The way out of a display. A display has no sidebar, so there is no login
+  // button to press; someone at the Pi with a keyboard types /login instead.
+  const loginRequested = location.pathname === '/login';
   const lockedRoomName = lockedRoomId
     ? church.sites.flatMap((s) => s.auditoriums).find((a) => a.id === lockedRoomId)?.name ?? 'Room Status'
     : null;
@@ -281,21 +303,27 @@ export function AppShell() {
   // bookmark, or a Pi whose kiosk config points at "/". Point it at the root
   // and it finds its own way home.
   const lockedPrefix = lockedRoomId
-    ? identity?.station?.viewSlug
-      ? `/display/${lockedRoomId}/${identity.station.viewSlug}`
+    ? displaySlug
+      ? `/display/${lockedRoomId}/${displaySlug}`
       : `/room/${lockedRoomId}`
     : null;
-  const lockedViews = lockedRoomId && !identity?.station?.viewSlug ? `/room/${lockedRoomId}/views` : null;
+  const lockedViews = lockedRoomId && !displaySlug ? `/room/${lockedRoomId}/views` : null;
   // The list and the dashboards opened from it, not the room's own pages.
   const onLockedViews = lockedViews != null &&
     (location.pathname.startsWith(lockedViews) || location.pathname.startsWith(`/room/${lockedRoomId}/view/`));
   const offLimits =
     lockedPrefix != null &&
+    !loginRequested &&
     location.pathname !== lockedPrefix &&
     !location.pathname.startsWith(`${lockedPrefix}/`);
   const adminOpen = !lockedPrefix && location.pathname.startsWith('/admin');
   // A room's list, or a dashboard opened from one, is still "Dashboards".
   const viewsOpen = /^\/room\/[^/]+\/views?(\/|$)/.test(location.pathname);
+
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (loginRequested && identity && !identity.authenticated) setIdentityOpen(true);
+  }, [loginRequested, identity]);
 
   const lock = async () => {
     await logoutAdmin();
@@ -519,7 +547,11 @@ export function AppShell() {
 
         <main className="shell__main">
           <AssistanceBar enabled={Boolean(identity?.station)} />
-          {offLimits ? <Navigate to={lockedPrefix!} replace /> : <Outlet />}
+          {offLimits
+            ? <Navigate to={lockedPrefix!} replace />
+            : loginRequested && identity?.authenticated
+              ? <Navigate to="/" replace />
+              : <Outlet />}
         </main>
         {assistOpen && <AssistanceDialog onClose={() => setAssistOpen(false)} />}
         {pinOpen && (
@@ -543,7 +575,12 @@ export function AppShell() {
             denied={denied}
             onStation={stationRegistered}
             onLogin={(next) => { setIdentity(next); setIdentityOpen(false); setDenied(null); }}
-            onClose={() => { setIdentityOpen(false); setDenied(null); }}
+            onClose={() => {
+              setIdentityOpen(false);
+              setDenied(null);
+              // Cancelled at /login: back to wherever this station belongs.
+              if (loginRequested) navigate(lockedPrefix ?? '/', { replace: true });
+            }}
           />
         )}
         {confirmLock && (

@@ -783,7 +783,11 @@ function StationEditor({
         <span className="stations__icon"><MonitorCog size={19} /></span>
         <span>
           <strong>{station.name}</strong>
-          <small>{station.current ? 'CURRENT STATION · ' : ''}Last seen {relativeTime(station.lastSeen)}</small>
+          <small>
+            {station.current ? 'CURRENT STATION · ' : ''}
+            {station.viewId ? 'DISPLAY · ' : ''}
+            Last seen {relativeTime(station.lastSeen)}
+          </small>
         </span>
       </div>
       <div className="stations__fields">
@@ -813,7 +817,7 @@ function StationEditor({
           </SelectField>
         </label>
         <label>
-          <span>Display <HelpTip text="This browser shows that display full-screen with no navigation — a Raspberry Pi on a multiview input, or a TV in the foyer. It still works as an ordinary browser until you open it." /></span>
+          <span>Display <HelpTip text="This browser shows that display full-screen with no navigation — a Raspberry Pi on a multiview input, or a TV in the foyer. It opens there on its own, and moves when you change this. To use it as an ordinary browser, log in at /login." /></span>
           <SelectField
             value={viewId}
             disabled={!roomId || displays.length === 0}
@@ -824,13 +828,17 @@ function StationEditor({
             {displays.map((view) => <option key={view.id} value={view.id}>{view.name}</option>)}
           </SelectField>
         </label>
+        {/* A display station is held to its display regardless (#63), so the
+            box reads as what will actually happen rather than a no-op. */}
         <Checkbox
           label="Room only when locked"
-          title={roomId
-            ? 'In read-only mode (nobody logged in), this station only browses its assigned room. Logging in unlocks everything.'
-            : 'Assign a room first'}
-          checked={Boolean(roomId) && roomOnly}
-          disabled={!roomId}
+          title={!roomId
+            ? 'Assign a room first'
+            : viewId
+              ? 'A display station always stays on its display while nobody is logged in.'
+              : 'In read-only mode (nobody logged in), this station only browses its assigned room. Logging in unlocks everything.'}
+          checked={Boolean(roomId) && (roomOnly || Boolean(viewId))}
+          disabled={!roomId || Boolean(viewId)}
           onChange={(event) => setRoomOnly(event.target.checked)}
         />
       </div>

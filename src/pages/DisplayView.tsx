@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import { getView, type View } from '../api';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { getAuthStatus, getView, type AuthStatus, type View } from '../api';
 import { ViewCanvas } from '../views/ViewCanvas';
 import { useQuery, invalidate } from '../lib/useQuery';
 import { useTopic } from '../lib/stream';
@@ -37,6 +37,43 @@ export function DisplayView() {
   useEffect(() => {
     if (pushed) invalidate(viewKey(roomId, key));
   }, [pushed, roomId, key]);
+
+  // ── Following its station (#63) ────────────────────────────────────────────
+  //  A display station goes where Admin → Stations sends it, without anyone at
+  //  the screen. The station topic says only "you were changed"; who this
+  //  station is and what it shows is re-read over its own cookie. A views push
+  //  re-reads it too, since deleting a display unassigns it.
+  const navigate = useNavigate();
+  const [identity, setIdentity] = useState<AuthStatus | null>(null);
+  const stationId = identity?.station?.id ?? null;
+  const stationPush = useTopic<unknown>(stationId ? `station:${stationId}` : null);
+  useEffect(() => {
+    let live = true;
+    getAuthStatus().then((s) => { if (live) setIdentity(s); }).catch(() => {});
+    return () => { live = false; };
+  }, [stationPush, pushed]);
+
+  // Only a screen that has BEEN a display station is ever moved. Someone who
+  // opens a display's address on their laptop to check it is left alone.
+  const wasDisplay = useRef(false);
+  useEffect(() => {
+    // Logged in is a person at the screen, and they go where they choose.
+    if (!identity || identity.authenticated) return;
+    const station = identity.station;
+    const assigned = station?.roomId && station.viewSlug ? station : null;
+    if (assigned) {
+      wasDisplay.current = true;
+      // Already showing it — by slug, or by id where a station's own link
+      // outlived a rename.
+      const here = assigned.roomId === roomId &&
+        (key === assigned.viewSlug || key === assigned.viewId || (view != null && view.id === assigned.viewId));
+      if (!here) navigate(`/display/${assigned.roomId}/${assigned.viewSlug}`, { replace: true });
+    } else if (wasDisplay.current) {
+      // Unassigned or revoked: the shell decides what this browser is now —
+      // its room, or the registration prompt.
+      navigate('/', { replace: true });
+    }
+  }, [identity, roomId, key, view, navigate]);
 
   const grid = view ? gridFor(view.kind) : null;
 
