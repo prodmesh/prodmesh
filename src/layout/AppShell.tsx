@@ -15,6 +15,7 @@ import {
   MonitorCog,
   Network,
   KeyRound,
+  LayoutGrid,
   LockKeyhole,
   ScrollText,
   Settings2,
@@ -44,6 +45,7 @@ import logoUrl from '../assets/prodmesh-logo.svg';
 
 const NAV = [
   { to: '/', label: 'Home', icon: HomeIcon, end: true },
+  { to: '/dashboards', label: 'Dashboards', icon: LayoutGrid },
   { to: '/services', label: 'Services', icon: CalendarDays },
   { to: '/calendar', label: 'Calendar', icon: CalendarRange },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
@@ -283,11 +285,17 @@ export function AppShell() {
       ? `/display/${lockedRoomId}/${identity.station.viewSlug}`
       : `/room/${lockedRoomId}`
     : null;
+  const lockedViews = lockedRoomId && !identity?.station?.viewSlug ? `/room/${lockedRoomId}/views` : null;
+  // The list and the dashboards opened from it, not the room's own pages.
+  const onLockedViews = lockedViews != null &&
+    (location.pathname.startsWith(lockedViews) || location.pathname.startsWith(`/room/${lockedRoomId}/view/`));
   const offLimits =
     lockedPrefix != null &&
     location.pathname !== lockedPrefix &&
     !location.pathname.startsWith(`${lockedPrefix}/`);
   const adminOpen = !lockedPrefix && location.pathname.startsWith('/admin');
+  // A room's list, or a dashboard opened from one, is still "Dashboards".
+  const viewsOpen = /^\/room\/[^/]+\/views?(\/|$)/.test(location.pathname);
 
   const lock = async () => {
     await logoutAdmin();
@@ -357,15 +365,32 @@ export function AppShell() {
 
           <nav className="sidebar__nav">
             {lockedPrefix ? (
-              <NavLink
-                to={lockedPrefix}
-                aria-label={lockedRoomName ?? undefined}
-                data-rail-label={lockedRoomName ?? undefined}
-                className={({ isActive }) => `sidebar__item${isActive ? ' sidebar__item--active' : ''}`}
-              >
-                <Glyph icon={HomeIcon} />
-                <span className="sidebar__label rail-hide">{lockedRoomName}</span>
-              </NavLink>
+              <>
+                <NavLink
+                  to={lockedPrefix}
+                  aria-label={lockedRoomName ?? undefined}
+                  data-rail-label={lockedRoomName ?? undefined}
+                  className={({ isActive }) =>
+                    `sidebar__item${isActive && !onLockedViews ? ' sidebar__item--active' : ''}`}
+                >
+                  <Glyph icon={HomeIcon} />
+                  <span className="sidebar__label rail-hide">{lockedRoomName}</span>
+                </NavLink>
+                {/* A station locked to its room has one room's dashboards, so
+                    no picker: straight to its list (#61). Not for a station
+                    assigned a display — that screen IS its display. */}
+                {lockedViews && (
+                  <NavLink
+                    to={lockedViews}
+                    aria-label="Dashboards"
+                    data-rail-label="Dashboards"
+                    className={() => `sidebar__item${onLockedViews ? ' sidebar__item--active' : ''}`}
+                  >
+                    <Glyph icon={LayoutGrid} />
+                    <span className="sidebar__label rail-hide">Dashboards</span>
+                  </NavLink>
+                )}
+              </>
             ) : NAV.map(({ to, label, icon, end }) => (
               <NavLink
                 key={to}
@@ -374,7 +399,7 @@ export function AppShell() {
                 aria-label={label}
                 data-rail-label={label}
                 className={({ isActive }) =>
-                  `sidebar__item${isActive || (label === 'Admin' && adminOpen) ? ' sidebar__item--active' : ''}`}
+                  `sidebar__item${isActive || (label === 'Admin' && adminOpen) || (label === 'Dashboards' && viewsOpen) ? ' sidebar__item--active' : ''}`}
               >
                 <Glyph icon={icon} />
                 <span className="sidebar__label rail-hide">{label}</span>

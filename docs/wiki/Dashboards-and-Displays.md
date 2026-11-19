@@ -16,7 +16,12 @@ their own things and nothing else.
 whole screen with no menus, no sidebar and nothing to click: a TV in the foyer,
 a stage monitor, or a Raspberry Pi wired into a video switcher's multiview.
 
-Find them at **Room Console → Dashboards**.
+Find them at **Dashboards** in the sidebar. It opens on the station's own
+room, or the room you last picked on that machine. The picker at the top
+switches rooms, within the campus selected at the top of the sidebar.
+Switching only changes what you're looking at; it doesn't reassign the
+station. A station locked to its room shows that room's dashboards, with no
+picker. **Room Console → Dashboards** still works too.
 
 ## Making one
 

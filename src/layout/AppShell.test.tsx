@@ -56,6 +56,8 @@ function renderShell(path = '/admin/users') {
           <Route path="/admin/integrations" element={<div>Integrations page content</div>} />
           <Route path="/admin/checklists" element={<div>Checklists page content</div>} />
           <Route path="/room/:roomId" element={<div>Room page content</div>} />
+          <Route path="/room/:roomId/views" element={<div>Room dashboards content</div>} />
+          <Route path="/dashboards" element={<div>Dashboards page content</div>} />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -185,12 +187,39 @@ describe('room-only station', () => {
     expect(screen.getByRole('button', { name: /Read-only/ })).toBeInTheDocument();
   });
 
+  it('keeps its own room\'s dashboards one click away, with no room picker (#61)', async () => {
+    api.getAuthStatus.mockResolvedValue({
+      authenticated: false, admin: false, setupNeeded: false, user: null, permissions: [],
+      station: lockedStation,
+    });
+    renderShell('/room/north-main/views');
+
+    expect(await screen.findByText('Room dashboards content')).toBeInTheDocument();
+    const dashboards = await screen.findByRole('link', { name: 'Dashboards' });
+    expect(dashboards).toHaveAttribute('href', '/room/north-main/views');
+    // Only one of the two is "where you are".
+    expect(dashboards).toHaveClass('sidebar__item--active');
+    expect(screen.getByRole('link', { name: 'Main Auditorium' })).not.toHaveClass('sidebar__item--active');
+  });
+
+  it('a station assigned a display gets no dashboards link', async () => {
+    api.getAuthStatus.mockResolvedValue({
+      authenticated: false, admin: false, setupNeeded: false, user: null, permissions: [],
+      station: { ...lockedStation, viewSlug: 'lobby' },
+    });
+    renderShell('/admin/users');
+    // Its one link is its display; that screen IS the station's dashboard.
+    expect(await screen.findByRole('link', { name: 'Main Auditorium' })).toHaveAttribute('href', '/display/north-main/lobby');
+    expect(screen.queryByRole('link', { name: 'Dashboards' })).not.toBeInTheDocument();
+  });
+
   it('a logged-in user on the same station browses freely', async () => {
     api.getAuthStatus.mockResolvedValue({ ...authenticated, station: lockedStation });
     renderShell('/admin/users');
 
     expect(await screen.findByText('Users page content')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Dashboards' })).toHaveAttribute('href', '/dashboards');
   });
 });
 
