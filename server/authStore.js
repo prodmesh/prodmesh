@@ -137,6 +137,11 @@ export function updateStation(
   return listStations().find((station) => station.id === stationId);
 }
 
+/** Does this station still exist? Cheap enough to guard a stream topic with. */
+export function stationExists(stationId) {
+  return Boolean(getDb().prepare('SELECT 1 FROM stations WHERE id = ?').get(String(stationId)));
+}
+
 export function revokeStation(stationId) {
   const db = getDb();
   const station = listStations().find((entry) => entry.id === stationId);

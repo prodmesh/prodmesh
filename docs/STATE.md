@@ -152,7 +152,7 @@ editor, and the whole thing survived a Sunday.
 
 | | |
 |---|---|
-| **Views** | dashboards + displays, drag or keyboard editor, per-view scale, station assignment |
+| **Views** | dashboards + displays, drag or keyboard editor, per-view scale, station assignment; a display station opens its display without the room lock and follows a reassignment live over a `station:<id>` topic, `/login` is the way out (#63) |
 | **Widgets** | clock, countdown, integrations, live viewers, loudness, loudness trend, now & next, room mode, run of show — plus comms and lyrics since (1.3.0-dev), and Companion variables (1.4.0-dev) |
 | **ProPresenter** | slide progress and live **video playback position** on a new refcounted `room:*:video` topic |
 | **Licensing** | MIT — the repo had been public since 2026-08-02 with no licence, i.e. all rights reserved |

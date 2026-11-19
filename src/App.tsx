@@ -36,6 +36,8 @@ export default function App() {
       <Route path="/visit" element={<Visit />} />
       <Route element={<AppShell />}>
         <Route path="/" element={<Home />} />
+        {/* Only opens the login dialog — the way out of a display (#63). */}
+        <Route path="/login" element={null} />
         <Route path="/services" element={<Services />} />
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/dashboards" element={<Dashboards />} />

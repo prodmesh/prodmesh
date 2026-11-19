@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppShell } from './AppShell';
+import { emitTopic } from '../test/fakeEventSource';
 import type { AuthStatus } from '../api';
 
 const api = vi.hoisted(() => ({
@@ -220,6 +221,73 @@ describe('room-only station', () => {
     expect(await screen.findByText('Users page content')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Dashboards' })).toHaveAttribute('href', '/dashboards');
+  });
+});
+
+describe('a display station (#63)', () => {
+  // Not room-locked: picking a display is enough on its own.
+  const display = {
+    id: 'station-3', name: 'Foyer TV', campusId: 'north', roomId: 'north-main',
+    roomOnly: false, viewId: 'v1', viewSlug: 'lobby',
+  };
+  const readOnly = { authenticated: false, admin: false, setupNeeded: false, user: null, permissions: [] };
+
+  function renderWithDisplay(path: string) {
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/display/:roomId/:key" element={<div>Display content</div>} />
+          <Route element={<AppShell />}>
+            <Route path="/" element={<div>Home content</div>} />
+            <Route path="/login" element={null} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  beforeEach(() => {
+    api.getAbout.mockResolvedValue({ version: '1.0.0' });
+    api.getConfig.mockResolvedValue({ name: 'Test Church', sites: [] });
+    api.getAuthStatus.mockResolvedValue({ ...readOnly, station: display });
+  });
+
+  it('opens its display without the room-lock box ticked', async () => {
+    renderWithDisplay('/');
+    expect(await screen.findByText('Display content')).toBeInTheDocument();
+  });
+
+  it('can be got out of at /login, since a display has no login button', async () => {
+    renderWithDisplay('/login');
+    expect(await screen.findByRole('heading', { name: 'Log in' })).toBeInTheDocument();
+    expect(screen.queryByText('Display content')).not.toBeInTheDocument();
+  });
+
+  it('cancelling the login goes back to the display', async () => {
+    renderWithDisplay('/login');
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: /cancel|close/i }));
+    expect(await screen.findByText('Display content')).toBeInTheDocument();
+  });
+
+  it('goes to its display when one is picked for it from another machine', async () => {
+    // Setting a screen up: register it, walk back to the booth, pick its
+    // display. Nobody should have to walk back and reload it.
+    const bare = { ...display, viewId: null, viewSlug: null };
+    api.getAuthStatus.mockResolvedValue({ ...readOnly, station: bare });
+    renderWithDisplay('/');
+    expect(await screen.findByText('Home content')).toBeInTheDocument();
+
+    api.getAuthStatus.mockResolvedValue({ ...readOnly, station: display });
+    await emitTopic({ 'station:station-3': { changedAt: 1 } });
+    expect(await screen.findByText('Display content')).toBeInTheDocument();
+  });
+
+  it('a station whose display was deleted is an ordinary browser again', async () => {
+    // The server's join reads a deleted view as no assignment.
+    api.getAuthStatus.mockResolvedValue({ ...readOnly, station: { ...display, viewId: null, viewSlug: null } });
+    renderWithDisplay('/');
+    expect(await screen.findByText('Home content')).toBeInTheDocument();
   });
 });
 
