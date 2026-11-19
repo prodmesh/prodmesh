@@ -4,6 +4,7 @@ import { SetupGate } from './layout/SetupGate';
 import { Home } from './pages/Home';
 import { Services } from './pages/Services';
 import { Calendar } from './pages/Calendar';
+import { Dashboards } from './pages/Dashboards';
 import { Analytics } from './pages/Analytics';
 import { RoomStatus } from './pages/RoomStatus';
 import { EventDetail } from './pages/EventDetail';
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/services" element={<Services />} />
         <Route path="/calendar" element={<Calendar />} />
+        <Route path="/dashboards" element={<Dashboards />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/admin" element={<Navigate to="/admin/general" replace />} />
         <Route path="/admin/general" element={<Settings section="general" />} />

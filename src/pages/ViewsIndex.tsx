@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { LayoutGrid, Monitor, Pencil, Plus } from 'lucide-react';
 import { createView, getRoom, getViews } from '../api';
@@ -10,6 +10,10 @@ import { useCan } from '../lib/identity';
 //
 // The stored object is a "view" everywhere in the code and the API; nobody
 // reading this screen ever sees that word. Two kinds, two headings.
+//
+// Two routes show the same list: /room/:id/views, reached from the room page,
+// and /dashboards, the sidebar's, which picks the room (#61). ViewsList is the
+// list; each route supplies its own heading.
 
 const KINDS = [
   {
@@ -37,8 +41,27 @@ const rowHref = (roomId: string, view: { kind: string; slug: string }) =>
 const slugify = (name: string) =>
   name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
 
+/** /room/:roomId/views — the list under its room's back link. */
 export function ViewsIndex() {
   const { roomId = '' } = useParams();
+  const roomQ = useQuery(roomKey(roomId), () => getRoom(roomId), { staleMs: 10 * 60_000 });
+  return (
+    <ViewsList
+      roomId={roomId}
+      head={(
+        <div className="pagehead">
+          <div>
+            {roomQ.data && <Link className="backlink" to={`/room/${roomId}`}>← {roomQ.data.name}</Link>}
+            <h1 className="pagehead__title">Dashboards &amp; displays</h1>
+          </div>
+        </div>
+      )}
+    />
+  );
+}
+
+/** One room's dashboards and displays, with create and edit. */
+export function ViewsList({ roomId, head }: { roomId: string; head: ReactNode }) {
   const navigate = useNavigate();
   const canEdit = useCan('views.edit');
   const [creating, setCreating] = useState<'dashboard' | 'display' | null>(null);
@@ -68,25 +91,23 @@ export function ViewsIndex() {
 
   if (viewsQ.error || roomQ.error) {
     return (
-      <div className="pagemsg">
-        <p>Room not found</p>
-        <Link className="backlink" to="/">← Quick Access</Link>
+      <div className="viewsindex">
+        {head}
+        <div className="pagemsg">
+          <p>Room not found</p>
+          <Link className="backlink" to="/">← Quick Access</Link>
+        </div>
       </div>
     );
   }
 
   const all = viewsQ.data?.views;
   const room = roomQ.data;
-  if (!all || !room) return <div className="pagemsg">Loading…</div>;
+  if (!all || !room) return <div className="viewsindex">{head}<div className="pagemsg">Loading…</div></div>;
 
   return (
     <div className="viewsindex">
-      <div className="pagehead">
-        <div>
-          <Link className="backlink" to={`/room/${roomId}`}>← {room.name}</Link>
-          <h1 className="pagehead__title">Dashboards &amp; displays</h1>
-        </div>
-      </div>
+      {head}
 
       {KINDS.map(({ kind, title, icon: Icon, empty, hint }) => {
         const list = all.filter((v) => v.kind === kind);
