@@ -772,6 +772,16 @@ The next release's scope is planned separately in [PLAN-1.5.md](./PLAN-1.5.md) â
    Companion presses are fire-and-forget with no dry-run. `room_connectivity`
    already being SQLite-owned and rebuilt in place (item 2) is the natural place
    to hang config history.
+10. **Booth machine metrics â€” a monitoring sidecar.** (Proposed,
+   [ADR 0021](decisions/0021-monitoring-sidecar.md).) CPU, memory, disk and
+   temperature graphs for the booth computers, kept in Prometheus in a separate
+   `prodmesh-monitor` sidecar, never in ProdMesh's SQLite. The sidecar turns
+   thresholds into conditions over `prodmesh-signals/1`, so ProdMesh stays the
+   only thing that decides what is an alert; Alertmanager is not used. 1.6 takes
+   three small pieces that are useful alone: ProdMesh's own `/metrics`, a
+   Grafana link on alert details, and a token-protected monitoring
+   configuration endpoint. The sidecar comes after 1.6; any cloud uplink
+   needs its own ADR and carries metrics only, never control.
 
 ## Deferred tech debt (known, low-risk)
 
