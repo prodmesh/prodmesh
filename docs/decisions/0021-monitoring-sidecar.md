@@ -2,7 +2,8 @@
 
 Status: **proposed** · 2026-11-25 · revisits the `prodmesh-watch` outcome of
 [0019](0019-signals-rules-and-actions.md) · first in-house source for
-[0020](0020-external-signal-sources.md)'s generic format
+[0020](0020-external-signal-sources.md)'s generic format · builds on
+[#60](https://github.com/prodmesh/prodmesh/issues/60)
 
 ## Context
 
@@ -111,12 +112,15 @@ independent implementations 0020 asks for before the format leaves draft.
   exporter address, bound room) and thresholds. Service token only (ADR
   0013's token, a new permission `monitoring.config`). It carries addresses
   and the names a church gave its machines, so it is never public.
-- **`GET /metrics`**: ProdMesh's own health in Prometheus text format. Event
-  loop delay (`perf_hooks.monitorEventLoopDelay`, the measure 0019's storm test
-  uses), connected stream clients, signal queue depth and drops, failures per
-  integration. **Off by default, service token only, labels by id never by
-  name**, so a scrape config shared in a forum does not publish a church's room
-  names. This is what you graph when ProdMesh itself is slow on a Sunday.
+- **`GET /metrics`**: ProdMesh's own health and its integrations' up/down and
+  response times, in Prometheus text format. Designed in
+  [#60](https://github.com/prodmesh/prodmesh/issues/60) and not restated here:
+  off by default, `metrics.read` service token, counters updated in place so a
+  scrape only formats numbers, bounded labels. The one addition this ADR makes
+  is that the sidecar's Prometheus is the expected scraper, so #60 is the first
+  half of this design, not a separate feature. Event loop delay
+  (`perf_hooks.monitorEventLoopDelay`, the measure 0019's storm test uses) is
+  the number to graph when ProdMesh itself is slow on a Sunday.
 
 Neither is part of `/api/v1`'s promised surface yet.
 
@@ -143,7 +147,8 @@ not an embed: plain http on the LAN is the normal case, and
 Three small pieces that cost little alone and make the sidecar an add-on rather
 than a rework:
 
-1. `/metrics` (section 4).
+1. `/metrics`, as #60 describes it (section 4). #60 is currently backlog
+   "until a church asks"; this ADR proposes pulling it into 1.6.
 2. A Grafana URL per device and the **Open graphs** link (section 5).
 3. `/api/monitoring/config` (section 4), with thresholds held in settings.
 

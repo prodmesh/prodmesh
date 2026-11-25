@@ -778,7 +778,7 @@ The next release's scope is planned separately in [PLAN-1.5.md](./PLAN-1.5.md) â
    `prodmesh-monitor` sidecar, never in ProdMesh's SQLite. The sidecar turns
    thresholds into conditions over `prodmesh-signals/1`, so ProdMesh stays the
    only thing that decides what is an alert; Alertmanager is not used. 1.6 takes
-   three small pieces that are useful alone: ProdMesh's own `/metrics`, a
+   three small pieces that are useful alone: ProdMesh's own `/metrics` (#60), a
    Grafana link on alert details, and a token-protected monitoring
    configuration endpoint. The sidecar comes after 1.6; any cloud uplink
    needs its own ADR and carries metrics only, never control.
