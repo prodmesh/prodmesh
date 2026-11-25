@@ -782,6 +782,16 @@ The next release's scope is planned separately in [PLAN-1.5.md](./PLAN-1.5.md) â
    Grafana link on alert details, and a token-protected monitoring
    configuration endpoint. The sidecar comes after 1.6; any cloud uplink
    needs its own ADR and carries metrics only, never control.
+11. **Telemetry, and the cloud behind it.** (Proposed,
+   [ADR 0022](decisions/0022-cloud-and-telemetry.md), #37, milestone 1.6.)
+   Opt-in, anonymous reports to the maintainer: version, host, ProdMesh's own
+   resource use, bucketed configuration shape, integration product versions,
+   scrubbed bug groups from `unexpected()`, and unclean exits. Daily, never
+   during a live show, a bounded queue that drops. A random `telemetryId`, never
+   the system id. Cloud is AWS serverless with no fixed-cost services, in a
+   separate `prodmesh/cloud` repo. A later **cloud link** (tenant accounts, the
+   mobile app) is a separate channel: it treats the cloud as a federation peer
+   whose users are visitors under ADR 0018's rules, read-only first.
 
 ## Deferred tech debt (known, low-risk)
 
