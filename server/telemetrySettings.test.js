@@ -81,3 +81,20 @@ test('the environment cannot turn it on', () => {
     delete process.env.PRODMESH_TELEMETRY;
   }
 });
+
+test('the preview is the real report, valid, and needs config.manage', async () => {
+  const preview = (auth) => fetch(`${base}/api/system/telemetry/preview`, { headers: auth ? { Authorization: `Bearer ${auth}` } : {} });
+  assert.equal((await preview(null)).status, 401);
+  const body = await (await preview(token)).json();
+  assert.equal(body.report.schema, 'prodmesh-telemetry/1');
+  assert.deepEqual(body.problems, []);
+});
+
+test('resetting the id needs config.manage and changes what the next report carries', async () => {
+  const before = (await (await fetch(`${base}/api/system/telemetry/preview`, { headers: { Authorization: `Bearer ${token}` } })).json()).report.telemetryId;
+  const reset = (auth) => fetch(`${base}/api/system/telemetry/reset-id`, { method: 'POST', headers: auth ? { Authorization: `Bearer ${auth}` } : {} });
+  assert.equal((await reset(null)).status, 401);
+  assert.equal((await reset(token)).status, 200);
+  const after = (await (await fetch(`${base}/api/system/telemetry/preview`, { headers: { Authorization: `Bearer ${token}` } })).json()).report.telemetryId;
+  assert.notEqual(after, before);
+});

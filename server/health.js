@@ -101,6 +101,13 @@ export function outage(err, key) {
 
 export const isOutage = (err) => Boolean(err?.outage);
 
+const unexpectedListeners = new Set();
+/** Hear every bug (never an outage): fn(where, err, now). The telemetry collector. */
+export function onUnexpected(fn) {
+  unexpectedListeners.add(fn);
+  return () => unexpectedListeners.delete(fn);
+}
+
 const UNEXPECTED_EVERY_MS = 60_000;
 const unexpectedSeen = new Map(); // `${where}|${message}` → when it was last logged
 
@@ -111,6 +118,10 @@ const unexpectedSeen = new Map(); // `${where}|${message}` → when it was last 
  */
 export function unexpected(where, err, now = Date.now()) {
   if (isOutage(err)) return false;
+  // Every occurrence, before the log throttle: telemetry counts what the log
+  // only samples. A listener that throws is dropped silently rather than
+  // reported here, which would recurse.
+  for (const fn of unexpectedListeners) { try { fn(where, err, now); } catch { /* never the caller's problem */ } }
   const key = `${where}|${err?.message ?? err}`;
   const last = unexpectedSeen.get(key);
   if (last != null && now - last < UNEXPECTED_EVERY_MS) return false;

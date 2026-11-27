@@ -165,6 +165,15 @@ long numbers replaced by placeholders, and are cut at 200 characters. A
 message like `Unexpected token in JSON at position 41: {"name":"…"}` keeps
 its shape and loses its contents.
 
+A second layer, added in implementation, catches names written as plain words,
+which no pattern can: the collector knows this server's own configuration, so
+the church's, the server's, every campus's and room's (id and name), and every
+local user's username and display name are replaced with `<name>` before an
+error is kept. `where` labels are cut to their first word, because several
+carry a room id (`autostart ${roomId}`). Integration names come from a fixed
+allowlist, not from health keys, because a linked server's key is
+`peer:<its system id>`.
+
 The fingerprint is a hash of `where`, the error name and the top scrubbed
 frames, so the same bug groups together across installs and versions, and a
 new fingerprint on a new version is the signal that a release introduced
@@ -318,11 +327,14 @@ Client, in this repo:
    the collector's output validates against the schema; a fixture full of
    addresses, names and absolute paths comes out of the scrubber clean; the
    queue stays bounded after a simulated month offline; nothing sends while a
-   show is live.
-3. `unexpected()` and the fatal handler feed the collector.
+   show is live. **Collector, scrubber and schema done**, with the leak test
+   using the live demo configuration as its oracle; the queue and the
+   live-show rule belong with the sender (step 4).
+3. `unexpected()` and the fatal handler feed the collector. **Done.**
 4. Sender, signing, backoff, the `410` stop.
 5. Admin → System → Telemetry, first-run question, the post-update prompt.
 6. `docs/TELEMETRY.md`, field by field, checked by a test against the schema.
+   **Done**, along with *What is sent* and *Reset ID* from step 5.
 
 Cloud, in `prodmesh/cloud`:
 

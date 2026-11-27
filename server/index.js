@@ -54,6 +54,7 @@ import * as branding from './branding.js';
 import * as settings from './settings.js';
 import * as auth from './authStore.js';
 import * as lifecycle from './lifecycle.js';
+import * as telemetry from './telemetry/collector.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -182,6 +183,8 @@ if (existsSync(distDir)) {
 export function start(port = PORT) {
   // First, so a crash anywhere below is on record for the next boot (ADR 0022).
   lifecycle.begin({ version: deployment.getVersion().version });
+  // Gathers in memory whatever the switch says; only sending is switched.
+  telemetry.start();
   // Before anything can emit: restored shows, first health reports.
   startMonitoring();
   show.restoreShows().catch(() => {}); // resume any show that was active before restart

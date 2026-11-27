@@ -20,6 +20,8 @@ import * as backup from '../backup.js';
 import * as identity from '../identity.js';
 import * as discovery from '../discovery.js';
 import * as lifecycle from '../lifecycle.js';
+import * as telemetry from '../telemetry/collector.js';
+import { validate as validateReport } from '../telemetry/schema.js';
 import { requirePermission, auditSuccess } from '../httpAuth.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -71,6 +73,22 @@ router.put('/api/system/telemetry', requirePermission('config.manage'), (req, re
   } catch (err) {
     res.status(400).json({ error: String(err.message ?? err) });
   }
+});
+
+// The report this server would send next, built by the same code that will
+// send it, so an admin reads the real thing rather than a description of it.
+// `problems` is the schema's verdict, and should always be empty: a non-empty
+// list is a scrubber bug, which the sender will refuse to send.
+router.get('/api/system/telemetry/preview', requirePermission('config.manage'), (_req, res) => {
+  const report = telemetry.buildReport();
+  res.json({ report, problems: validateReport(report) });
+});
+
+// A new telemetry id: reports from here on cannot be joined to earlier ones.
+router.post('/api/system/telemetry/reset-id', requirePermission('config.manage'), (req, res) => {
+  telemetry.resetTelemetryId();
+  auditSuccess(req, 'config.manage', { resourceType: 'telemetry', details: { action: 'reset-id' } });
+  res.json({ ok: true });
 });
 
 // Shows recorded before label-stamping existed (or while PC was unreachable)

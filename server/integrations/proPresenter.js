@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { outage, report } from '../health.js';
+import { noteProductVersion } from '../telemetry/versions.js';
 
 const DEFAULT_PORT = 62202;
 
@@ -300,6 +301,9 @@ export async function readPlaylistItems(pp, signal, plan = null) {
  */
 export async function ping(pp, signal) {
   const v = await ppGet(pp, '/version', signal);
+  // host_description is "ProPresenter 21.1"; the collector keeps the digits
+  // only, never `name`, which is the booth Mac's own (ADR 0022 §4).
+  noteProductVersion('proPresenter', v.host_description);
   return [v.host_description, v.name].filter(Boolean).join(' · ');
 }
 

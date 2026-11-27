@@ -176,6 +176,9 @@ function report(previous) {
   if (previous.fatal?.stack) console.warn(previous.fatal.stack);
 }
 
+/** What the last run left behind, as begin() found it; null for none. Telemetry scrubs it. */
+export const previousRun = () => state?.previous ?? null;
+
 /**
  * For Admin and, later, telemetry. Messages and stacks are the box's own and
  * stay on it; telemetry scrubs before anything leaves (ADR 0022 §4).

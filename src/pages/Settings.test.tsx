@@ -10,6 +10,8 @@ const api = vi.hoisted(() => ({
   getSystemIdentity: vi.fn(),
   setSystemName: vi.fn(),
   getTelemetry: vi.fn(),
+  getTelemetryPreview: vi.fn(),
+  resetTelemetryId: vi.fn(),
   setTelemetryEnabled: vi.fn(),
   triggerUpdate: vi.fn(),
   getUserDirectory: vi.fn(),
@@ -478,6 +480,32 @@ describe('Crash reporting', () => {
     render(<DiagnosticsPanel />);
     expect(await screen.findByText('PRODMESH_TELEMETRY=off')).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /Share anonymous crash reports/ })).toBeDisabled();
+  });
+
+  it('shows the exact next report on request, and flags one the schema refuses', async () => {
+    api.getTelemetry.mockResolvedValue(state);
+    api.getTelemetryPreview.mockResolvedValue({ report: { schema: 'prodmesh-telemetry/1', errors: [] }, problems: [] });
+    const user = userEvent.setup();
+    render(<DiagnosticsPanel />);
+    await user.click(await screen.findByRole('button', { name: 'What is sent' }));
+    expect(await screen.findByTestId('telemetry-preview')).toHaveTextContent('"schema": "prodmesh-telemetry/1"');
+    expect(screen.queryByText(/Not sendable/)).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Hide' }));
+    expect(screen.queryByTestId('telemetry-preview')).toBeNull();
+
+    api.getTelemetryPreview.mockResolvedValue({ report: {}, problems: ['errors[0].message: still looks like an address'] });
+    await user.click(screen.getByRole('button', { name: 'What is sent' }));
+    expect(await screen.findByText(/Not sendable: errors\[0\]\.message/)).toBeInTheDocument();
+  });
+
+  it('resets the telemetry id', async () => {
+    api.getTelemetry.mockResolvedValue(state);
+    api.resetTelemetryId.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<DiagnosticsPanel />);
+    await user.click(await screen.findByRole('button', { name: 'Reset ID' }));
+    expect(api.resetTelemetryId).toHaveBeenCalled();
+    expect(await screen.findByText('ID reset.')).toBeInTheDocument();
   });
 
   it("shows this server's own record of unexpected stops, reporting or not", async () => {

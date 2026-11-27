@@ -30,6 +30,9 @@ import {
   getTelemetry,
   setTelemetryEnabled,
   type TelemetryState,
+  type TelemetryPreview,
+  getTelemetryPreview,
+  resetTelemetryId,
   type SystemIdentity,
   triggerUpdate,
   getChecklistTemplates,
@@ -1634,6 +1637,19 @@ export function DiagnosticsPanel() {
     finally { setBusy(false); }
   };
 
+  const [preview, setPreview] = useState<TelemetryPreview | null>(null);
+  const showPreview = async () => {
+    if (preview) return setPreview(null);
+    try { setPreview(await getTelemetryPreview()); } catch (err) { setMsg(fail(err)); }
+  };
+  const resetId = async () => {
+    try {
+      await resetTelemetryId();
+      setMsg(ok('ID reset.'));
+      if (preview) setPreview(await getTelemetryPreview());
+    } catch (err) { setMsg(fail(err)); }
+  };
+
   const life = state?.lifecycle;
   const last = life?.lastUnclean;
   return (
@@ -1653,6 +1669,25 @@ export function DiagnosticsPanel() {
           Delete this line with it, so the switch never claims to do something
           it does not. */}
       {state?.enabled && <div className="settings__muted">Not sending yet. Reports start in a later update.</div>}
+
+      <div className="panel__row">
+        <div>
+          <div className="panel__label">Next report
+            <HelpTip text="Exactly what would be sent, built by the code that sends it. Resetting the ID means later reports cannot be linked to earlier ones." />
+          </div>
+        </div>
+        <div className="panel__controls">
+          <button className="btn" onClick={showPreview}>{preview ? 'Hide' : 'What is sent'}</button>
+          <button className="btn" onClick={resetId}>Reset ID</button>
+        </div>
+      </div>
+      {/* A non-empty list is a scrubber bug the sender would refuse to send;
+          shown rather than hidden, because the admin reading this is exactly
+          the person who should know. */}
+      {preview && preview.problems.length > 0 && (
+        <div className="settings__error">Not sendable: {preview.problems.join('; ')}</div>
+      )}
+      {preview && <pre className="logview__pre" data-testid="telemetry-preview">{JSON.stringify(preview.report, null, 2)}</pre>}
       <Msg msg={msg} />
 
       {life && (

@@ -243,6 +243,9 @@ export function openStream(req, res) {
   });
 }
 
+/** Open event streams right now: one per connected screen. */
+export const clientCount = () => subscriberTopics.size;
+
 /** Test hook: drop all subscribers, retained values and registrations. */
 export function reset() {
   registry.length = 0;

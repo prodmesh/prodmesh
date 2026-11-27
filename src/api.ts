@@ -833,6 +833,19 @@ export async function setTelemetryEnabled(enabled: boolean): Promise<TelemetrySt
   return res.json() as Promise<TelemetryState>;
 }
 
+/** The next report, exactly as it would be sent, and the schema's verdict on it. */
+export interface TelemetryPreview {
+  report: Record<string, unknown>;
+  problems: string[];
+}
+
+export const getTelemetryPreview = () => getJson<TelemetryPreview>('/api/system/telemetry/preview');
+
+export async function resetTelemetryId(): Promise<void> {
+  const res = await fetch('/api/system/telemetry/reset-id', { method: 'POST', headers: requestHeaders() });
+  await requireOk(res);
+}
+
 // Institution topology (name, sites, Quick Access tiles) — server-owned per
 // ADR 0009; the Admin → Campuses editor saves the whole tree transactionally.
 export const getConfig = () => getJson<Church>('/api/config');
