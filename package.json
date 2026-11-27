@@ -12,7 +12,7 @@
     "start": "NODE_ENV=production node server/index.js",
     "update": "bash deploy/update.sh",
     "test": "npm run test:server && npm run test:ui",
-    "test:server": "node --test server/ desktop/connect.test.mjs",
+    "test:server": "node server/tools/run-tests.js desktop/connect.test.mjs",
     "test:ui": "vitest run",
     "test:ui:watch": "vitest",
     "lint": "oxlint",
