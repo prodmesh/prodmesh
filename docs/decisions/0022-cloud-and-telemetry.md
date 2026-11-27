@@ -385,9 +385,23 @@ Sunday, before it is offered to anyone else.
   ProdMesh, has to work on installs that never run the sidecar, and is
   smaller than the sidecar's own release train.
 
+## Decided since
+
+- **The endpoint is `https://telemetry.cloud.prodmesh.io/v1/reports`**, in
+  `us-east-1`. `prodmesh.io` stays registered at Cloudflare, and
+  `cloud.prodmesh.io` is delegated to Route 53 as the cloud's own zone, so
+  later services get names there without touching the parent.
+- **Raw reports go to S3 from the ingest function, not through Firehose.** At
+  one report per install per day there is nothing to batch, and the function
+  holds the exact signed bytes, which are the more useful thing to keep.
+- **The account uses a project spend limit**, AWS's hard cap. When it is hit
+  the project pauses, which an installation reads as an outage and handles
+  the way it handles being offline: it keeps its queue and retries.
+- `DEFAULT_ENDPOINT` stays null until the endpoint answers, so opted-in
+  servers do not spend their days retrying a name that does not resolve.
+
 ## Not decided here
 
-- **The domain** and the region.
 - **Control from the cloud**, beyond a read-only first release (§7).
 - **The tenant store,** and anything about accounts, billing or pricing.
 - **Retention beyond the slice:** 13 months raw and 90 days of install
