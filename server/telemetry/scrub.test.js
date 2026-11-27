@@ -122,6 +122,18 @@ test('the fingerprint ignores line numbers and install location, not the code pa
   assert.match(a, /^[0-9a-f]{16}$/);
 });
 
+test('the same bug reached two ways is one group: Node and dependency frames do not count', () => {
+  const ours = ['parsePlan (server/pc.js:212:3)', 'run (server/show.js:9:1)'];
+  const fromTimer = [...ours, 'listOnTimeout (node:internal/timers:581:17)', 'process.processTimers (node:internal/timers:519:7)'];
+  const afterAwait = [...ours, 'process.processTicksAndRejections (node:internal/process/task_queues:95:5)', 'Layer.handle (node_modules/express/lib/router/layer.js:95:5)'];
+  assert.equal(fingerprint('show', 'TypeError', fromTimer), fingerprint('show', 'TypeError', afterAwait));
+  // With none of our frames at all, the others are all there is.
+  assert.notEqual(
+    fingerprint('show', 'TypeError', ['a (node:internal/x:1:1)']),
+    fingerprint('show', 'TypeError', ['b (node:internal/y:1:1)']),
+  );
+});
+
 test('scrubError accepts anything that was thrown', () => {
   const e = scrubError('a string thrown from 192.0.2.1', 'watching grace-north-main');
   assert.equal(e.where, 'watching');

@@ -808,6 +808,19 @@ export interface TelemetryState {
   decidedAt: number | null;
   /** PRODMESH_TELEMETRY=off: decided by the server's environment, not Admin. */
   lockedOff: boolean;
+  /** The sender's state. Absent from older servers. */
+  sending?: {
+    /** False until the receiving end exists: nothing can be sent. */
+    endpoint: boolean;
+    lastSentAt: number | null;
+    lastAttemptAt: number | null;
+    lastResult: 'sent' | 'rejected' | 'refused' | 'stopped' | 'failed' | null;
+    lastError: string | null;
+    backoffUntil: number | null;
+    queued: boolean;
+    /** The receiving end no longer accepts this version's reports. */
+    stopped: boolean;
+  };
   lifecycle: {
     since: number;
     boots: number;

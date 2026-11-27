@@ -55,6 +55,7 @@ import * as settings from './settings.js';
 import * as auth from './authStore.js';
 import * as lifecycle from './lifecycle.js';
 import * as telemetry from './telemetry/collector.js';
+import * as telemetrySender from './telemetry/sender.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -185,6 +186,8 @@ export function start(port = PORT) {
   lifecycle.begin({ version: deployment.getVersion().version });
   // Gathers in memory whatever the switch says; only sending is switched.
   telemetry.start();
+  // Sends only if switched on and an endpoint exists, and never during a show.
+  telemetrySender.start({ showLive: () => show.activeInstanceIds().length > 0 });
   // Before anything can emit: restored shows, first health reports.
   startMonitoring();
   show.restoreShows().catch(() => {}); // resume any show that was active before restart

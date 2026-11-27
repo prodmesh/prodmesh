@@ -331,7 +331,13 @@ Client, in this repo:
    using the live demo configuration as its oracle; the queue and the
    live-show rule belong with the sender (step 4).
 3. `unexpected()` and the fatal handler feed the collector. **Done.**
-4. Sender, signing, backoff, the `410` stop.
+4. Sender, signing, backoff, the `410` stop. **Done** (`server/telemetry/sender.js`),
+   with the queue and the live-show rule, but **no endpoint**: `DEFAULT_ENDPOINT`
+   is null until the domain is chosen, so nothing is sent. Two changes found
+   in the building: a fingerprint counts only ProdMesh's own frames (Node's
+   below them differ by how the code was reached, which split one bug into
+   several groups), and a report sheds frames, then its rarest errors, to
+   stay under 64 KB rather than be refused.
 5. Admin → System → Telemetry, first-run question, the post-update prompt.
 6. `docs/TELEMETRY.md`, field by field, checked by a test against the schema.
    **Done**, along with *What is sent* and *Reset ID* from step 5.

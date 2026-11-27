@@ -475,6 +475,23 @@ describe('Crash reporting', () => {
     expect(screen.getByText(/Not sending yet/)).toBeInTheDocument();
   });
 
+  it('says what the sender last did, once there is somewhere to send', async () => {
+    const sending = { endpoint: true, lastSentAt: Date.UTC(2026, 10, 20, 14), lastAttemptAt: null, lastResult: 'sent' as const, lastError: null, backoffUntil: null, queued: false, stopped: false };
+    api.getTelemetry.mockResolvedValue({ ...state, enabled: true, sending });
+    const { unmount } = render(<DiagnosticsPanel />);
+    expect(await screen.findByText(/^Last sent /)).toBeInTheDocument();
+    unmount();
+
+    api.getTelemetry.mockResolvedValue({ ...state, enabled: true, sending: { ...sending, lastResult: 'failed' as const, lastError: '503' } });
+    const second = render(<DiagnosticsPanel />);
+    expect(await screen.findByText('Last attempt failed (503). Retrying.')).toBeInTheDocument();
+    second.unmount();
+
+    api.getTelemetry.mockResolvedValue({ ...state, enabled: true, sending: { ...sending, stopped: true } });
+    render(<DiagnosticsPanel />);
+    expect(await screen.findByText(/^Stopped\./)).toBeInTheDocument();
+  });
+
   it('cannot be switched on where the server has it locked off', async () => {
     api.getTelemetry.mockResolvedValue({ ...state, lockedOff: true });
     render(<DiagnosticsPanel />);

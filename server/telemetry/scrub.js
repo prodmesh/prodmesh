@@ -29,7 +29,7 @@ import { dirname, join } from 'node:path';
 
 export const MESSAGE_MAX = 200;
 export const FRAMES_MAX = 20;
-const FINGERPRINT_FRAMES = 5;
+const FINGERPRINT_FRAMES = 3;
 
 /** The install root, with forward slashes: what a frame is made relative to. */
 export const INSTALL_ROOT = slashes(join(dirname(fileURLToPath(import.meta.url)), '..', '..'));
@@ -127,10 +127,16 @@ export function scrubStack(stack, root = INSTALL_ROOT) {
 
 /**
  * The same bug on any install and any version: where, what, and the top
- * frames WITHOUT line and column, which move with every edit to the file.
+ * three of OUR frames, without line and column, which move with every edit
+ * to the file.
  */
 export function fingerprint(where, name, frames) {
-  const top = frames.slice(0, FINGERPRINT_FRAMES).map((f) => f.replace(/:\d+:\d+(?=\)?$)/, ''));
+  // Our own frames only, when there are any. Node's internals and a
+  // dependency's below them depend on HOW the code was reached (straight from
+  // a timer, or after an await), so including them splits one bug into
+  // several groups.
+  const own = frames.filter((f) => !/(?:^|\()(?:node:|native|<external>|<anonymous>|node_modules\/)/.test(f));
+  const top = (own.length ? own : frames).slice(0, FINGERPRINT_FRAMES).map((f) => f.replace(/:\d+:\d+(?=\)?$)/, ''));
   return crypto.createHash('sha256').update([where, name, ...top].join('\n')).digest('hex').slice(0, 16);
 }
 

@@ -23,10 +23,9 @@
 import crypto from 'node:crypto';
 import os from 'node:os';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
-import { mkdirSync, readFileSync, statSync, statfsSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, statSync, statfsSync, existsSync, writeFileSync, renameSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { DATA_DIR, getDb } from '../db.js';
-import { writeJsonAtomic } from '../atomicFile.js';
 import * as health from '../health.js';
 import * as deployment from '../deployment.js';
 import * as lifecycle from '../lifecycle.js';
@@ -161,7 +160,13 @@ export function start() {
 export function takeWindow(now = Date.now()) {
   window = newWindow(now);
   loopDelay?.reset();
+  bootReported = true;
 }
+
+// This process's start, and how the run before it ended, belong to the first
+// report after boot and no other: a server up for a week would otherwise
+// report the same crash seven times.
+let bootReported = false;
 
 // ── The telemetry id (ADR 0022 §1, §6) ───────────────────────────────────────
 // Random, not the system id (which mDNS broadcasts and every peer holds), and
@@ -170,20 +175,58 @@ export function takeWindow(now = Date.now()) {
 
 const ID_FILE = () => join(DATA_DIR, 'telemetry', 'id.json');
 
-export function telemetryId() {
-  try {
-    const id = JSON.parse(readFileSync(ID_FILE(), 'utf8')).id;
-    if (typeof id === 'string' && id.length === 36) return id;
-  } catch { /* none yet */ }
-  return resetTelemetryId();
+// The id and its Ed25519 signing key live in one file and are replaced
+// together: a fresh id with the old key would still be linkable through the
+// key. The file holds a private key, so it is written 0600 from the start,
+// through a temp file created with that mode, never chmod-ed after the fact.
+function writeIdentity(value) {
+  const file = ID_FILE();
+  mkdirSync(join(DATA_DIR, 'telemetry'), { recursive: true });
+  const tmp = `${file}.tmp`;
+  try { unlinkSync(tmp); } catch { /* none */ }
+  writeFileSync(tmp, JSON.stringify(value, null, 2), { mode: 0o600 });
+  renameSync(tmp, file);
 }
 
-/** A new id: from here on, reports cannot be joined to earlier ones. */
+function newKey() {
+  return crypto.generateKeyPairSync('ed25519').privateKey.export({ type: 'pkcs8', format: 'pem' });
+}
+
+let identityCache = null;
+
+function ownIdentity() {
+  if (identityCache) return identityCache;
+  let stored = null;
+  try { stored = JSON.parse(readFileSync(ID_FILE(), 'utf8')); } catch { /* none yet */ }
+  if (typeof stored?.id !== 'string' || stored.id.length !== 36) return makeIdentity();
+  if (typeof stored.privateKey !== 'string') {
+    // An id from before signing existed: keep the id, add its key.
+    stored = { ...stored, privateKey: newKey() };
+    writeIdentity(stored);
+  }
+  const privateKey = crypto.createPrivateKey(stored.privateKey);
+  identityCache = {
+    id: stored.id,
+    privateKey,
+    publicKey: crypto.createPublicKey(privateKey).export({ type: 'spki', format: 'der' }).toString('base64'),
+  };
+  return identityCache;
+}
+
+function makeIdentity() {
+  writeIdentity({ id: crypto.randomUUID(), createdAt: Date.now(), privateKey: newKey() });
+  identityCache = null;
+  return ownIdentity();
+}
+
+export const telemetryId = () => ownIdentity().id;
+
+/** The id, its signing key, and the public half the receiving end pins to it. */
+export const telemetryIdentity = () => ownIdentity();
+
+/** A new id and key: from here on, reports cannot be joined to earlier ones. */
 export function resetTelemetryId() {
-  const id = crypto.randomUUID();
-  mkdirSync(join(DATA_DIR, 'telemetry'), { recursive: true });
-  writeJsonAtomic(ID_FILE(), { id, createdAt: Date.now() });
-  return id;
+  return makeIdentity().id;
 }
 
 // ── Building a report ────────────────────────────────────────────────────────
@@ -299,7 +342,7 @@ const minute = (t) => Math.floor(t / 60_000) * 60_000;
  * be called for a preview as often as anyone likes.
  */
 export function buildReport({ now = Date.now(), seq = 0 } = {}) {
-  const previous = previousRun();
+  const previous = bootReported ? null : previousRun();
   return {
     schema: SCHEMA_ID,
     telemetryId: telemetryId(),
@@ -315,7 +358,7 @@ export function buildReport({ now = Date.now(), seq = 0 } = {}) {
     errors: [...window.errors.values()].map((e) => ({ ...e, firstSeen: minute(e.firstSeen), lastSeen: minute(e.lastSeen) })),
     errorsDropped: window.errorsDropped,
     lifecycle: {
-      boots: 1,
+      boots: bootReported ? 0 : 1,
       uncleanExits: previous && !previous.endedCleanly ? 1 : 0,
       previous,
     },
@@ -323,8 +366,10 @@ export function buildReport({ now = Date.now(), seq = 0 } = {}) {
 }
 
 /** Tests only. */
-export function _resetForTests(now = Date.now()) {
+export function _resetForTests(now = Date.now(), { bootReported: reported = false } = {}) {
   window = newWindow(now);
+  bootReported = reported;
+  identityCache = null;
   names = { at: 0, list: [] };
   clearVersions();
 }

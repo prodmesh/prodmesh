@@ -154,6 +154,16 @@ test('building a report changes nothing; taking the window starts a new one', ()
   assert.equal(collector.buildReport().errors.length, 0);
 });
 
+test('a boot and the crash before it are reported once, not in every window', () => {
+  collector._resetForTests();
+  assert.equal(collector.buildReport().lifecycle.boots, 1);
+  assert.notEqual(collector.buildReport().lifecycle.previous, null);
+  collector.takeWindow();
+  const next = collector.buildReport().lifecycle;
+  assert.deepEqual(next, { boots: 0, uncleanExits: 0, previous: null });
+  collector._resetForTests();
+});
+
 test('the telemetry id is random, stable, resettable, and not in backups', () => {
   const id = collector.telemetryId();
   assert.match(id, /^[0-9a-f-]{36}$/);

@@ -11,7 +11,23 @@ which rejects any report with a field not described here, and a test fails if a
 field is added there without being added here. The design and its reasons are
 [ADR 0022](decisions/0022-cloud-and-telemetry.md).
 
-> **Status:** reports are built and can be previewed. They are not sent yet.
+> **Status:** reports are built and can be previewed. The receiving end does
+> not exist yet, so nothing is sent.
+
+## When and how a report is sent
+
+- **Once a day**, at a minute of the day this server picks at random, so not
+  every church sends at once. Sooner for a bug not reported before, or after a
+  crash, but at most once an hour.
+- **Never while a show is live.** It waits until the service is over.
+- **Offline is normal.** Reports wait on disk and merge into one, so a server
+  offline for a month sends one report when it is back. That report stays
+  under 64 KB; past 50 kinds of error, the rest are counted, not listed.
+- **Signed** with a key this server makes for telemetry alone, so nobody else
+  can send reports under its id. Sent gzipped, over HTTPS only.
+- **Turning it off deletes** anything gathered and not yet sent.
+- The receiving end can say *later*, *rejected* or *no longer accepted from
+  this version*. Nothing it replies can make this server do anything else.
 
 ## What is never sent
 

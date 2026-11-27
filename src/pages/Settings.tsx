@@ -1623,6 +1623,19 @@ export function SystemPanel() {
  * stop is a crash, a power cut or a kill, and the log has the stack), so it
  * shows whether or not reporting is on.
  */
+/**
+ * One line on what the sender last did. The switch must never claim to do
+ * something it does not: until the receiving end exists, it says so.
+ */
+function sendingLine(sending: TelemetryState['sending']): string {
+  if (!sending?.endpoint) return 'Not sending yet. Reports start in a later update.';
+  if (sending.stopped) return 'Stopped. This version’s reports are no longer accepted; updating resumes them.';
+  const when = (t: number) => new Date(t).toLocaleString();
+  if (sending.lastResult === 'failed') return `Last attempt failed${sending.lastError ? ` (${sending.lastError})` : ''}. Retrying.`;
+  if (sending.lastSentAt) return `Last sent ${when(sending.lastSentAt)}.`;
+  return 'First report sends within a day.';
+}
+
 export function DiagnosticsPanel() {
   const [state, setState] = useState<TelemetryState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1665,10 +1678,7 @@ export function DiagnosticsPanel() {
         onChange={(e) => toggle(e.target.checked)}
       />
       {state?.lockedOff && <div className="settings__muted">Turned off on this server by <code>PRODMESH_TELEMETRY=off</code>.</div>}
-      {/* Transitional: the sender lands in a later step of ADR 0022's slice.
-          Delete this line with it, so the switch never claims to do something
-          it does not. */}
-      {state?.enabled && <div className="settings__muted">Not sending yet. Reports start in a later update.</div>}
+      {state?.enabled && <div className="settings__muted">{sendingLine(state.sending)}</div>}
 
       <div className="panel__row">
         <div>

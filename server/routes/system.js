@@ -21,6 +21,7 @@ import * as identity from '../identity.js';
 import * as discovery from '../discovery.js';
 import * as lifecycle from '../lifecycle.js';
 import * as telemetry from '../telemetry/collector.js';
+import * as telemetrySender from '../telemetry/sender.js';
 import { validate as validateReport } from '../telemetry/schema.js';
 import { requirePermission, auditSuccess } from '../httpAuth.js';
 
@@ -62,14 +63,16 @@ router.put('/api/system/identity', requirePermission('config.manage'), (req, res
 // Behind config.manage, not public like /api/system/version: the last error's
 // message is this box's own, and can name a file path or a device's reply.
 router.get('/api/system/telemetry', requirePermission('config.manage'), (_req, res) => {
-  res.json({ ...settings.getTelemetrySettings(), lifecycle: lifecycle.summary() });
+  res.json({ ...settings.getTelemetrySettings(), lifecycle: lifecycle.summary(), sending: telemetrySender.status() });
 });
 
 router.put('/api/system/telemetry', requirePermission('config.manage'), (req, res) => {
   try {
     const out = settings.setTelemetryEnabled(req.body?.enabled);
+    // Withdrawn consent covers what was already gathered and not yet sent.
+    if (!out.enabled) telemetrySender.forgetQueued();
     auditSuccess(req, 'config.manage', { resourceType: 'telemetry', details: { enabled: out.enabled } });
-    res.json({ ...out, lifecycle: lifecycle.summary() });
+    res.json({ ...out, lifecycle: lifecycle.summary(), sending: telemetrySender.status() });
   } catch (err) {
     res.status(400).json({ error: String(err.message ?? err) });
   }
