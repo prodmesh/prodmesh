@@ -801,6 +801,38 @@ export async function setSystemName(name: string): Promise<SystemIdentity> {
   return res.json() as Promise<SystemIdentity>;
 }
 
+/** Telemetry consent and this server's own run history (ADR 0022). */
+export interface TelemetryState {
+  enabled: boolean;
+  /** When an admin last chose, either way; null until someone has. */
+  decidedAt: number | null;
+  /** PRODMESH_TELEMETRY=off: decided by the server's environment, not Admin. */
+  lockedOff: boolean;
+  lifecycle: {
+    since: number;
+    boots: number;
+    uncleanExits: number;
+    lastUnclean: {
+      version: string;
+      lastAliveAt: number | null;
+      uptimeMs: number | null;
+      error: { name: string; message: string; origin: string } | null;
+    } | null;
+  } | null;
+}
+
+export const getTelemetry = () => getJson<TelemetryState>('/api/system/telemetry');
+
+export async function setTelemetryEnabled(enabled: boolean): Promise<TelemetryState> {
+  const res = await fetch('/api/system/telemetry', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...requestHeaders() },
+    body: JSON.stringify({ enabled }),
+  });
+  await requireOk(res);
+  return res.json() as Promise<TelemetryState>;
+}
+
 // Institution topology (name, sites, Quick Access tiles) — server-owned per
 // ADR 0009; the Admin → Campuses editor saves the whole tree transactionally.
 export const getConfig = () => getJson<Church>('/api/config');

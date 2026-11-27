@@ -3,12 +3,14 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { IdentityContext } from '../lib/identity';
-import { CampusesPanel, LogsPanel, RoomConfigPanel, StationsPanel, SystemPanel, TokensPanel, UserManagementPanel } from './Settings';
+import { CampusesPanel, DiagnosticsPanel, LogsPanel, RoomConfigPanel, StationsPanel, SystemPanel, TokensPanel, UserManagementPanel } from './Settings';
 
 const api = vi.hoisted(() => ({
   getVersion: vi.fn(),
   getSystemIdentity: vi.fn(),
   setSystemName: vi.fn(),
+  getTelemetry: vi.fn(),
+  setTelemetryEnabled: vi.fn(),
   triggerUpdate: vi.fn(),
   getUserDirectory: vi.fn(),
   createUser: vi.fn(),
@@ -444,6 +446,51 @@ describe('System', () => {
 
     expect(await screen.findByText(/1\.0\.0/)).toBeInTheDocument();
     expect(screen.queryByText('unknown')).not.toBeInTheDocument();
+  });
+});
+
+describe('Crash reporting', () => {
+  const lifecycle = { since: Date.UTC(2026, 10, 1), boots: 14, uncleanExits: 2, lastUnclean: null };
+  const state = { enabled: false, decidedAt: null, lockedOff: false, lifecycle };
+
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('is off until an admin turns it on, and says plainly that nothing sends yet', async () => {
+    api.getTelemetry.mockResolvedValue(state);
+    api.setTelemetryEnabled.mockResolvedValue({ ...state, enabled: true, decidedAt: 1 });
+    const user = userEvent.setup();
+    render(<DiagnosticsPanel />);
+
+    const box = await screen.findByRole('checkbox', { name: /Share anonymous crash reports/ });
+    await waitFor(() => expect(box).toBeEnabled());
+    expect(box).not.toBeChecked();
+    expect(screen.queryByText(/Not sending yet/)).toBeNull();
+
+    await user.click(box);
+    expect(api.setTelemetryEnabled).toHaveBeenCalledWith(true);
+    expect(await screen.findByText('Saved.')).toBeInTheDocument();
+    expect(box).toBeChecked();
+    expect(screen.getByText(/Not sending yet/)).toBeInTheDocument();
+  });
+
+  it('cannot be switched on where the server has it locked off', async () => {
+    api.getTelemetry.mockResolvedValue({ ...state, lockedOff: true });
+    render(<DiagnosticsPanel />);
+    expect(await screen.findByText('PRODMESH_TELEMETRY=off')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /Share anonymous crash reports/ })).toBeDisabled();
+  });
+
+  it("shows this server's own record of unexpected stops, reporting or not", async () => {
+    api.getTelemetry.mockResolvedValue({
+      ...state,
+      lifecycle: {
+        ...lifecycle,
+        lastUnclean: { version: '1.6.0', lastAliveAt: Date.UTC(2026, 10, 22, 15), uptimeMs: 60_000, error: { name: 'TypeError', message: 'x is undefined', origin: 'uncaughtException' } },
+      },
+    });
+    render(<DiagnosticsPanel />);
+    expect(await screen.findByText(/2 of 14 starts since/)).toBeInTheDocument();
+    expect(screen.getByText(/v1\.6\.0 · TypeError: x is undefined/)).toBeInTheDocument();
   });
 });
 

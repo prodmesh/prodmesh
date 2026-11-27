@@ -27,6 +27,9 @@ import {
   getVersion,
   getSystemIdentity,
   setSystemName,
+  getTelemetry,
+  setTelemetryEnabled,
+  type TelemetryState,
   type SystemIdentity,
   triggerUpdate,
   getChecklistTemplates,
@@ -186,7 +189,7 @@ function LoginForm({ onDone }: { onDone: () => void }) {
 function AdminPanels({ section }: { section: AdminSection }) {
   return (
     <>
-      {section === 'general' && <><BrandingPanel /><SecurityPanel /><SystemPanel /></>}
+      {section === 'general' && <><BrandingPanel /><SecurityPanel /><SystemPanel /><DiagnosticsPanel /></>}
       {section === 'integrations' && <><IntegrationEnablePanel /><SecretsPanel /></>}
       {section === 'campuses' && <CampusesPanel />}
       {section === 'servers' && <LinkedServersPanel />}
@@ -1607,6 +1610,68 @@ export function SystemPanel() {
       <Msg msg={status} />
 
       <BackupRow />
+    </section>
+  );
+}
+
+/**
+ * Crash reporting (ADR 0022): the consent switch, and this server's own record
+ * of how its runs ended. The record is local and useful on its own (an unclean
+ * stop is a crash, a power cut or a kill, and the log has the stack), so it
+ * shows whether or not reporting is on.
+ */
+export function DiagnosticsPanel() {
+  const [state, setState] = useState<TelemetryState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<Feedback>(null);
+
+  useEffect(() => { getTelemetry().then(setState).catch((err) => setMsg(fail(err))); }, []);
+
+  const toggle = async (enabled: boolean) => {
+    setBusy(true); setMsg(null);
+    try { setState(await setTelemetryEnabled(enabled)); setMsg(ok('Saved.')); }
+    catch (err) { setMsg(fail(err)); }
+    finally { setBusy(false); }
+  };
+
+  const life = state?.lifecycle;
+  const last = life?.lastUnclean;
+  return (
+    <section className="panel">
+      <p className="section-label">Diagnostics</p>
+      <h2 className="panel__title">Crash reporting</h2>
+      <Checkbox
+        label={<>Share anonymous crash reports
+          <HelpTip text="Errors, crashes, version, operating system and resource use, sent to the ProdMesh developers. Never names, rooms, addresses, credentials or Planning Center data." />
+        </>}
+        checked={state?.enabled ?? false}
+        disabled={!state || busy || state.lockedOff}
+        onChange={(e) => toggle(e.target.checked)}
+      />
+      {state?.lockedOff && <div className="settings__muted">Turned off on this server by <code>PRODMESH_TELEMETRY=off</code>.</div>}
+      {/* Transitional: the sender lands in a later step of ADR 0022's slice.
+          Delete this line with it, so the switch never claims to do something
+          it does not. */}
+      {state?.enabled && <div className="settings__muted">Not sending yet. Reports start in a later update.</div>}
+      <Msg msg={msg} />
+
+      {life && (
+        <div className="panel__row">
+          <div>
+            <div className="panel__label">Unexpected stops
+              <HelpTip text="Starts that followed a crash, a power cut or a forced quit, rather than a normal shutdown or update. Admin → Logs has the details." />
+            </div>
+            <div className="settings__muted">
+              {life.uncleanExits} of {life.boots} starts since {new Date(life.since).toLocaleDateString()}
+            </div>
+            {last && (
+              <div className="settings__muted">
+                Last: {last.lastAliveAt ? new Date(last.lastAliveAt).toLocaleString() : 'time unknown'} · v{last.version} · {last.error ? `${last.error.name}: ${last.error.message}` : 'no error recorded'}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

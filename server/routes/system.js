@@ -19,6 +19,7 @@ import * as settings from '../settings.js';
 import * as backup from '../backup.js';
 import * as identity from '../identity.js';
 import * as discovery from '../discovery.js';
+import * as lifecycle from '../lifecycle.js';
 import { requirePermission, auditSuccess } from '../httpAuth.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -50,6 +51,23 @@ router.put('/api/system/identity', requirePermission('config.manage'), (req, res
     discovery.nameChanged(); // the advertised name, now rather than in a minute
     auditSuccess(req, 'config.manage', { resourceType: 'system-identity', details: { name: req.body?.name ?? '' } });
     res.json(identity.getIdentity());
+  } catch (err) {
+    res.status(400).json({ error: String(err.message ?? err) });
+  }
+});
+
+// ── Telemetry consent and this server's own run history (ADR 0022) ──────────
+// Behind config.manage, not public like /api/system/version: the last error's
+// message is this box's own, and can name a file path or a device's reply.
+router.get('/api/system/telemetry', requirePermission('config.manage'), (_req, res) => {
+  res.json({ ...settings.getTelemetrySettings(), lifecycle: lifecycle.summary() });
+});
+
+router.put('/api/system/telemetry', requirePermission('config.manage'), (req, res) => {
+  try {
+    const out = settings.setTelemetryEnabled(req.body?.enabled);
+    auditSuccess(req, 'config.manage', { resourceType: 'telemetry', details: { enabled: out.enabled } });
+    res.json({ ...out, lifecycle: lifecycle.summary() });
   } catch (err) {
     res.status(400).json({ error: String(err.message ?? err) });
   }

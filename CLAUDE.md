@@ -187,6 +187,7 @@ change as verified because CI is green — say which half was checked.
 | `PRODMESH_FEDERATION_PROBE_MS` | Peer liveness interval (default 60000). Tests shorten it. |
 | `PRODMESH_FEDERATION_DIGEST_MS` | Digest poll interval while someone watches a linked campus (default 10000). Tests shorten it. |
 | `PRODMESH_DISCOVERY` | `on`/`off`: advertise this server over mDNS (#56). Default on for production and the desktop app, off for `npm run dev`, so a laptop doesn't announce the church's name on whatever network it is on. |
+| `PRODMESH_TELEMETRY` | `off` turns crash reporting off and locks Admin's switch (ADR 0022). Only `off` is honoured: the environment can never turn reporting on. |
 | `PORT` | Serve port (default 8080). |
 
 ## Conventions

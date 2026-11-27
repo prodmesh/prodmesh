@@ -50,6 +50,10 @@ const DEFAULTS = {
   // Integrations start enabled so upgrading an existing install never hides a
   // working widget. A false entry is the only persisted override.
   integrations: {},
+  // Anonymous reports to the ProdMesh developers (ADR 0022). Off until an
+  // admin turns it on; `decidedAt` records that someone chose, so the
+  // one-time question is not asked again.
+  telemetry: { enabled: false, decidedAt: null },
 };
 
 export const INTEGRATION_IDS = [
@@ -185,6 +189,28 @@ export function setIntegrationEnabled(id, enabled) {
 export function getIntegrationSettings() {
   const overrides = load().integrations ?? {};
   return Object.fromEntries(INTEGRATION_IDS.map((id) => [id, overrides[id] !== false]));
+}
+
+// ── Telemetry consent (ADR 0022) ────────────────────────────────────────────
+// PRODMESH_TELEMETRY=off decides it for the whole install, for an organisation
+// that wants this settled by policy rather than by whoever holds the admin PIN.
+// Only "off" is honoured: an environment variable must never be a way to turn
+// reporting ON without anyone in Admin having chosen it.
+export const telemetryLockedOff = () => String(process.env.PRODMESH_TELEMETRY ?? '').toLowerCase() === 'off';
+
+export function getTelemetrySettings() {
+  const t = load().telemetry ?? DEFAULTS.telemetry;
+  const locked = telemetryLockedOff();
+  return { enabled: !locked && t.enabled === true, decidedAt: t.decidedAt ?? null, lockedOff: locked };
+}
+
+export function setTelemetryEnabled(enabled, now = Date.now()) {
+  if (typeof enabled !== 'boolean') throw new Error('Telemetry enabled must be true or false');
+  if (telemetryLockedOff()) throw new Error('Telemetry is turned off for this server by PRODMESH_TELEMETRY=off');
+  const s = load();
+  s.telemetry = { enabled, decidedAt: now };
+  persist();
+  return getTelemetrySettings();
 }
 
 // ── Public (safe) view for the Settings UI — never exposes hashes ─────────────

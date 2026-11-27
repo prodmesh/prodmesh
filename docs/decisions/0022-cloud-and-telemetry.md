@@ -310,7 +310,10 @@ whoever has the admin PIN.
 Client, in this repo:
 
 1. Unclean-exit marker and the fatal handlers (§5). Useful with telemetry
-   off; ships first.
+   off; ships first. **Done** (`server/lifecycle.js`), with the consent
+   switch from step 5 brought forward: Admin → General → *Crash reporting*
+   holds the switch and this server's own count of unexpected stops. The
+   first-run question and post-update prompt are still to come.
 2. `server/telemetry/`: collector, scrubber, schema, bounded queue. Tests:
    the collector's output validates against the schema; a fixture full of
    addresses, names and absolute paths comes out of the scrubber clean; the
