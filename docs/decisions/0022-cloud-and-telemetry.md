@@ -1,6 +1,6 @@
 # 0022 — The cloud, starting with telemetry
 
-Status: **proposed** · 2026-11-25 · implements
+Status: **accepted** · 2026-11-27 (proposed 2026-11-25) · implements
 [#37](https://github.com/prodmesh/prodmesh/issues/37) · second consumer of
 [0015](0015-events-and-alerts.md)'s outage/bug split · revisits
 [0021](0021-monitoring-sidecar.md) §7 for telemetry only · leaves room for
@@ -104,12 +104,18 @@ Budgets alarm at a low figure (say $10) and Lambda reserved concurrency (say
   `docs/TELEMETRY.md`, field by field. The promise "this is all we send" has
   to be readable by the church receiving the software, and checkable by a
   test against what the collector actually builds.
-- **Cloud: a new repository**, `prodmesh/cloud`, AWS CDK in TypeScript. It
-  vendors the schema at a named version. Separate because it deploys
-  separately and on a different cadence, and because its licence is a
-  decision of its own (as 0021 left the sidecar's): the open core does not
-  need the cloud's code to be open, and a hosted product might not want it
-  to be.
+- **Cloud: a private repository**,
+  [`prodmesh/cloud`](https://github.com/prodmesh/cloud), AWS CDK in
+  TypeScript, not open source. It vendors the schema at a named version.
+  Separate because it deploys separately and on a different cadence, and
+  private because the open core does not need the cloud's code to be open,
+  and a hosted product does not want it to be.
+
+  The boundary runs one way. The cloud repo may read anything here; this
+  repo carries only the **contract**: the payload schema, the endpoint's
+  path and status codes (§6), and, later, the cloud link's protocol. No
+  cloud source, infrastructure detail, account id or internal hostname is
+  ever copied into this repo, which is public and ships in every image.
 
 ### 4 · What is sent
 
@@ -245,11 +251,11 @@ control*.
   church's own visitor rules allow, and the church can turn that to nothing.
 - **What that means for *never control*.** Read-only access anywhere (a
   room's mode, the live show, the next event, open alerts: the digest of
-  0018) fits 0021 §7 as written. Pressing a button from a phone does not. The
-  recommendation is that the first mobile release is read-only, and that
-  control from the cloud, if it ever comes, arrives as a revision of 0021 §7
-  that a church opts into per permission through the visitor rules, not as a
-  side effect of the app existing.
+  0018) fits 0021 §7 as written. Pressing a button from a phone does not.
+  **The first mobile release is read-only.** Control from the cloud, if it
+  ever comes, arrives as a revision of 0021 §7 that a church opts into per
+  permission through the visitor rules, not as a side effect of the app
+  existing.
 - **Tenants.** A tenant is a church. Users are Cognito users belonging to
   tenants; an install belongs to at most one tenant. The tenant store is not
   chosen here: DynamoDB is enough for the slice, and whether accounts,
@@ -361,8 +367,7 @@ Sunday, before it is offered to anyone else.
 ## Not decided here
 
 - **The domain** and the region.
-- **The cloud repository's licence.**
-- **Control from the cloud**, beyond the recommendation in §7.
+- **Control from the cloud**, beyond a read-only first release (§7).
 - **The tenant store,** and anything about accounts, billing or pricing.
 - **Retention beyond the slice:** 13 months raw and 90 days of install
   silence are starting points.
