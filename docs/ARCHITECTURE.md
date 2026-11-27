@@ -174,12 +174,18 @@ Express server (server/)
 
 ## Testing & CI
 
-`npm test` runs both layers: `node --test` over `server/*.test.js` (pure
+`npm test` runs both layers: `node --test` over `server/**/*.test.js` (pure
 helpers, config validation, the settings/lock engine, the PC integration, the
 stream hub, and full API auth + lockout flows against mock-mode rooms — no
 Companion/PC needed) and Vitest + Testing Library over `src/**/*.test.tsx`. CI
 runs build + both + lint on push. See [TESTING.md](TESTING.md), and the section
 in CLAUDE.md on what green can and cannot certify.
+
+The server file list is built by `server/tools/run-tests.js` and passed to
+`node --test` as explicit paths. `node --test server/` recurses on Node 20 but
+runs `server/index.js` as a single passing "test" on Node 22+, and the runner
+fails the run if Node reports fewer tests than files, so that silent green
+cannot come back.
 
 ## Decisions
 

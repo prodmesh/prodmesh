@@ -5,7 +5,8 @@ at the lowest layer that can catch its likely regressions.
 
 ## Server tests
 
-`npm run test:server` runs Node's built-in test runner against the API,
+`npm run test:server` runs Node's built-in test runner (via
+`server/tools/run-tests.js`, which lists every `server/**/*.test.js`) against the API,
 integrations, authorization rules, persistence, and coordination logic. Use
 throwaway data directories and local fake servers; never depend on production
 credentials or live church equipment.
