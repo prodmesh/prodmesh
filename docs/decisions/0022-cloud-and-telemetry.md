@@ -388,15 +388,19 @@ Sunday, before it is offered to anyone else.
 ## Decided since
 
 - **The endpoint is `https://telemetry.cloud.prodmesh.io/v1/reports`**, in
-  `us-east-1`. `prodmesh.io` stays registered at Cloudflare, and
+  `us-east-2`. The account is an AWS "project" (AWS's new experience), and
+  its managed policies allow regional resources only in the project's own
+  Region. `prodmesh.io` stays registered at Cloudflare, and
   `cloud.prodmesh.io` is delegated to Route 53 as the cloud's own zone, so
   later services get names there without touching the parent.
 - **Raw reports go to S3 from the ingest function, not through Firehose.** At
   one report per install per day there is nothing to batch, and the function
   holds the exact signed bytes, which are the more useful thing to keep.
-- **The account uses a project spend limit**, AWS's hard cap. When it is hit
-  the project pauses, which an installation reads as an outage and handles
-  the way it handles being offline: it keeps its queue and retries.
+- **The account is meant to use a project spend limit**, AWS's hard cap,
+  which comes with the paid plan; the project starts on the Free plan. When
+  the limit is hit the project pauses, which an installation reads as an
+  outage and handles the way it handles being offline: it keeps its queue and
+  retries.
 - `DEFAULT_ENDPOINT` stays null until the endpoint answers, so opted-in
   servers do not spend their days retrying a name that does not resolve.
 
