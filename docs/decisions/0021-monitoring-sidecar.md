@@ -172,6 +172,10 @@ It needs its own ADR, which must meet federation's bar, not the LAN's:
   another site's devices*, and it is a position worth holding as a difference,
   not just a limit.
 
+Telemetry, the maintainer's anonymous reports about ProdMesh itself, does not
+take this path and validates TLS without pinning: see
+[0022](0022-cloud-and-telemetry.md) §6.
+
 ## Consequences
 
 - **ProdMesh's load still scales with rooms, not machines.** Adding the fifth

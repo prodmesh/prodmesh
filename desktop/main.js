@@ -70,6 +70,7 @@ let main = null; // the dashboard window, in either mode
 let statusWin = null; // server mode: where other screens point, and errors
 let chooser = null; // start.html
 let server = null;
+let serverModule = null; // ../server/index.js, once imported
 let state = { mode: 'choose', status: 'starting', port: PORT, error: null };
 
 // ── Where things live ────────────────────────────────────────────────────────
@@ -137,8 +138,8 @@ async function startServer() {
   mkdirSync(dataDir, { recursive: true });
   try {
     // Dynamic: the env above must be set first (see the header).
-    const server_ = await import('../server/index.js');
-    server = await server_.start(PORT);
+    serverModule = await import('../server/index.js');
+    server = await serverModule.start(PORT);
     state = { ...state, status: 'running', port: server.address().port, error: null };
   } catch (err) {
     // The common one by far is "port already in use" — another copy running,
@@ -663,4 +664,6 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
-app.on('before-quit', () => { app.isQuitting = true; server?.close(); });
+// Clean on purpose, so the next start does not report a crash (ADR 0022 §5).
+// Electron quits without a signal, so the server's own handlers never run.
+app.on('before-quit', () => { app.isQuitting = true; serverModule?.markCleanExit(); server?.close(); });

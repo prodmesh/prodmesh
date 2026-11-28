@@ -3,12 +3,16 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { IdentityContext } from '../lib/identity';
-import { CampusesPanel, LogsPanel, RoomConfigPanel, StationsPanel, SystemPanel, TokensPanel, UserManagementPanel } from './Settings';
+import { CampusesPanel, DiagnosticsPanel, LogsPanel, RoomConfigPanel, StationsPanel, SystemPanel, TokensPanel, UserManagementPanel } from './Settings';
 
 const api = vi.hoisted(() => ({
   getVersion: vi.fn(),
   getSystemIdentity: vi.fn(),
   setSystemName: vi.fn(),
+  getTelemetry: vi.fn(),
+  getTelemetryPreview: vi.fn(),
+  resetTelemetryId: vi.fn(),
+  setTelemetryEnabled: vi.fn(),
   triggerUpdate: vi.fn(),
   getUserDirectory: vi.fn(),
   createUser: vi.fn(),
@@ -444,6 +448,94 @@ describe('System', () => {
 
     expect(await screen.findByText(/1\.0\.0/)).toBeInTheDocument();
     expect(screen.queryByText('unknown')).not.toBeInTheDocument();
+  });
+});
+
+describe('Crash reporting', () => {
+  const lifecycle = { since: Date.UTC(2026, 10, 1), boots: 14, uncleanExits: 2, lastUnclean: null };
+  const state = { enabled: false, decidedAt: null, lockedOff: false, lifecycle };
+
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('is off until an admin turns it on, and says plainly that nothing sends yet', async () => {
+    api.getTelemetry.mockResolvedValue(state);
+    api.setTelemetryEnabled.mockResolvedValue({ ...state, enabled: true, decidedAt: 1 });
+    const user = userEvent.setup();
+    render(<DiagnosticsPanel />);
+
+    const box = await screen.findByRole('checkbox', { name: /Share anonymous crash reports/ });
+    await waitFor(() => expect(box).toBeEnabled());
+    expect(box).not.toBeChecked();
+    expect(screen.queryByText(/Not sending yet/)).toBeNull();
+
+    await user.click(box);
+    expect(api.setTelemetryEnabled).toHaveBeenCalledWith(true);
+    expect(await screen.findByText('Saved.')).toBeInTheDocument();
+    expect(box).toBeChecked();
+    expect(screen.getByText(/Not sending yet/)).toBeInTheDocument();
+  });
+
+  it('says what the sender last did, once there is somewhere to send', async () => {
+    const sending = { endpoint: true, lastSentAt: Date.UTC(2026, 10, 20, 14), lastAttemptAt: null, lastResult: 'sent' as const, lastError: null, backoffUntil: null, queued: false, stopped: false };
+    api.getTelemetry.mockResolvedValue({ ...state, enabled: true, sending });
+    const { unmount } = render(<DiagnosticsPanel />);
+    expect(await screen.findByText(/^Last sent /)).toBeInTheDocument();
+    unmount();
+
+    api.getTelemetry.mockResolvedValue({ ...state, enabled: true, sending: { ...sending, lastResult: 'failed' as const, lastError: '503' } });
+    const second = render(<DiagnosticsPanel />);
+    expect(await screen.findByText('Last attempt failed (503). Retrying.')).toBeInTheDocument();
+    second.unmount();
+
+    api.getTelemetry.mockResolvedValue({ ...state, enabled: true, sending: { ...sending, stopped: true } });
+    render(<DiagnosticsPanel />);
+    expect(await screen.findByText(/^Stopped\./)).toBeInTheDocument();
+  });
+
+  it('cannot be switched on where the server has it locked off', async () => {
+    api.getTelemetry.mockResolvedValue({ ...state, lockedOff: true });
+    render(<DiagnosticsPanel />);
+    expect(await screen.findByText('PRODMESH_TELEMETRY=off')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /Share anonymous crash reports/ })).toBeDisabled();
+  });
+
+  it('shows the exact next report on request, and flags one the schema refuses', async () => {
+    api.getTelemetry.mockResolvedValue(state);
+    api.getTelemetryPreview.mockResolvedValue({ report: { schema: 'prodmesh-telemetry/1', errors: [] }, problems: [] });
+    const user = userEvent.setup();
+    render(<DiagnosticsPanel />);
+    await user.click(await screen.findByRole('button', { name: 'What is sent' }));
+    expect(await screen.findByTestId('telemetry-preview')).toHaveTextContent('"schema": "prodmesh-telemetry/1"');
+    expect(screen.queryByText(/Not sendable/)).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Hide' }));
+    expect(screen.queryByTestId('telemetry-preview')).toBeNull();
+
+    api.getTelemetryPreview.mockResolvedValue({ report: {}, problems: ['errors[0].message: still looks like an address'] });
+    await user.click(screen.getByRole('button', { name: 'What is sent' }));
+    expect(await screen.findByText(/Not sendable: errors\[0\]\.message/)).toBeInTheDocument();
+  });
+
+  it('resets the telemetry id', async () => {
+    api.getTelemetry.mockResolvedValue(state);
+    api.resetTelemetryId.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<DiagnosticsPanel />);
+    await user.click(await screen.findByRole('button', { name: 'Reset ID' }));
+    expect(api.resetTelemetryId).toHaveBeenCalled();
+    expect(await screen.findByText('ID reset.')).toBeInTheDocument();
+  });
+
+  it("shows this server's own record of unexpected stops, reporting or not", async () => {
+    api.getTelemetry.mockResolvedValue({
+      ...state,
+      lifecycle: {
+        ...lifecycle,
+        lastUnclean: { version: '1.6.0', lastAliveAt: Date.UTC(2026, 10, 22, 15), uptimeMs: 60_000, error: { name: 'TypeError', message: 'x is undefined', origin: 'uncaughtException' } },
+      },
+    });
+    render(<DiagnosticsPanel />);
+    expect(await screen.findByText(/2 of 14 starts since/)).toBeInTheDocument();
+    expect(screen.getByText(/v1\.6\.0 · TypeError: x is undefined/)).toBeInTheDocument();
   });
 });
 

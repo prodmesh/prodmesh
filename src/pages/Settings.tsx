@@ -27,6 +27,12 @@ import {
   getVersion,
   getSystemIdentity,
   setSystemName,
+  getTelemetry,
+  setTelemetryEnabled,
+  type TelemetryState,
+  type TelemetryPreview,
+  getTelemetryPreview,
+  resetTelemetryId,
   type SystemIdentity,
   triggerUpdate,
   getChecklistTemplates,
@@ -186,7 +192,7 @@ function LoginForm({ onDone }: { onDone: () => void }) {
 function AdminPanels({ section }: { section: AdminSection }) {
   return (
     <>
-      {section === 'general' && <><BrandingPanel /><SecurityPanel /><SystemPanel /></>}
+      {section === 'general' && <><BrandingPanel /><SecurityPanel /><SystemPanel /><DiagnosticsPanel /></>}
       {section === 'integrations' && <><IntegrationEnablePanel /><SecretsPanel /></>}
       {section === 'campuses' && <CampusesPanel />}
       {section === 'servers' && <LinkedServersPanel />}
@@ -1607,6 +1613,110 @@ export function SystemPanel() {
       <Msg msg={status} />
 
       <BackupRow />
+    </section>
+  );
+}
+
+/**
+ * Crash reporting (ADR 0022): the consent switch, and this server's own record
+ * of how its runs ended. The record is local and useful on its own (an unclean
+ * stop is a crash, a power cut or a kill, and the log has the stack), so it
+ * shows whether or not reporting is on.
+ */
+/**
+ * One line on what the sender last did. The switch must never claim to do
+ * something it does not: until the receiving end exists, it says so.
+ */
+function sendingLine(sending: TelemetryState['sending']): string {
+  if (!sending?.endpoint) return 'Not sending yet. Reports start in a later update.';
+  if (sending.stopped) return 'Stopped. This version’s reports are no longer accepted; updating resumes them.';
+  const when = (t: number) => new Date(t).toLocaleString();
+  if (sending.lastResult === 'failed') return `Last attempt failed${sending.lastError ? ` (${sending.lastError})` : ''}. Retrying.`;
+  if (sending.lastSentAt) return `Last sent ${when(sending.lastSentAt)}.`;
+  return 'First report sends within a day.';
+}
+
+export function DiagnosticsPanel() {
+  const [state, setState] = useState<TelemetryState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<Feedback>(null);
+
+  useEffect(() => { getTelemetry().then(setState).catch((err) => setMsg(fail(err))); }, []);
+
+  const toggle = async (enabled: boolean) => {
+    setBusy(true); setMsg(null);
+    try { setState(await setTelemetryEnabled(enabled)); setMsg(ok('Saved.')); }
+    catch (err) { setMsg(fail(err)); }
+    finally { setBusy(false); }
+  };
+
+  const [preview, setPreview] = useState<TelemetryPreview | null>(null);
+  const showPreview = async () => {
+    if (preview) return setPreview(null);
+    try { setPreview(await getTelemetryPreview()); } catch (err) { setMsg(fail(err)); }
+  };
+  const resetId = async () => {
+    try {
+      await resetTelemetryId();
+      setMsg(ok('ID reset.'));
+      if (preview) setPreview(await getTelemetryPreview());
+    } catch (err) { setMsg(fail(err)); }
+  };
+
+  const life = state?.lifecycle;
+  const last = life?.lastUnclean;
+  return (
+    <section className="panel">
+      <p className="section-label">Diagnostics</p>
+      <h2 className="panel__title">Crash reporting</h2>
+      <Checkbox
+        label={<>Share anonymous crash reports
+          <HelpTip text="Errors, crashes, version, operating system and resource use, sent to the ProdMesh developers. Never names, rooms, addresses, credentials or Planning Center data." />
+        </>}
+        checked={state?.enabled ?? false}
+        disabled={!state || busy || state.lockedOff}
+        onChange={(e) => toggle(e.target.checked)}
+      />
+      {state?.lockedOff && <div className="settings__muted">Turned off on this server by <code>PRODMESH_TELEMETRY=off</code>.</div>}
+      {state?.enabled && <div className="settings__muted">{sendingLine(state.sending)}</div>}
+
+      <div className="panel__row">
+        <div>
+          <div className="panel__label">Next report
+            <HelpTip text="Exactly what would be sent, built by the code that sends it. Resetting the ID means later reports cannot be linked to earlier ones." />
+          </div>
+        </div>
+        <div className="panel__controls">
+          <button className="btn" onClick={showPreview}>{preview ? 'Hide' : 'What is sent'}</button>
+          <button className="btn" onClick={resetId}>Reset ID</button>
+        </div>
+      </div>
+      {/* A non-empty list is a scrubber bug the sender would refuse to send;
+          shown rather than hidden, because the admin reading this is exactly
+          the person who should know. */}
+      {preview && preview.problems.length > 0 && (
+        <div className="settings__error">Not sendable: {preview.problems.join('; ')}</div>
+      )}
+      {preview && <pre className="logview__pre" data-testid="telemetry-preview">{JSON.stringify(preview.report, null, 2)}</pre>}
+      <Msg msg={msg} />
+
+      {life && (
+        <div className="panel__row">
+          <div>
+            <div className="panel__label">Unexpected stops
+              <HelpTip text="Starts that followed a crash, a power cut or a forced quit, rather than a normal shutdown or update. Admin → Logs has the details." />
+            </div>
+            <div className="settings__muted">
+              {life.uncleanExits} of {life.boots} starts since {new Date(life.since).toLocaleDateString()}
+            </div>
+            {last && (
+              <div className="settings__muted">
+                Last: {last.lastAliveAt ? new Date(last.lastAliveAt).toLocaleString() : 'time unknown'} · v{last.version} · {last.error ? `${last.error.name}: ${last.error.message}` : 'no error recorded'}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

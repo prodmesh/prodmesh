@@ -801,6 +801,64 @@ export async function setSystemName(name: string): Promise<SystemIdentity> {
   return res.json() as Promise<SystemIdentity>;
 }
 
+/** Telemetry consent and this server's own run history (ADR 0022). */
+export interface TelemetryState {
+  enabled: boolean;
+  /** When an admin last chose, either way; null until someone has. */
+  decidedAt: number | null;
+  /** PRODMESH_TELEMETRY=off: decided by the server's environment, not Admin. */
+  lockedOff: boolean;
+  /** The sender's state. Absent from older servers. */
+  sending?: {
+    /** False until the receiving end exists: nothing can be sent. */
+    endpoint: boolean;
+    lastSentAt: number | null;
+    lastAttemptAt: number | null;
+    lastResult: 'sent' | 'rejected' | 'refused' | 'stopped' | 'failed' | null;
+    lastError: string | null;
+    backoffUntil: number | null;
+    queued: boolean;
+    /** The receiving end no longer accepts this version's reports. */
+    stopped: boolean;
+  };
+  lifecycle: {
+    since: number;
+    boots: number;
+    uncleanExits: number;
+    lastUnclean: {
+      version: string;
+      lastAliveAt: number | null;
+      uptimeMs: number | null;
+      error: { name: string; message: string; origin: string } | null;
+    } | null;
+  } | null;
+}
+
+export const getTelemetry = () => getJson<TelemetryState>('/api/system/telemetry');
+
+export async function setTelemetryEnabled(enabled: boolean): Promise<TelemetryState> {
+  const res = await fetch('/api/system/telemetry', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...requestHeaders() },
+    body: JSON.stringify({ enabled }),
+  });
+  await requireOk(res);
+  return res.json() as Promise<TelemetryState>;
+}
+
+/** The next report, exactly as it would be sent, and the schema's verdict on it. */
+export interface TelemetryPreview {
+  report: Record<string, unknown>;
+  problems: string[];
+}
+
+export const getTelemetryPreview = () => getJson<TelemetryPreview>('/api/system/telemetry/preview');
+
+export async function resetTelemetryId(): Promise<void> {
+  const res = await fetch('/api/system/telemetry/reset-id', { method: 'POST', headers: requestHeaders() });
+  await requireOk(res);
+}
+
 // Institution topology (name, sites, Quick Access tiles) — server-owned per
 // ADR 0009; the Admin → Campuses editor saves the whole tree transactionally.
 export const getConfig = () => getJson<Church>('/api/config');

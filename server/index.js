@@ -53,6 +53,9 @@ import proPresenterRouter from './routes/proPresenter.js';
 import * as branding from './branding.js';
 import * as settings from './settings.js';
 import * as auth from './authStore.js';
+import * as lifecycle from './lifecycle.js';
+import * as telemetry from './telemetry/collector.js';
+import * as telemetrySender from './telemetry/sender.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -179,6 +182,12 @@ if (existsSync(distDir)) {
  * that needs the port (the launcher, when asked for :0) can read it.
  */
 export function start(port = PORT) {
+  // First, so a crash anywhere below is on record for the next boot (ADR 0022).
+  lifecycle.begin({ version: deployment.getVersion().version });
+  // Gathers in memory whatever the switch says; only sending is switched.
+  telemetry.start();
+  // Sends only if switched on and an endpoint exists, and never during a show.
+  telemetrySender.start({ showLive: () => show.activeInstanceIds().length > 0 });
   // Before anything can emit: restored shows, first health reports.
   startMonitoring();
   show.restoreShows().catch(() => {}); // resume any show that was active before restart
@@ -219,6 +228,7 @@ export function start(port = PORT) {
 if (process.argv[1] === __filename) {
   start().catch((err) => {
     console.error(`Failed to start: ${err.message}`);
+    lifecycle.recordFatal(err, 'start');
     process.exit(1);
   });
   // launchd, systemd, Docker and `node --watch` all stop us with a signal.
@@ -227,9 +237,13 @@ if (process.argv[1] === __filename) {
   // this never holds up a restart by more than a second.
   for (const sig of ['SIGINT', 'SIGTERM']) {
     process.once(sig, () => {
+      lifecycle.markCleanExit();
       discovery.stopAdvertising().finally(() => process.exit(0));
     });
   }
 }
+
+// The desktop app quits through Electron, not a signal, so it says so itself.
+export const markCleanExit = lifecycle.markCleanExit;
 
 export { app };
