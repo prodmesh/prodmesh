@@ -401,6 +401,12 @@ Sunday, before it is offered to anyone else.
   the limit is hit the project pauses, which an installation reads as an
   outage and handles the way it handles being offline: it keeps its queue and
   retries.
+- **§2's account layout does not apply.** AWS Organizations and IAM Identity
+  Center are unavailable to an AWS project, so there is one account, not a
+  billing account with `prod` and `dev` beneath it. People sign in through
+  AWS's own project sign-in; deploys still run from GitHub Actions through an
+  OIDC role, with no access keys. A `dev` stage, if one is wanted, is a
+  second project.
 - `DEFAULT_ENDPOINT` stays null until the endpoint answers, so opted-in
   servers do not spend their days retrying a name that does not resolve.
 
