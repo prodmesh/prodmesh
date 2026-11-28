@@ -76,18 +76,23 @@ test('off means nothing is sent, and nothing waits to be', async () => {
   assert.equal(existsSync(QUEUE), false);
 });
 
-test('no endpoint, no sending', async () => {
-  const saved = process.env.PRODMESH_TELEMETRY_URL;
+test('the default endpoint is for production runs only; no endpoint, no sending', async () => {
+  const saved = { url: process.env.PRODMESH_TELEMETRY_URL, env: process.env.NODE_ENV };
   try {
     delete process.env.PRODMESH_TELEMETRY_URL;
-    assert.equal(sender.DEFAULT_ENDPOINT, null, 'until the domain is decided');
+    process.env.NODE_ENV = 'production';
+    assert.equal(sender.endpoint()?.href, 'https://telemetry.cloud.prodmesh.io/v1/reports');
+    // `npm run dev` with the switch on must not reach the maintainer's numbers.
+    delete process.env.NODE_ENV;
+    assert.equal(sender.endpoint(), null);
     assert.equal(await sender.tick(slot + 1), 'no-endpoint');
     process.env.PRODMESH_TELEMETRY_URL = 'http://192.0.2.7/v1/reports';
     assert.equal(sender.endpoint(), null, 'plain http to anything but this machine is refused');
     process.env.PRODMESH_TELEMETRY_URL = 'https://telemetry.example.org/v1/reports';
     assert.equal(sender.endpoint()?.hostname, 'telemetry.example.org');
   } finally {
-    process.env.PRODMESH_TELEMETRY_URL = saved;
+    process.env.PRODMESH_TELEMETRY_URL = saved.url;
+    if (saved.env === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = saved.env;
   }
 });
 

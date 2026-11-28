@@ -11,8 +11,8 @@ which rejects any report with a field not described here, and a test fails if a
 field is added there without being added here. The design and its reasons are
 [ADR 0022](decisions/0022-cloud-and-telemetry.md).
 
-> **Status:** reports are built and can be previewed. The receiving end does
-> not exist yet, so nothing is sent.
+> **Status:** live. Reports go to `https://telemetry.cloud.prodmesh.io/v1/reports`
+> once an admin turns this on.
 
 ## When and how a report is sent
 

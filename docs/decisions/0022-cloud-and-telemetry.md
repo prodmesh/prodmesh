@@ -407,8 +407,17 @@ Sunday, before it is offered to anyone else.
   AWS's own project sign-in; deploys still run from GitHub Actions through an
   OIDC role, with no access keys. A `dev` stage, if one is wanted, is a
   second project.
-- `DEFAULT_ENDPOINT` stays null until the endpoint answers, so opted-in
-  servers do not spend their days retrying a name that does not resolve.
+- **The endpoint is live** (2026-11-28) and is `DEFAULT_ENDPOINT` for
+  production runs only (`NODE_ENV=production`, which every real install
+  sets); `npm run dev` has no default, so a developer never reports to it by
+  accident. Proven end to end: a running server's report (a scrubbed crash
+  from its previous run) was refused with a 500 by a cloud-side bug, stayed
+  queued, was retried after the fix, and was stored byte for byte, counted,
+  and grouped.
+- **Known limit: an HTTP proxy.** Node's `fetch` ignores `HTTPS_PROXY`. A
+  church whose only route out is a proxy sends nothing unless the server runs
+  with `NODE_USE_ENV_PROXY=1` (Node 22.21 and later). It fails safe: the queue
+  waits, bounded, and nothing else is affected.
 
 ## Not decided here
 

@@ -47,10 +47,13 @@ const BACKOFF_MAX_MS = 6 * HOUR;
 const RETRY_AFTER_MAX_MS = DAY;
 const TIMEOUT_MS = 15_000;
 
-// Where reports go. Not decided yet (ADR 0022: the domain is open), so there
-// is no default and nothing is sent. PRODMESH_TELEMETRY_URL overrides it for
-// development against a local or staging receiver.
-export const DEFAULT_ENDPOINT = null;
+// Where reports go (ADR 0022). Only for a production run: every real install
+// sets NODE_ENV=production (Docker, the desktop app, `npm start`, the launchd
+// and systemd services) and `npm run dev` does not, so a developer who flips
+// the switch to look at the panel does not send dev noise to the maintainer's
+// numbers. PRODMESH_TELEMETRY_URL overrides it anywhere, for a local or
+// staging receiver.
+export const DEFAULT_ENDPOINT = 'https://telemetry.cloud.prodmesh.io/v1/reports';
 
 const FILES = {
   queue: () => join(DATA_DIR, 'telemetry', 'pending.json'),
@@ -69,7 +72,8 @@ let lastLoggedProblem = null;
  * locally. Anything else is refused rather than sent in the clear.
  */
 export function endpoint() {
-  const raw = process.env.PRODMESH_TELEMETRY_URL || DEFAULT_ENDPOINT;
+  const raw = process.env.PRODMESH_TELEMETRY_URL
+    || (process.env.NODE_ENV === 'production' ? DEFAULT_ENDPOINT : null);
   if (!raw) return null;
   let url;
   try { url = new URL(raw); } catch { return null; }

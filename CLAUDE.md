@@ -188,7 +188,7 @@ change as verified because CI is green — say which half was checked.
 | `PRODMESH_FEDERATION_DIGEST_MS` | Digest poll interval while someone watches a linked campus (default 10000). Tests shorten it. |
 | `PRODMESH_DISCOVERY` | `on`/`off`: advertise this server over mDNS (#56). Default on for production and the desktop app, off for `npm run dev`, so a laptop doesn't announce the church's name on whatever network it is on. |
 | `PRODMESH_TELEMETRY` | `off` turns crash reporting off and locks Admin's switch (ADR 0022). Only `off` is honoured: the environment can never turn reporting on. |
-| `PRODMESH_TELEMETRY_URL` | Where telemetry reports go: https, or http to this machine only. **Dev only**: there is no default until the receiving end exists (ADR 0022). |
+| `PRODMESH_TELEMETRY_URL` | Where telemetry reports go: https, or http to this machine only. **Dev only**: a production run defaults to `https://telemetry.cloud.prodmesh.io/v1/reports`, and `npm run dev` has no default, so a developer never reports to it by accident (ADR 0022). |
 | `PORT` | Serve port (default 8080). |
 
 ## Conventions
