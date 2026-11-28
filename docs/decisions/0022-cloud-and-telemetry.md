@@ -414,6 +414,16 @@ Sunday, before it is offered to anyone else.
   from its previous run) was refused with a 500 by a cloud-side bug, stayed
   queued, was retried after the fix, and was stored byte for byte, counted,
   and grouped.
+- **The digest and release alarm are live** (§8), by email through SNS
+  rather than SES or Slack: SNS is on the Free plan, needs no domain to
+  verify and no stored secret, and the address stays out of every
+  repository. Daily digest at 13:30 UTC, quiet when nothing happened except
+  on Mondays. The alarm watches a plain `x.y.z` release for about three days
+  from its first report (a cloud cannot see a tag, so the first report day
+  stands in for it). It fires for a bug new in that release on more than
+  one install, or for unexpected stops above the previous release's rate
+  given at least 5 starts and 2 stops, and sends each alarm once. "New"
+  means first received by the cloud, never a church's clock.
 - **Known limit: an HTTP proxy.** Node's `fetch` ignores `HTTPS_PROXY`. A
   church whose only route out is a proxy sends nothing unless the server runs
   with `NODE_USE_ENV_PROXY=1` (Node 22.21 and later). It fails safe: the queue
